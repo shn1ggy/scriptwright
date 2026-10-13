@@ -116,15 +116,23 @@ await check('highlight colors and names come from the settings', async () => {
   assert(/34, 170, 68/.test(v), v);
 });
 
-await check('Cmd/Ctrl+E twice opens one export window', async () => {
+await check('Export is a tab: Mod+E opens it below the tab bar, again closes it; panes rest', async () => {
   await app(() => window.__app.editor.focus());
   await page.keyboard.press('Control+E');
-  await page.waitForSelector('.export');
-  await app(() => window.__app.run('file.export'));
-  await sleep(200);
-  assert((await page.locator('.export').count()) === 1, 'two export windows');
-  await page.keyboard.press('Escape');
-  assert((await page.locator('.export').count()) === 0, 'Escape did not close it');
+  await page.waitForSelector('.main .export');
+  assert((await page.locator('.export').count()) === 1, 'not one export');
+  assert((await page.textContent('.viewbar .tab.on')) === 'Export', 'Export tab not active');
+  const top = await page.locator('.export').evaluate((e) => e.getBoundingClientRect().top);
+  const barBottom = await page.locator('.viewbar').evaluate((e) => e.getBoundingClientRect().bottom);
+  assert(Math.abs(top - barBottom) < 2, `${top} vs ${barBottom}`);
+  assert(await page.locator('.titlebar [aria-label="Toggle scene pane"]').isDisabled(), 'pane toggle active');
+  await page.screenshot({ path: path.join(os.tmpdir(), 'sw-r8-export.png') });
+  await page.keyboard.press('Control+1');
+  assert((await page.locator('.export').count()) === 0, 'Mod+1 did not leave export');
+  await page.keyboard.press('Control+E');
+  await page.waitForSelector('.main .export');
+  await page.keyboard.press('Control+E');
+  assert((await page.locator('.export').count()) === 0, 'second Mod+E did not close it');
 });
 
 await check('importing a numbered Fountain file offers to remove the numbers', async () => {

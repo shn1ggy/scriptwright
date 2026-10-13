@@ -16,6 +16,44 @@ export class CharactersPanel {
   private search: HTMLInputElement;
   private sortSel: HTMLSelectElement;
   private selected: string | null = null;
+  private body!: HTMLElement;
+  private detailResizer: HTMLElement;
+
+  private get detailWidth() {
+    return this.app.state.layout.charDetailWidth ?? 380;
+  }
+  private get nameWidth() {
+    return this.app.state.layout.charNameWidth ?? 120;
+  }
+
+  /** Column and pane widths come from the saved layout. */
+  private applyWidths() {
+    this.body.style.setProperty('--ch-detail-w', `${this.detailWidth}px`);
+    this.list.style.setProperty('--ch-name-w', `${this.nameWidth}px`);
+  }
+
+  /** Drag handle: `dir` is +1 when dragging right makes it wider, -1 when it makes it narrower. */
+  private dragWidth(handle: HTMLElement, get: () => number, set: (w: number) => void, dir: 1 | -1, min: number, max: number) {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const x0 = e.clientX;
+      const w0 = get();
+      handle.classList.add('dragging');
+      const move = (ev: MouseEvent) => {
+        set(Math.max(min, Math.min(max, Math.round(w0 + dir * (ev.clientX - x0)))));
+        this.applyWidths();
+      };
+      const up = () => {
+        handle.classList.remove('dragging');
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+        this.app.saveStateSoon();
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+  }
   private popEsc: (() => void) | null = null;
   private cache: { version: number; scenes: SceneItem[]; stats: CharacterStats[] } | null = null;
 
@@ -47,6 +85,8 @@ export class CharactersPanel {
     this.list = h('div', { class: 'ch-list', role: 'listbox', tabindex: '0', 'aria-label': 'Characters' });
     this.list.addEventListener('keydown', (e) => this.onKey(e));
     this.detail = h('div', { class: 'ch-detail' });
+    this.detailResizer = h('div', { class: 'resizer ch-resizer', title: 'Drag to resize' });
+    this.dragWidth(this.detailResizer, () => this.detailWidth, (w) => (this.app.state.layout.charDetailWidth = w), -1, 280, 640);
     this.el = h(
       'div',
       { class: 'characters floating hidden' },
@@ -59,7 +99,7 @@ export class CharactersPanel {
         this.sortSel,
         this.search,
       ),
-      h('div', { class: 'ch-body' }, this.list, this.detail),
+      (this.body = h('div', { class: 'ch-body' }, this.list, this.detailResizer, this.detail)),
     );
   }
 
@@ -69,6 +109,7 @@ export class CharactersPanel {
 
   open() {
     this.el.classList.remove('hidden');
+    this.applyWidths();
     if (!this.popEsc) this.popEsc = pushEscape(() => this.app.closePanel(), false);
     this.render();
     this.list.focus();
@@ -119,7 +160,13 @@ export class CharactersPanel {
     this.list.textContent = '';
     const n = Math.max(1, scenes.length);
     this.list.append(
-      h('div', { class: 'ch-row ch-header' }, h('span', { class: 'ch-name' }, 'Character'), h('span', { class: 'ch-num' }, 'Speeches'), h('span', { class: 'ch-num' }, 'Words'), h('span', { class: 'ch-num' }, 'Share'), h('span', { class: 'ch-num' }, 'Scenes'), h('span', { class: 'ch-strip-head' }, 'Through the story')),
+      h('div', { class: 'ch-row ch-header' }, (() => {
+        const head = h('span', { class: 'ch-name ch-name-head' }, 'Character');
+        const grip = h('span', { class: 'ch-col-resizer', title: 'Drag to resize the column' });
+        this.dragWidth(grip, () => this.nameWidth, (w) => (this.app.state.layout.charNameWidth = w), 1, 70, 320);
+        head.append(grip);
+        return head;
+      })(), h('span', { class: 'ch-num' }, 'Speeches'), h('span', { class: 'ch-num' }, 'Words'), h('span', { class: 'ch-num' }, 'Share'), h('span', { class: 'ch-num' }, 'Scenes'), h('span', { class: 'ch-strip-head' }, 'Through the story')),
     );
     if (!list.length) this.list.append(h('div', { class: 'empty-note' }, stats.length ? 'No matching characters.' : 'No dialogue yet.'));
     for (const c of list) {
@@ -167,8 +214,8 @@ export class CharactersPanel {
       h(
         'div',
         { class: 'ch-actions' },
-        c.cues ? h('button', { class: 'btn sm', onclick: () => this.showDialogue(c.name) }, 'Show dialogue') : null,
-        h('button', { class: 'btn sm', onclick: () => openRename(this.app, c.name) }, 'Rename…'),
+        c.cues ? h('button', { class: 'btn', onclick: () => this.showDialogue(c.name) }, 'Show dialogue') : null,
+        h('button', { class: 'btn', onclick: () => openRename(this.app, c.name) }, 'Rename…'),
       ),
       h(
         'div',

@@ -576,6 +576,9 @@ export interface LayoutState {
   rightVisible: boolean;
   rightTab: 'notes' | 'scene' | 'comments' | 'shelf' | 'history';
   projectsCollapsed: boolean;
+  /** Characters view: width of the detail pane and of the name column. */
+  charDetailWidth?: number;
+  charNameWidth?: number;
 }
 
 export interface WindowState {

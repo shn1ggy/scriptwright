@@ -78,7 +78,7 @@ function toHex(c: string): string {
 }
 const MIN_RIGHT = 310;
 
-export type PanelName = 'cards' | 'characters';
+export type PanelName = 'cards' | 'characters' | 'export';
 
 export class App {
   settings: Settings = defaultSettings();
@@ -112,6 +112,8 @@ export class App {
   private tabs!: Record<ViewName | PanelName, HTMLButtonElement>;
   /** Cards and Characters cover the writing view as tabs of their own. */
   panel: PanelName | null = null;
+  private mainEl!: HTMLElement;
+  private exportHandle: { close(): void } | null = null;
   characters!: CharactersPanel;
   /** Scenes selected in the outline and on the cards (ids); the anchor is where Shift-ranges start. */
   sceneSel = new Set<string>();
@@ -149,6 +151,8 @@ export class App {
       const k = this.commands.label(`view.${v}`);
       this.tabs[v].title = k ? `${label} view (${k})` : `${label} view`;
     }
+    const ek = this.commands.label('file.export');
+    this.tabs.export.title = ek ? `Export PDF (${ek})` : 'Export PDF';
   }
   private rightToggle!: HTMLButtonElement;
 
@@ -221,10 +225,7 @@ export class App {
       this.titleEl,
       this.subEl,
       h('span', { class: 'spacer' }),
-      tb('search', 'Search in screenplay', 'search.script'),
-      tb('export', 'Export PDF', 'file.export'),
       tb('command', 'Commands & shortcuts', 'app.commands'),
-      tb('settings', 'Settings', 'app.settings'),
       this.rightToggle,
     );
     const mkTab = (v: ViewName, label: string) => {
@@ -239,11 +240,12 @@ export class App {
       dialogue: mkTab('dialogue', 'Dialogue'),
       characters: mkPanelTab('characters', 'Characters'),
       source: mkTab('source', 'Source'),
+      export: mkPanelTab('export', 'Export'),
     };
     // Options of the Scene and Dialogue views live in the view itself, never in the tab bar.
     this.viewControls = h('div', { class: 'view-head hidden' });
     const t = this.tabs;
-    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters, t.source));
+    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters, t.source), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, t.export));
 
     this.leftPane = h('div', { class: 'pane pane-left' });
     this.rightPaneEl = h('div', { class: 'pane pane-right' });
@@ -251,6 +253,7 @@ export class App {
     this.leftResizer = h('div', { class: 'resizer', title: 'Drag to resize' });
     this.rightResizer = h('div', { class: 'resizer', title: 'Drag to resize' });
     const main = h('div', { class: 'main' }, this.leftPane, this.leftResizer, this.center, this.rightResizer, this.rightPaneEl);
+    this.mainEl = main;
 
     this.statusSave = h('button', { class: 'save-state', tabindex: '-1', onclick: () => this.onSaveStateClick() });
     this.statusCount = h('span', { class: 'count' });
@@ -1833,9 +1836,16 @@ export class App {
     if (this.panel === p) return;
     if (this.panel) this.closePanel(false);
     this.findbar.close(false);
+    if (p === 'export') {
+      // Export covers both panes as well; it starts below the tab bar like every tab.
+      this.flush();
+      this.exportHandle = openExport(this, this.mainEl);
+      if (!this.exportHandle) return;
+    }
     this.panel = p;
     if (p === 'cards') this.cards.open();
-    else this.characters.open();
+    else if (p === 'characters') this.characters.open();
+    document.body.classList.toggle('in-export', p === 'export');
     this.updateChrome();
     this.saveStateSoon();
   }
@@ -1846,7 +1856,12 @@ export class App {
     if (!p) return;
     this.panel = null;
     if (p === 'cards') this.cards.close(false);
-    else this.characters.close();
+    else if (p === 'characters') this.characters.close();
+    else {
+      this.exportHandle?.close();
+      this.exportHandle = null;
+    }
+    document.body.classList.remove('in-export');
     this.updateChrome();
     if (focusEditor) this.editor.focus();
     this.saveStateSoon();
@@ -2092,6 +2107,9 @@ export class App {
       b.classList.toggle('on', this.panel ? v === this.panel : v === this.view);
       b.disabled = !p;
     }
+    // The panes are hidden under Export, so their toggles rest.
+    this.leftToggle.disabled = this.panel === 'export';
+    this.rightToggle.disabled = this.panel === 'export';
     this.updateViewControls();
     this.updateStatusScene();
     this.updateCounts();
@@ -2371,7 +2389,7 @@ export class App {
       await this.flush();
       if (this.saveState === 'saved') toast('Saved.');
     }, { inFields: true, enabled: hasProject, menu: 'File' });
-    reg('file.export', 'Export PDF…', 'File', ['Mod+E'], () => openExport(this), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('file.export', 'Export PDF…', 'File', ['Mod+E'], () => (this.panel === 'export' ? this.closePanel() : this.openPanel('export')), { inFields: true, enabled: hasProject, menu: 'File' });
     reg('project.new', 'New Project…', 'File', ['Mod+Shift+N'], () => this.newProject(), { menu: 'File' });
     reg('project.openWorkspace', 'Open Folder as Workspace…', 'File', ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
     reg('workspace.create', 'Create New Workspace…', 'File', [], () => this.createWorkspace(), { menu: 'File' });
@@ -2404,8 +2422,8 @@ export class App {
     reg('view.source', 'Source View', 'View', ['Mod+6'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
     reg('view.minimal', 'Minimal View', 'View', ['Mod+M'], () => this.toggleMinimal(), { inFields: true, menu: 'View' });
     reg('view.toggleMaximize', 'Maximize / Restore Window', 'View', ['Mod+Ö'], () => bridge.window('toggleMaximize'), { inFields: true, menu: 'View' });
-    reg('view.leftPane', 'Toggle Scene Pane', 'View', ['Mod+0'], () => this.togglePane('left'), { inFields: true, menu: 'View' });
-    reg('view.rightPane', 'Toggle Notes Pane', 'View', ['Mod+Shift+0'], () => this.togglePane('right'), { inFields: true, menu: 'View' });
+    reg('view.leftPane', 'Toggle Scene Pane', 'View', ['Mod+0'], () => this.togglePane('left'), { inFields: true, menu: 'View', enabled: () => this.panel !== 'export' });
+    reg('view.rightPane', 'Toggle Notes Pane', 'View', ['Mod+Shift+0'], () => this.togglePane('right'), { inFields: true, menu: 'View', enabled: () => this.panel !== 'export' });
     reg('view.zoomIn', 'Larger Text', 'View', ['Mod+='], () => this.zoom(1), { inFields: true, menu: 'View' });
     reg('view.zoomOut', 'Smaller Text', 'View', ['Mod+-'], () => this.zoom(-1), { inFields: true, menu: 'View' });
 
@@ -2795,7 +2813,9 @@ export class App {
     const inField = !editorFocused && !!active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable);
     // Keyboard-navigable lists (outline, cards) keep their own arrow keys.
     if (!editorFocused && active?.getAttribute('role') === 'listbox' && isNavigationCombo(combo)) return;
-    const inDialog = overlayOpen() || !!active?.closest('.dialog, .menu, .export');
+    const inDialog = overlayOpen() || !!active?.closest('.dialog, .menu');
+    // The Export tab handles its own zoom keys (Mod+= / Mod+- / Mod+0).
+    if (this.panel === 'export' && /^Mod\+(=|-|0)$/.test(combo)) return;
     const matches = this.commands.lookup(combo);
     if (!matches.length) return;
     if (inDialog) {

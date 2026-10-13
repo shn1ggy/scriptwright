@@ -32,8 +32,10 @@ file first, then the code.
 ```
 
 - The **tab bar holds only tabs.** Options of a view live in that view's own header row.
+- **Export is a tab** at the far right of the tab bar. It covers both panes (their toggles rest)
+  and starts below the tab bar like every other view.
+- The title bar holds only the pane toggles, the project name and the command window button.
 - **Scene pane:** minimum 220 px, default 280 px. **Notes pane:** minimum 310 px, default 320 px.
-- Full-window overlays (Export) start after the macOS window buttons and drag the window.
 - Text in the interface is not selectable; text a person writes is.
 
 ## 3. Spacing and sizes

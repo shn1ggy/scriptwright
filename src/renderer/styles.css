@@ -323,21 +323,21 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 /* Settings */
 .settings { width: 860px; height: min(640px, 84vh); }
 .settings .split { display: flex; flex: 1; min-height: 0; }
-.settings nav { width: 210px; border-right: 1px solid var(--line); padding: 10px 8px; flex: none; display: flex; flex-direction: column; gap: 2px; }
-.settings nav .row { height: 32px; border-radius: 6px; padding: 0 12px; color: var(--text-2); }
-.settings .content { flex: 1; overflow-y: auto; padding: 20px 28px 32px; display: flex; flex-direction: column; gap: 14px; }
+.settings nav { width: 210px; border-right: 1px solid var(--line); padding: 12px 8px; flex: none; display: flex; flex-direction: column; gap: 2px; }
+.settings nav .row { height: 36px; border-radius: 6px; padding: 0 12px; color: var(--text-2); }
+.settings .content { flex: 1; overflow-y: auto; padding: 22px 28px 36px; display: flex; flex-direction: column; gap: 16px; line-height: 1.5; }
 .settings h3 { margin: 22px 0 2px; font-size: 13px; color: var(--text); font-weight: 600; }
 .settings h3:first-child { margin-top: 0; }
 .settings .form-row { grid-template-columns: 168px minmax(0, 380px); }
 .settings .form-row > .btn { justify-self: start; }
-.settings .help { color: var(--text-3); font-size: 11.5px; grid-column: 2; margin-top: -4px; }
+.settings .help { color: var(--text-3); font-size: 12px; line-height: 1.45; grid-column: 2; margin-top: 2px; }
 .settings .inline { display: flex; align-items: center; gap: 8px; }
 .settings .inline .field { width: auto; }
 .num-in { width: 76px !important; }
 
 /* Export workspace */
-.export { position: fixed; inset: 0; z-index: 800; background: var(--bg); display: grid; grid-template-rows: 44px minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
-.export-head { display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.export { position: absolute; inset: 0; z-index: 40; background: var(--bg); display: grid; grid-template-rows: 44px minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
+.export-head { display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .export-head .title { font-weight: 600; }
 .export-main { display: flex; min-height: 0; min-width: 0; }
 .export-side { width: 400px; flex: none; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -534,15 +534,20 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 .characters { position: absolute; inset: 0; z-index: 25; background: var(--bg); display: flex; flex-direction: column; }
 .characters .cards-head .field { width: auto; }
 .characters .cards-head input.field { width: 160px; }
-.ch-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+.ch-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 0 var(--ch-detail-w, 380px); }
+.ch-resizer { margin: 0 -3px; height: 100%; }
 .ch-list { overflow-y: auto; padding: 8px 14px 20px; outline: none; }
-.ch-row { display: grid; grid-template-columns: minmax(90px, 180px) 64px 52px 48px 50px minmax(80px, 1fr); align-items: center; gap: 10px; min-height: var(--row-h); padding: 0 10px; border-radius: 6px; font-size: 13px; }
+.ch-row { display: grid; grid-template-columns: var(--ch-name-w, 120px) 64px 52px 48px 50px minmax(80px, 1fr); align-items: center; gap: 10px; min-height: var(--row-h); padding: 0 10px; border-radius: 6px; font-size: 13px; }
 .ch-row:not(.ch-header):hover { background: var(--panel); }
 .ch-row.selected { background: var(--accent-tint); }
 .ch-row.silent .ch-name { color: var(--text-3); font-style: italic; }
 .ch-header .ch-num, .ch-header .ch-name { color: var(--text-3); font-weight: 400; }
 .ch-header { position: sticky; top: -8px; background: var(--bg); color: var(--text-3); font-size: 12px; font-weight: 600; z-index: 1; }
-.ch-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.ch-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; min-width: 0; }
+.ch-name-head { position: relative; overflow: visible; }
+.ch-col-resizer { position: absolute; top: -4px; bottom: -4px; right: -8px; width: 9px; cursor: col-resize; }
+.ch-col-resizer::after { content: ''; position: absolute; top: 4px; bottom: 4px; left: 4px; width: 1px; background: var(--line-2); }
+.ch-col-resizer:hover::after, .ch-col-resizer.dragging::after { background: var(--accent); width: 2px; left: 3px; }
 .ch-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .ch-strip-head { padding-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ch-strip { display: grid; gap: 1px; height: 12px; padding-left: 4px; }
@@ -588,13 +593,8 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 .hl-row input[type='color'] { width: 34px; height: 24px; padding: 0; border: 1px solid var(--line-2); border-radius: 4px; background: none; flex: none; }
 .hl-row .field { flex: 1; }
 
-/* Full-window overlays (export) start below/after the macOS window buttons and can drag the window. */
-body.frameless .export-head { -webkit-app-region: drag; }
-body.frameless .export-head button, body.frameless .export-head select, body.frameless .export-head input { -webkit-app-region: no-drag; }
-body.frameless.platform-darwin:not(.fullscreen) .export-head { padding-left: 84px; }
-body.frameless:not(.platform-darwin) .export-head { padding-right: 144px; }
-.settings-block { margin-bottom: 14px; }
-.settings-block .form-row { margin-bottom: 4px; }
+.settings-block { margin-bottom: 20px; display: flex; flex-direction: column; gap: 6px; }
+.settings-block > .notice { margin-top: 10px; }
 .ws-switch svg { width: 14px; height: 14px; }
 .ws-switch > svg:last-child { width: 12px; height: 12px; color: var(--text-3); }
 /* The collapse chevron sits in the heading's left padding, so all pane headings start at the same edge. */
@@ -602,3 +602,10 @@ body.frameless:not(.platform-darwin) .export-head { padding-right: 144px; }
 .section-head button.collapser > span:first-child { position: absolute; left: -13px; top: 50%; transform: translateY(-50%); opacity: 0; color: var(--text-3); }
 .section-head button.collapser > span:first-child svg { width: 11px; height: 11px; }
 .section-head:hover button.collapser > span:first-child, .projects .list.hidden ~ * button.collapser > span:first-child { opacity: 1; }
+
+/* Tab bar: the Export tab sits at the far right */
+.viewbar > .tabs:last-child .tab { padding: 0 16px; }
+/* Under Export the pane toggles rest */
+.titlebar .icon-btn:disabled { opacity: 0.35; }
+/* Page breaks: quieter */
+.pb-mark { opacity: 0.6; }

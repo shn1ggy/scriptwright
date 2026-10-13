@@ -3,7 +3,7 @@
 import type { App } from '../app';
 import { bridge } from '../bridge';
 import { formatCombo } from '../commands';
-import { h, iconButton, debounce, uid } from './dom';
+import { h, debounce, uid } from './dom';
 import { alertDialog, confirmDialog, promptDialog, pushEscape, toast } from './overlay';
 import { ExportScope, ExportSettings, PaperSize, defaultExportSettings, normalizeExportSettings, paperLines } from '../../shared/types';
 import { characterLabel, characterList, titleFields } from '../../shared/fountain';
@@ -45,15 +45,14 @@ function loadPdfjs(): Promise<any> {
   return pdfjsPromise;
 }
 
-export function openExport(app: App) {
+/**
+ * The Export tab: settings on the left, the real PDF as preview on the right. It is shown
+ * inside `host` (below the tab bar, over the panes) and closed by the app when another tab
+ * is chosen.
+ */
+export function openExport(app: App, host: HTMLElement): { close(): void } | null {
   const p = app.project;
-  if (!p) return;
-  // Only one export window: pressing the shortcut again just focuses it.
-  const existing = document.querySelector<HTMLElement>('.export');
-  if (existing) {
-    (existing.querySelector('select, input, button') as HTMLElement | null)?.focus();
-    return;
-  }
+  if (!p) return null;
   const meta = p.meta;
   let s: ExportSettings = projectExportSettings(app);
   let fonts: FontEntry[] = [];
@@ -98,7 +97,7 @@ export function openExport(app: App) {
 
   const root = h(
     'div',
-    { class: 'export', role: 'dialog', 'aria-label': 'Export' },
+    { class: 'export', role: 'region', 'aria-label': 'Export' },
     h(
       'div',
       { class: 'export-head' },
@@ -110,19 +109,20 @@ export function openExport(app: App) {
       h('button', { class: 'btn', onclick: () => savePreset() }, 'Save as preset…'),
       h('button', { class: 'btn', onclick: () => deletePreset() }, 'Delete preset'),
       h('button', { class: 'btn', onclick: () => resetDefaults() }, 'Reset to defaults'),
-      iconButton('close', 'Close (Esc)', () => close()),
     ),
     h('div', { class: 'export-main' }, h('div', { class: 'export-side' }, side, h('div', { class: 'foot' }, cap, warnings, pageInfo, exportBtn)), previewWrap),
   );
-  document.body.append(root);
-  const popEsc = pushEscape(() => close());
+  host.append(root);
+  // Esc goes back to writing, like leaving any other tab.
+  const popEsc = pushEscape(() => app.closePanel(), false);
+  void prevFocus;
 
+  const closers: Array<() => void> = [];
   function close() {
     popEsc();
+    for (const c of closers) c();
     root.remove();
     persist();
-    prevFocus?.focus?.();
-    if (!prevFocus || prevFocus === document.body) app.editor.focus();
   }
 
   function persist() {
@@ -822,8 +822,9 @@ export function openExport(app: App) {
   updateCapacity();
   refresh();
   setTimeout(() => (side.querySelector('select, input') as HTMLElement | null)?.focus(), 0);
-  root.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+  // Zoom keys work wherever the focus is while the Export tab is shown.
+  const zoomKeys = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
       if (e.code === 'Equal' || e.code === 'NumpadAdd') {
         e.preventDefault();
         e.stopPropagation();
@@ -840,6 +841,10 @@ export function openExport(app: App) {
         return setZoom('fit');
       }
     }
+  };
+  document.addEventListener('keydown', zoomKeys);
+  closers.push(() => document.removeEventListener('keydown', zoomKeys));
+  root.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       // Keep focus inside the export workspace.
       const f = Array.from(root.querySelectorAll<HTMLElement>('button:not([tabindex="-1"]), input, select')).filter((x) => !x.hasAttribute('disabled') && x.offsetParent !== null);
@@ -849,4 +854,5 @@ export function openExport(app: App) {
       e.preventDefault();
     }
   });
+  return { close };
 }
