@@ -4,7 +4,8 @@
 import type { App, SceneItem } from '../app';
 import { h, iconButton } from './dom';
 import { openMenu, pushEscape } from './overlay';
-import { SCENE_COLORS, STATUS_LABELS } from './outline';
+import { SCENE_COLORS, STATUS_LABELS, sceneGroupMenu } from './outline';
+import { isMac } from '../bridge';
 import { SceneStatus } from '../../shared/types';
 import { paginate } from '../../shared/paginate';
 import { cleanText, countWords } from '../../shared/fountain';
@@ -23,6 +24,7 @@ export class SceneCards {
   el: HTMLElement;
   private grid: HTMLElement;
   private countEl: HTMLElement;
+  /** Keyboard position; the selection itself lives in app.sceneSel. */
   private selected: string | null = null;
   private popEsc: (() => void) | null = null;
   private dragId: string | null = null;
@@ -41,9 +43,9 @@ export class SceneCards {
         h('span', { class: 'doc-title', style: { padding: '0' } }, 'Scene cards'),
         this.countEl,
         h('span', { class: 'spacer' }),
-        h('span', { class: 'dim', style: { fontSize: '11px' } }, '↵ open · ⌥⇧ arrows move · drag to reorder'),
+        h('span', { class: 'dim', style: { fontSize: '11px' } }, `↵ open · ${isMac ? '⌘' : 'Ctrl+'}click / ⇧click select several · ⌥⇧ arrows move · drag to reorder`),
         iconButton('settings', 'Card display', (e) => this.optionsMenu(e.currentTarget as HTMLElement)),
-        iconButton('close', 'Close (Esc)', () => this.close()),
+        iconButton('close', 'Back to writing (Esc)', () => this.app.closePanel()),
       ),
       this.grid,
     );
@@ -53,28 +55,38 @@ export class SceneCards {
     return !this.el.classList.contains('hidden');
   }
 
-  toggle() {
-    if (this.isOpen) this.close();
-    else this.open();
-  }
-
+  /** Shown by app.openPanel('cards'). */
   open() {
     if (!this.app.project) return;
     this.el.classList.remove('hidden');
-    this.selected = this.app.activeScene()?.kind === 'scene' ? this.app.activeScene()!.id : this.items()[0]?.id ?? null;
+    const active = this.app.activeScene();
+    this.selected = active?.kind === 'scene' ? active.id : this.items()[0]?.id ?? null;
+    if (this.selected && !this.app.sceneSel.has(this.selected)) this.app.setSceneSelection([this.selected], this.selected);
     this.lastSig = '';
     this.render();
-    if (!this.popEsc) this.popEsc = pushEscape(() => this.close(), false);
+    if (!this.popEsc) this.popEsc = pushEscape(() => this.app.closePanel(), false);
     this.grid.focus();
     this.cardEl(this.selected)?.scrollIntoView({ block: 'nearest' });
   }
 
+  /** Hidden by app.closePanel(). */
   close(focusEditor = true) {
     if (!this.isOpen) return;
     this.el.classList.add('hidden');
     this.popEsc?.();
     this.popEsc = null;
     if (focusEditor) this.app.editor.focus();
+  }
+
+  /** Marks the selected cards without rebuilding them. */
+  applySelection() {
+    if (!this.isOpen) return;
+    this.grid.querySelectorAll<HTMLElement>('.card').forEach((c) => {
+      const on = this.app.sceneSel.has(c.dataset.id!);
+      c.classList.toggle('selected', on);
+      c.classList.toggle('cursor', c.dataset.id === this.selected);
+      c.setAttribute('aria-selected', String(on));
+    });
   }
 
   private items(): SceneItem[] {
@@ -98,7 +110,7 @@ export class SceneCards {
     if (!this.isOpen) return;
     clearTimeout(this.renderTimer);
     const items = this.items();
-    const sig = items.map((s) => `${s.id}|${s.order}|${s.heading}|${s.end - s.line}|${s.record?.summary ?? ''}|${s.record?.status ?? ''}|${s.record?.color ?? ''}`).join('\n') + '|' + this.selected + '|' + JSON.stringify(this.app.settings.cards) + '|' + this.app.editor.version;
+    const sig = items.map((s) => `${s.id}|${s.order}|${s.heading}|${s.end - s.line}|${s.record?.summary ?? ''}|${s.record?.status ?? ''}|${s.record?.color ?? ''}`).join('\n') + '|' + JSON.stringify(this.app.settings.cards) + '|' + this.app.editor.version;
     if (sig === this.lastSig) return;
     this.lastSig = sig;
     this.countEl.textContent = `${items.length} scenes`;
@@ -113,9 +125,8 @@ export class SceneCards {
       const card = h(
         'div',
         {
-          class: `card style-${o.colorStyle}${color ? ' has-color' : ''}${it.id === this.selected ? ' selected' : ''}`,
+          class: `card style-${o.colorStyle}${color ? ' has-color' : ''}`,
           role: 'option',
-          'aria-selected': String(it.id === this.selected),
           dataset: { id: it.id },
           draggable: true,
           title: it.heading,
@@ -133,26 +144,31 @@ export class SceneCards {
         ),
       );
       if (color) card.style.setProperty('--scene', color);
-      card.addEventListener('click', () => this.select(it.id));
+      card.addEventListener('click', (e) => {
+        this.selected = it.id;
+        this.app.clickSelect(it, e, this.items());
+        this.grid.focus();
+      });
       card.addEventListener('dblclick', () => this.openScene(it));
       card.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        this.select(it.id);
+        if (!this.app.sceneSel.has(it.id)) this.select(it.id);
         this.menu(it, e.clientX, e.clientY);
       });
       card.addEventListener('dragstart', (e) => {
         this.dragId = it.id;
-        card.classList.add('dragging');
+        if (!this.app.sceneSel.has(it.id)) this.select(it.id);
+        for (const m of this.app.scenesFor(it)) this.cardEl(m.id)?.classList.add('dragging');
         e.dataTransfer!.effectAllowed = 'move';
         e.dataTransfer!.setData('text/plain', it.heading);
       });
       card.addEventListener('dragend', () => {
         this.dragId = null;
-        card.classList.remove('dragging');
+        this.grid.querySelectorAll('.dragging').forEach((x) => x.classList.remove('dragging'));
         this.grid.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
       });
       card.addEventListener('dragover', (e) => {
-        if (!this.dragId || this.dragId === it.id) return;
+        if (!this.dragId || this.dragId === it.id || (this.app.sceneSel.size > 1 && this.app.sceneSel.has(it.id) && this.app.sceneSel.has(this.dragId))) return;
         e.preventDefault();
         const r = card.getBoundingClientRect();
         const after = e.clientX > r.left + r.width / 2;
@@ -165,7 +181,7 @@ export class SceneCards {
         const after = e.clientX > r.left + r.width / 2;
         const src = this.items().find((s) => s.id === this.dragId);
         if (src) {
-          this.app.moveScene(src, it, after);
+          this.app.moveScenes(this.app.scenesFor(src), it, after);
           this.selected = src.id;
           this.lastSig = '';
           this.render();
@@ -173,6 +189,7 @@ export class SceneCards {
       });
       this.grid.append(card);
     }
+    this.applySelection();
   }
 
   /** Characters and length (in pages and eighths, from the real pagination) per scene. */
@@ -269,18 +286,20 @@ export class SceneCards {
     );
   }
 
-  private select(id: string) {
+  private select(id: string, extend = false) {
     this.selected = id;
-    this.grid.querySelectorAll('.card').forEach((c) => {
-      const on = (c as HTMLElement).dataset.id === id;
-      c.classList.toggle('selected', on);
-      c.setAttribute('aria-selected', String(on));
-    });
+    if (extend && this.app.sceneSelAnchor) {
+      const items = this.items();
+      const a = items.findIndex((s) => s.id === this.app.sceneSelAnchor);
+      const b = items.findIndex((s) => s.id === id);
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      this.app.setSceneSelection(items.slice(lo, hi + 1).map((s) => s.id), this.app.sceneSelAnchor);
+    } else this.app.setSceneSelection([id], id);
     this.cardEl(id)?.scrollIntoView({ block: 'nearest' });
   }
 
   private openScene(it: SceneItem) {
-    this.close(false);
+    this.app.closePanel(false);
     this.app.goToScene(it);
   }
 
@@ -304,15 +323,21 @@ export class SceneCards {
     const moveBy = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' ? -cols : e.key === 'ArrowDown' ? cols : 0;
     if (moveBy && e.altKey && e.shiftKey) {
       const it = items[i];
-      const target = Math.max(0, Math.min(items.length - 1, i + moveBy));
-      if (target !== i) {
-        this.app.moveScene(it, items[target], target > i);
-        this.lastSig = '';
-        this.render();
+      const group = this.app.scenesFor(it);
+      if (group.length > 1) {
+        // A group moves one place at a time (left/right and up/down alike).
+        this.app.moveScenesBy(group, moveBy < 0 ? -1 : 1);
+      } else {
+        const target = Math.max(0, Math.min(items.length - 1, i + moveBy));
+        if (target !== i) this.app.moveScene(it, items[target], target > i);
       }
+      this.lastSig = '';
+      this.render();
     } else if (moveBy) {
       i = Math.max(0, Math.min(items.length - 1, i + moveBy));
-      this.select(items[i].id);
+      this.select(items[i].id, e.shiftKey);
+    } else if ((e.key === 'a' || e.key === 'A') && (isMac ? e.metaKey : e.ctrlKey)) {
+      this.app.setSceneSelection(items.map((s) => s.id), items[0].id);
     } else if (e.key === 'Enter') {
       this.openScene(items[i]);
     } else if (e.key === 'Home') this.select(items[0].id);
@@ -326,11 +351,13 @@ export class SceneCards {
   }
 
   private menu(it: SceneItem, x: number, y: number) {
+    const group = this.app.scenesFor(it);
+    if (group.length > 1) return openMenu(sceneGroupMenu(this.app, group), { x, y });
     const rec = it.record;
     const items = [
       { label: 'Open scene', run: () => this.openScene(it) },
       { label: 'Edit summary & notes…', run: () => {
-        this.close(false);
+        this.app.closePanel(false);
         this.app.goToScene(it, { focusEditor: false });
         this.app.showRightTab('scene');
       } },

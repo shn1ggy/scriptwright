@@ -22,6 +22,7 @@ import { paginate } from '../shared/paginate';
 import { openRename } from './ui/rename';
 import { compareDialog } from './ui/compare';
 import { SceneCards } from './ui/cards';
+import { CharactersPanel } from './ui/characters';
 import { Annotations } from './annotations';
 import { openRewrite, openRewriteFor } from './ui/rewrite';
 import { openCommentDialog, deleteComment } from './ui/review';
@@ -62,6 +63,20 @@ interface Project {
 
 type SaveState = 'saved' | 'unsaved' | 'saving' | 'error' | 'conflict' | 'missing' | 'none';
 
+const MIN_LEFT = 220;
+
+/** CSS color (hex, rgb() or a name the canvas understands) to #rrggbb. */
+function toHex(c: string): string {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return c;
+  ctx.fillStyle = '#000';
+  ctx.fillStyle = c;
+  return ctx.fillStyle as string;
+}
+const MIN_RIGHT = 310;
+
+export type PanelName = 'cards' | 'characters';
+
 export class App {
   settings: Settings = defaultSettings();
   state: AppState = defaultAppState();
@@ -91,7 +106,13 @@ export class App {
   root!: HTMLElement;
   private titleEl!: HTMLElement;
   private subEl!: HTMLElement;
-  private tabs!: Record<ViewName, HTMLButtonElement>;
+  private tabs!: Record<ViewName | PanelName, HTMLButtonElement>;
+  /** Cards and Characters cover the writing view as tabs of their own. */
+  panel: PanelName | null = null;
+  characters!: CharactersPanel;
+  /** Scenes selected in the outline and on the cards (ids); the anchor is where Shift-ranges start. */
+  sceneSel = new Set<string>();
+  sceneSelAnchor: string | null = null;
   private viewControls!: HTMLElement;
   private leftPane!: HTMLElement;
   private rightPaneEl!: HTMLElement;
@@ -121,7 +142,7 @@ export class App {
       b.title = t;
       b.setAttribute('aria-label', title);
     }
-    for (const [v, label] of [['script', 'Script'], ['scene', 'Scene'], ['dialogue', 'Dialogue'], ['source', 'Source']] as const) {
+    for (const [v, label] of [['script', 'Script'], ['scene', 'Scene'], ['cards', 'Cards'], ['dialogue', 'Dialogue'], ['characters', 'Characters'], ['source', 'Source']] as const) {
       const k = this.commands.label(`view.${v}`);
       this.tabs[v].title = k ? `${label} view (${k})` : `${label} view`;
     }
@@ -143,6 +164,11 @@ export class App {
       this.updateViewControls();
     };
     applyTheme(this.settings.appearance);
+    if (bridge.isElectron) {
+      document.body.classList.add('frameless', `platform-${bridge.platform}`);
+      bridge.on('fullscreen', (on: boolean) => document.body.classList.toggle('fullscreen', on));
+      bridge.window('isFullScreen').then((on) => document.body.classList.toggle('fullscreen', !!on)).catch(() => {});
+    }
     this.buildDom();
     this.registerCommands();
     this.updateTooltips();
@@ -197,9 +223,18 @@ export class App {
       const b = h('button', { class: 'tab', tabindex: '-1', onclick: () => this.setView(v) }, label);
       return b;
     };
-    this.tabs = { script: mkTab('script', 'Script'), scene: mkTab('scene', 'Scene'), dialogue: mkTab('dialogue', 'Dialogue'), source: mkTab('source', 'Source') };
+    const mkPanelTab = (p: PanelName, label: string) => h('button', { class: 'tab', tabindex: '-1', onclick: () => this.openPanel(p) }, label);
+    this.tabs = {
+      script: mkTab('script', 'Script'),
+      scene: mkTab('scene', 'Scene'),
+      cards: mkPanelTab('cards', 'Cards'),
+      dialogue: mkTab('dialogue', 'Dialogue'),
+      characters: mkPanelTab('characters', 'Characters'),
+      source: mkTab('source', 'Source'),
+    };
     this.viewControls = h('div', { class: 'view-controls' });
-    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, this.tabs.script, this.tabs.scene, this.tabs.dialogue, this.tabs.source), this.viewControls);
+    const t = this.tabs;
+    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters, t.source), this.viewControls);
 
     this.leftPane = h('div', { class: 'pane pane-left' });
     this.rightPaneEl = h('div', { class: 'pane pane-right' });
@@ -236,7 +271,8 @@ export class App {
     this.rightPaneEl.append(this.rightPane.el);
     this.findbar = new FindBar(this);
     this.cards = new SceneCards(this);
-    this.center.append(this.findbar.el, this.cards.el);
+    this.characters = new CharactersPanel(this);
+    this.center.append(this.findbar.el, this.cards.el, this.characters.el);
 
     this.makeResizer(this.leftResizer, 'left');
     this.makeResizer(this.rightResizer, 'right');
@@ -250,7 +286,7 @@ export class App {
       el.classList.add('dragging');
       const move = (ev: MouseEvent) => {
         const dx = ev.clientX - startX;
-        const w = Math.max(180, Math.min(560, side === 'left' ? start + dx : start - dx));
+        const w = Math.max(side === 'left' ? MIN_LEFT : MIN_RIGHT, Math.min(560, side === 'left' ? start + dx : start - dx));
         if (side === 'left') this.state.layout.leftWidth = w;
         else this.state.layout.rightWidth = w;
         this.applyLayout();
@@ -269,6 +305,9 @@ export class App {
   applyLayout() {
     const l = this.state.layout;
     const caretOffset = this.editor.measureCaretOffset();
+    // Narrower panes break buttons and tab labels.
+    l.leftWidth = Math.max(MIN_LEFT, Math.min(560, l.leftWidth));
+    l.rightWidth = Math.max(MIN_RIGHT, Math.min(560, l.rightWidth));
     this.leftPane.style.width = `${l.leftWidth}px`;
     this.rightPaneEl.style.width = `${l.rightWidth}px`;
     this.leftPane.classList.toggle('hidden', !l.leftVisible);
@@ -309,6 +348,7 @@ export class App {
 
   applySettings() {
     applyTheme(this.settings.appearance);
+    this.syncTitleBar();
     const offset = this.editor.measureCaretOffset();
     this.editor.applySettings(this.settings.editor);
     this.editor.restoreCaretOffset(offset);
@@ -532,6 +572,7 @@ export class App {
     try {
       await bridge.call('closeProject', p.rel);
     } catch {}
+    this.closePanel(false);
     this.project = null;
     this.focus = null;
     this.findbar.close(false);
@@ -1003,6 +1044,7 @@ export class App {
     this.outline.render();
     if (force) this.cards.render();
     else this.cards.renderSoon();
+    this.characters.renderSoon();
     if (this.view === 'dialogue' && force) this.applyDialogueFilter(false);
     this.updateViewControls();
     clearTimeout(this.derivedTimer);
@@ -1270,6 +1312,13 @@ export class App {
    * the new view (as far as the new view's content allows), so switching never jumps.
    */
   setView(v: ViewName, opts: { quiet?: boolean } = {}) {
+    if (this.panel) {
+      this.closePanel(false);
+      if (v === this.view) {
+        if (!opts.quiet) this.editor.focus();
+        return;
+      }
+    }
     if (!this.project) {
       this.view = v;
       this.updateChrome();
@@ -1656,6 +1705,210 @@ export class App {
     if (this.view === 'dialogue') this.applyDialogueFilter(false);
   }
 
+  // ---------------------------------------------------------------------------------
+  // Panels (Cards, Characters)
+
+  openPanel(p: PanelName) {
+    if (!this.project) return;
+    if (this.panel === p) return;
+    if (this.panel) this.closePanel(false);
+    this.findbar.close(false);
+    this.panel = p;
+    if (p === 'cards') this.cards.open();
+    else this.characters.open();
+    this.updateChrome();
+    this.saveStateSoon();
+  }
+
+  /** Back to the writing view underneath. */
+  closePanel(focusEditor = true) {
+    const p = this.panel;
+    if (!p) return;
+    this.panel = null;
+    if (p === 'cards') this.cards.close(false);
+    else this.characters.close();
+    this.updateChrome();
+    if (focusEditor) this.editor.focus();
+    this.saveStateSoon();
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Scene selection (several scenes at once)
+
+  /** Scenes a command applies to: the whole selection when `it` is part of it, otherwise just `it`. */
+  scenesFor(it: SceneItem): SceneItem[] {
+    if (it.kind !== 'scene') return [it];
+    if (this.sceneSel.size > 1 && this.sceneSel.has(it.id)) return this.scenes.filter((s) => s.kind === 'scene' && this.sceneSel.has(s.id));
+    return [it];
+  }
+
+  /** Click handling shared by the outline and the cards. Returns true for a plain click. */
+  clickSelect(it: SceneItem, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }, order: SceneItem[]): boolean {
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    if (e.shiftKey && this.sceneSelAnchor) {
+      const a = order.findIndex((s) => s.id === this.sceneSelAnchor);
+      const b = order.findIndex((s) => s.id === it.id);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        this.setSceneSelection(order.slice(lo, hi + 1).filter((s) => s.kind === 'scene').map((s) => s.id), this.sceneSelAnchor);
+        return false;
+      }
+    }
+    if (mod) {
+      const next = new Set(this.sceneSel);
+      if (next.has(it.id)) next.delete(it.id);
+      else next.add(it.id);
+      this.setSceneSelection([...next], it.id);
+      return false;
+    }
+    this.setSceneSelection([it.id], it.id);
+    return true;
+  }
+
+  setSceneSelection(ids: string[], anchor: string | null) {
+    this.sceneSel = new Set(ids);
+    this.sceneSelAnchor = anchor;
+    this.outline.applySelection();
+    this.cards.applySelection();
+  }
+
+  updateSceneRecords(items: SceneItem[], patch: Partial<SceneRecord>) {
+    for (const it of items) {
+      const r = this.sceneRecord(it);
+      if (r) Object.assign(r, patch);
+    }
+    this.markMetaDirty();
+    this.updateScenes();
+    this.outline.render();
+    this.cards.render();
+  }
+
+  /**
+   * Moves several scenes together (in their current order) before or after `target`, as
+   * one undoable change. Scenes that were apart end up next to each other.
+   */
+  moveScenes(items: SceneItem[], target: SceneItem | null, after = false) {
+    const moving = items.filter((s) => s.kind === 'scene').sort((a, b) => a.line - b.line);
+    if (!moving.length) return;
+    if (moving.length === 1) return this.moveScene(moving[0], target, after);
+    if (target && moving.some((m) => m.id === target.id)) return;
+    const caret = this.editor.sel;
+    const L = this.editor.lines;
+    const caretKeys = { a: L[caret.anchor.line].key, ac: caret.anchor.ch, h: L[caret.head.line].key, hc: caret.head.ch };
+    this.editor.edit((tx) => {
+      const lines = tx.lines;
+      const blocks: Line[][] = [];
+      // Remove from the bottom up so earlier positions stay valid.
+      for (const it of [...moving].reverse()) {
+        const start = lines.findIndex((l) => l.key === it.key);
+        const block = tx.removeLines(start, it.end - it.line);
+        if (block[block.length - 1].text.trim() !== '') block.push({ key: newKey(), text: '' });
+        blocks.unshift(block);
+      }
+      let at: number;
+      if (!target) at = lines.length;
+      else {
+        const tStart = lines.findIndex((l) => l.key === target.key);
+        at = after ? tStart + (target.end - target.line) : tStart;
+      }
+      at = Math.max(0, Math.min(lines.length, at));
+      const all = blocks.flat();
+      if (at > 0 && lines[at - 1].text.trim() !== '') all.unshift({ key: newKey(), text: '' });
+      tx.insertLines(at, all);
+      const find = (key: number) => lines.findIndex((l) => l.key === key);
+      return { anchor: { line: find(caretKeys.a), ch: caretKeys.ac }, head: { line: find(caretKeys.h), ch: caretKeys.hc } };
+    });
+    this.refreshDerived(true);
+    if (this.view === 'scene' && this.focus) {
+      const f = this.focusedItem();
+      if (f) this.enterScene(f, { restoreContext: true });
+    }
+    if (this.view === 'dialogue') this.applyDialogueFilter(false);
+  }
+
+  /**
+   * Moves each selected scene one place up or down, past its unselected neighbour, as one
+   * undoable change. A group that is together moves as a whole; at the top or bottom a
+   * scene stays where it is.
+   */
+  moveScenesBy(items: SceneItem[], dir: number) {
+    const moving = items.filter((s) => s.kind === 'scene');
+    if (moving.length <= 1) return moving[0] && this.moveSceneBy(moving[0], dir);
+    const order = this.scenes.filter((s) => s.kind === 'scene');
+    const sel = new Set(moving.map((m) => m.id));
+    const moves: Array<{ item: SceneItem; target: SceneItem; after: boolean }> = [];
+    if (dir > 0) {
+      for (let i = order.length - 2; i >= 0; i--) {
+        if (sel.has(order[i].id) && !sel.has(order[i + 1].id)) {
+          moves.push({ item: order[i], target: order[i + 1], after: true });
+          [order[i], order[i + 1]] = [order[i + 1], order[i]];
+        }
+      }
+    } else {
+      for (let i = 1; i < order.length; i++) {
+        if (sel.has(order[i].id) && !sel.has(order[i - 1].id)) {
+          moves.push({ item: order[i], target: order[i - 1], after: false });
+          [order[i], order[i - 1]] = [order[i - 1], order[i]];
+        }
+      }
+    }
+    if (!moves.length) return;
+    const caret = this.editor.sel;
+    const L = this.editor.lines;
+    const caretKeys = { a: L[caret.anchor.line].key, ac: caret.anchor.ch, h: L[caret.head.line].key, hc: caret.head.ch };
+    this.editor.edit((tx) => {
+      const lines = tx.lines;
+      // Block lengths are taken by key at move time: an earlier move may have added a blank line.
+      const lengthOf = (it: SceneItem) => {
+        const start = lines.findIndex((l) => l.key === it.key);
+        let end = start + 1;
+        const headingKeys = new Set(this.scenes.filter((x) => x.kind === 'scene').map((x) => x.key));
+        while (end < lines.length && !headingKeys.has(lines[end].key)) end++;
+        return { start, len: end - start };
+      };
+      for (const m of moves) {
+        const src = lengthOf(m.item);
+        const block = tx.removeLines(src.start, src.len);
+        if (block[block.length - 1].text.trim() !== '') block.push({ key: newKey(), text: '' });
+        const t = lengthOf(m.target);
+        let at = m.after ? t.start + t.len : t.start;
+        at = Math.max(0, Math.min(lines.length, at));
+        if (at > 0 && lines[at - 1].text.trim() !== '') block.unshift({ key: newKey(), text: '' });
+        tx.insertLines(at, block);
+      }
+      const find = (key: number) => lines.findIndex((l) => l.key === key);
+      return { anchor: { line: find(caretKeys.a), ch: caretKeys.ac }, head: { line: find(caretKeys.h), ch: caretKeys.hc } };
+    });
+    this.refreshDerived(true);
+    if (this.view === 'scene' && this.focus) {
+      const f = this.focusedItem();
+      if (f) this.enterScene(f, { restoreContext: true });
+    }
+    if (this.view === 'dialogue') this.applyDialogueFilter(false);
+  }
+
+  async deleteScenes(items: SceneItem[]) {
+    const del = items.filter((s) => s.kind === 'scene');
+    if (del.length <= 1) return del[0] && this.deleteScene(del[0]);
+    const ok = await confirmDialog('Remove scenes', `Remove ${del.length} scenes and their text? You can undo this.`, 'Remove', { danger: true });
+    if (!ok) return;
+    this.editor.edit((tx) => {
+      for (const it of [...del].sort((a, b) => b.line - a.line)) {
+        const start = tx.lines.findIndex((l) => l.key === it.key);
+        tx.removeLines(start, it.end - it.line);
+      }
+      if (tx.lines.length === 0) tx.insertLines(0, [{ key: newKey(), text: '' }]);
+      const first = Math.min(...del.map((d) => d.line));
+      return cursor({ line: Math.min(first, tx.lines.length - 1), ch: 0 });
+    });
+    this.setSceneSelection([], null);
+    this.refreshDerived(true);
+    if (this.view === 'scene') {
+      const f = this.activeScene();
+      if (f) this.enterScene(f);
+    }
+  }
+
   moveSceneBy(item: SceneItem, dir: number) {
     const list = this.scenes.filter((s) => s.kind === 'scene');
     const i = list.findIndex((s) => s.id === item.id);
@@ -1716,7 +1969,7 @@ export class App {
     this.subEl.textContent = p ? p.file : '';
     bridge.window('setTitle', p ? `${p.name} — Scriptwright` : 'Scriptwright');
     for (const [v, b] of Object.entries(this.tabs)) {
-      b.classList.toggle('on', v === this.view);
+      b.classList.toggle('on', this.panel ? v === this.panel : v === this.view);
       b.disabled = !p;
     }
     this.updateViewControls();
@@ -1998,10 +2251,12 @@ export class App {
     reg('view.toggleScriptScene', 'Switch Script / Scene', 'View', [], () => this.toggleScriptScene(), { enabled: hasProject, menu: 'View' });
     reg('view.script', 'Script View', 'View', ['Mod+1'], () => this.setView('script'), { enabled: hasProject, menu: 'View' });
     reg('view.scene', 'Scene View', 'View', ['Mod+2'], () => this.setView('scene'), { enabled: hasProject, menu: 'View' });
-    reg('view.dialogue', 'Dialogue View', 'View', ['Mod+3'], () => this.setView('dialogue'), { enabled: hasProject, menu: 'View' });
+    reg('view.cards', 'Scene Cards', 'View', ['Mod+3', 'Mod+Shift+O'], () => (this.panel === 'cards' ? this.closePanel() : this.openPanel('cards')), { inFields: true, enabled: hasProject, menu: 'View' });
+    reg('view.dialogue', 'Dialogue View', 'View', ['Mod+4'], () => this.setView('dialogue'), { enabled: hasProject, menu: 'View' });
+    reg('view.characters', 'Characters', 'View', ['Mod+5'], () => (this.panel === 'characters' ? this.closePanel() : this.openPanel('characters')), { inFields: true, enabled: hasProject, menu: 'View' });
     reg('title.addFields', 'Add Missing Title Page Fields', 'Edit', [], () => this.addMissingTitleFields(), { enabled: hasProject, menu: 'Edit' });
     reg('view.titlePage', 'Title Page', 'View', ['Mod+T'], () => this.toggleTitlePage(), { inFields: true, enabled: hasProject, menu: 'View' });
-    reg('view.source', 'Source View', 'View', ['Mod+4'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
+    reg('view.source', 'Source View', 'View', ['Mod+6'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
     reg('view.minimal', 'Minimal View', 'View', ['Mod+M'], () => this.toggleMinimal(), { inFields: true, menu: 'View' });
     reg('view.toggleMaximize', 'Maximize / Restore Window', 'View', ['Mod+Ö'], () => bridge.window('toggleMaximize'), { inFields: true, menu: 'View' });
     reg('view.leftPane', 'Toggle Scene Pane', 'View', ['Mod+Alt+1'], () => this.togglePane('left'), { inFields: true, menu: 'View' });
@@ -2039,7 +2294,6 @@ export class App {
     reg('scene.writtenNumbers', 'Scene Numbers in Fountain Text…', 'Scenes', [], () => openSceneNumbers(this), { enabled: hasProject, menu: 'Scene' });
     reg('project.review', 'Review: Comments & Alternatives', 'Scenes', [], () => this.showRightTab('comments'), { enabled: hasProject, menu: 'Scene' });
     reg('project.shelf', 'Shelf', 'Scenes', [], () => this.showRightTab('shelf'), { enabled: hasProject, menu: 'Scene' });
-    reg('scene.cards', 'Scene Cards', 'Scenes', ['Mod+Shift+O'], () => this.cards.toggle(), { inFields: true, enabled: hasProject, menu: 'Scene' });
     reg('scene.notes', 'Scene Notes', 'Scenes', [], () => this.showRightTab('scene'), { enabled: hasProject, menu: 'Scene' });
     reg('project.notes', 'Project Notes', 'Scenes', [], () => this.showRightTab('notes'), { enabled: hasProject, menu: 'Scene' });
     reg('project.history', 'History', 'Scenes', [], () => this.showRightTab('history'), { enabled: hasProject, menu: 'Scene' });
@@ -2194,8 +2448,18 @@ export class App {
     const offset = this.editor.measureCaretOffset();
     this.minimal = !this.minimal;
     document.body.classList.toggle('minimal', this.minimal);
+    this.syncTitleBar();
     this.editor.restoreCaretOffset(offset);
     if (this.minimal) this.editor.focus();
+  }
+
+  /** The window buttons sit on the app's top bar: match its colors; hide them in minimal view (macOS). */
+  syncTitleBar() {
+    if (!bridge.isElectron) return;
+    const cs = getComputedStyle(document.body);
+    const color = cs.getPropertyValue('--panel').trim();
+    const symbolColor = cs.getPropertyValue('--text-2').trim();
+    bridge.window('titleBar', { color: toHex(color), symbolColor: toHex(symbolColor), buttons: !this.minimal }).catch(() => {});
   }
 
   private zoom(dir: number) {

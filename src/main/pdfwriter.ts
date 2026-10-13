@@ -213,12 +213,14 @@ export class PdfDocument {
   }
 
   /** Draws text with its baseline at (x, y) measured from the top-left of the page. */
-  text(x: number, y: number, text: string, font: string, size: number, gray = 0, rgb?: [number, number, number]) {
+  text(x: number, y: number, text: string, font: string, size: number, gray = 0, rgb?: [number, number, number], charSpacing = 0) {
     const p = this.current!;
     p.fonts.add(font);
     const py = p.height - y;
     const fill = rgb ? `${rgb.map((c) => c.toFixed(3)).join(' ')} rg ` : gray ? `${gray.toFixed(3)} g ` : '';
-    p.ops.push(`BT ${fill}/${font} ${fmt(size)} Tf ${fmt(x)} ${fmt(py)} Td (${this.encode(text)}) Tj ET${fill ? ' 0 g' : ''}`);
+    // Tc adds space after every character (letter spacing); it is reset at the end of the text object.
+    const tc = charSpacing ? `${fmt(charSpacing)} Tc ` : '';
+    p.ops.push(`BT ${fill}${tc}/${font} ${fmt(size)} Tf ${fmt(x)} ${fmt(py)} Td (${this.encode(text)}) Tj ${charSpacing ? '0 Tc ' : ''}ET${fill ? ' 0 g' : ''}`);
   }
 
   line(x1: number, y1: number, x2: number, y2: number, width = 0.6, rgb?: [number, number, number]) {

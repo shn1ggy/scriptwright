@@ -357,6 +357,8 @@ export interface ExportSettings {
   titlePage: boolean;
   titleFont: ExportFont;
   titleSize: number;
+  /** Extra space between the title's letters, in percent of the title size. */
+  titleTracking: number;
   titleBold: boolean;
   titleUnderline: boolean;
   titleUppercase: boolean;
@@ -440,6 +442,7 @@ export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettin
     titlePage: true,
     titleFont: 'Courier Prime',
     titleSize: 12,
+    titleTracking: 0,
     titleBold: false,
     titleUnderline: true,
     titleUppercase: true,

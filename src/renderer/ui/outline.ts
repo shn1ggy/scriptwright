@@ -5,6 +5,7 @@ import type { App, SceneItem } from '../app';
 import { h, iconButton } from './dom';
 import { MenuItem, openMenu } from './overlay';
 import { SceneStatus } from '../../shared/types';
+import { isMac } from '../bridge';
 
 export const SCENE_COLORS: Array<{ name: string; value: string }> = [
   { name: 'Red', value: '#E5706B' },
@@ -61,7 +62,7 @@ export class OutlinePane {
     this.el = h(
       'div',
       { class: 'outline' },
-      h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, h('span', { class: 'spacer' }), iconButton('cards', 'Scene cards', () => this.app.run('scene.cards')), iconButton('plus', 'New scene after current', () => this.app.run('scene.new'))),
+      h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, h('span', { class: 'spacer' }), iconButton('cards', 'Scene cards', () => this.app.run('view.cards')), iconButton('plus', 'New scene after current', () => this.app.run('scene.new'))),
       h('div', { class: 'outline-search' }, this.search),
       this.list,
     );
@@ -114,30 +115,33 @@ export class OutlinePane {
         h('span', { class: 'label' }, it.heading || '(empty heading)'),
         it.record?.status ? h('span', { class: 'meta' }, it.record.status === 'done' ? '✓' : it.record.status === 'revise' ? '!' : '·') : null,
       );
-      row.addEventListener('click', () => {
-        this.select(it.id);
-        this.app.goToScene(it);
+      row.addEventListener('click', (e) => {
+        this.selectedId = it.id;
+        // Cmd/Ctrl-click and Shift-click only select (several scenes); a plain click also goes there.
+        if (this.app.clickSelect(it, e, this.visibleItems())) this.app.goToScene(it);
+        else this.list.focus();
       });
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        this.select(it.id);
+        if (!this.app.sceneSel.has(it.id)) this.select(it.id);
         this.contextMenu(it, e);
       });
       if (it.kind === 'scene') {
         row.draggable = true;
         row.addEventListener('dragstart', (e) => {
           this.dragId = it.id;
-          row.classList.add('dragging');
+          if (!this.app.sceneSel.has(it.id)) this.select(it.id);
+          for (const m of this.app.scenesFor(it)) this.rows.get(m.id)?.classList.add('dragging');
           e.dataTransfer!.effectAllowed = 'move';
           e.dataTransfer!.setData('text/plain', it.heading);
         });
         row.addEventListener('dragend', () => {
           this.dragId = null;
-          row.classList.remove('dragging');
+          for (const r of this.rows.values()) r.classList.remove('dragging');
           this.clearDrop();
         });
         row.addEventListener('dragover', (e) => {
-          if (!this.dragId || this.dragId === it.id) return;
+          if (!this.dragId || this.dragId === it.id || (this.app.sceneSel.size > 1 && this.app.sceneSel.has(it.id) && this.app.sceneSel.has(this.dragId))) return;
           e.preventDefault();
           const r = row.getBoundingClientRect();
           const after = e.clientY > r.top + r.height / 2;
@@ -151,7 +155,7 @@ export class OutlinePane {
           const after = e.clientY > r.top + r.height / 2;
           const src = this.app.scenes.find((s) => s.id === this.dragId);
           this.clearDrop();
-          if (src) this.app.moveScene(src, it, after);
+          if (src) this.app.moveScenes(this.app.scenesFor(src), it, after);
         });
       }
       if (it.record?.color && this.app.settings.cards.tintOutline) {
@@ -187,13 +191,31 @@ export class OutlinePane {
         row.classList.toggle('active', on);
         if (on && document.activeElement !== this.list) row.scrollIntoView({ block: 'nearest' });
       }
-      row.setAttribute('aria-selected', String(this.selectedId === id));
+    }
+    this.applySelection();
+  }
+
+  /** Marks selected rows (several when Cmd/Ctrl- or Shift-clicked). */
+  applySelection() {
+    for (const [id, row] of this.rows) {
+      const on = this.app.sceneSel.has(id) || (this.app.sceneSel.size === 0 && this.selectedId === id);
+      row.classList.toggle('selected', on);
+      row.classList.toggle('multi', on && this.app.sceneSel.size > 1);
+      row.setAttribute('aria-selected', String(on));
     }
   }
 
-  private select(id: string | null) {
+  private select(id: string | null, extend = false) {
     this.selectedId = id;
-    for (const [rid, row] of this.rows) row.classList.toggle('selected', rid === id);
+    if (id && extend && this.app.sceneSelAnchor) {
+      const items = this.visibleItems();
+      const a = items.findIndex((s) => s.id === this.app.sceneSelAnchor);
+      const b = items.findIndex((s) => s.id === id);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        this.app.setSceneSelection(items.slice(lo, hi + 1).filter((s) => s.kind === 'scene').map((s) => s.id), this.app.sceneSelAnchor);
+      }
+    } else this.app.setSceneSelection(id ? [id] : [], id);
     if (id) this.rows.get(id)?.scrollIntoView({ block: 'nearest' });
   }
 
@@ -206,16 +228,22 @@ export class OutlinePane {
     void mod;
     if (e.altKey && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       if (cur?.kind === 'scene') {
-        this.app.moveSceneBy(cur, e.key === 'ArrowUp' ? -1 : 1);
-        this.select(cur.id);
+        const group = this.app.scenesFor(cur);
+        const keep = [...this.app.sceneSel];
+        this.app.moveScenesBy(group, e.key === 'ArrowUp' ? -1 : 1);
+        this.selectedId = cur.id;
+        this.app.setSceneSelection(keep, this.app.sceneSelAnchor);
         this.list.focus();
       }
     } else if (e.key === 'ArrowDown') {
-      this.select(items[Math.min(items.length - 1, idx + 1)].id);
+      this.select(items[Math.min(items.length - 1, idx + 1)].id, e.shiftKey);
     } else if (e.key === 'ArrowUp') {
       if (idx <= 0) {
         this.search.focus();
-      } else this.select(items[idx - 1].id);
+      } else this.select(items[idx - 1].id, e.shiftKey);
+    } else if ((e.key === 'a' || e.key === 'A') && (isMac ? e.metaKey : e.ctrlKey)) {
+      const sc = items.filter((s) => s.kind === 'scene');
+      this.app.setSceneSelection(sc.map((s) => s.id), sc[0]?.id ?? null);
     } else if (e.key === 'Home') {
       this.select(items[0].id);
     } else if (e.key === 'End') {
@@ -223,7 +251,7 @@ export class OutlinePane {
     } else if (e.key === 'Enter' || e.key === ' ') {
       if (cur) this.app.goToScene(cur);
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && cur?.kind === 'scene') {
-      this.app.deleteScene(cur).then(() => this.list.focus());
+      this.app.deleteScenes(this.app.scenesFor(cur)).then(() => this.list.focus());
     } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
       if (cur) {
         const r = this.rows.get(cur.id)!.getBoundingClientRect();
@@ -236,6 +264,8 @@ export class OutlinePane {
   }
 
   private contextMenu(it: SceneItem, e: { clientX: number; clientY: number }) {
+    const group = this.app.scenesFor(it);
+    if (group.length > 1) return openMenu(sceneGroupMenu(this.app, group), { x: e.clientX, y: e.clientY });
     const items: MenuItem[] = [{ label: 'Go to scene', run: () => this.app.goToScene(it) }];
     if (it.kind === 'scene') {
       const rec = it.record;
@@ -260,4 +290,25 @@ export class OutlinePane {
     }
     openMenu(items, { x: e.clientX, y: e.clientY });
   }
+}
+
+/** Menu for several selected scenes: status, color, move and remove for all of them. */
+export function sceneGroupMenu(app: App, group: SceneItem[]): MenuItem[] {
+  const n = group.length;
+  const items: MenuItem[] = [
+    { head: `${n} scenes selected` },
+    { label: 'Move up', kbd: app.commands.label('scene.moveUp'), run: () => app.moveScenesBy(group, -1) },
+    { label: 'Move down', kbd: app.commands.label('scene.moveDown'), run: () => app.moveScenesBy(group, 1) },
+    { label: 'Remove…', run: () => app.deleteScenes(group) },
+    { head: 'Status' },
+  ];
+  const statuses = new Set(group.map((g) => g.record?.status ?? ''));
+  for (const [k, label] of Object.entries(STATUS_LABELS)) {
+    items.push({ label: statuses.size === 1 && statuses.has(k as SceneStatus) ? `✓ ${label}` : `   ${label}`, run: () => app.updateSceneRecords(group, { status: k as SceneStatus }) });
+  }
+  items.push({ head: 'Color' });
+  for (const c of SCENE_COLORS) items.push({ label: c.name, dot: c.value, run: () => app.updateSceneRecords(group, { color: c.value }) });
+  items.push({ label: 'No color', run: () => app.updateSceneRecords(group, { color: undefined }) });
+  items.push({ sep: true }, { label: 'Clear selection', run: () => app.setSceneSelection([], null) });
+  return items;
 }

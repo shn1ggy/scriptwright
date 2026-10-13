@@ -151,12 +151,14 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
         const isTitle = !!item.title;
         const size = isTitle ? s.titleSize : 12;
         const font = isTitle ? `T${s.titleBold ? 1 : 0}` : 'C0';
-        const w = doc.measure(font, item.text, size);
+        // Letter spacing (title only) is added after every character except the last.
+        const tracking = isTitle ? (Math.max(0, s.titleTracking ?? 0) / 100) * size : 0;
+        const w = doc.measure(font, item.text, size) + tracking * Math.max(0, [...item.text].length - 1);
         let x = left;
         // The title block is centered on the page; contact details align to the text column.
         if (item.align === 'center') x = (W - w) / 2;
         else if (item.align === 'right') x = actionRight - w;
-        doc.text(x, item.y, item.text, font, size);
+        doc.text(x, item.y, item.text, font, size, 0, undefined, tracking);
         if (isTitle && s.titleUnderline && item.text.trim()) doc.line(x, item.y + size * 0.15, x + w, item.y + size * 0.15, Math.max(0.5, size / 24));
       }
       continue;

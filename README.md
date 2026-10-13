@@ -66,6 +66,10 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 - Whole-script character rename with casing preserved, possessive forms handled for German
   (Andreas Tasche → Lisas Tasche, Lisas → Andreas') and English (Andrea's → Lisa's), longer
   names and characters named like a genitive protected, merge warning, one undo step.
+- Characters view: speeches, words, share of dialogue, scenes, first/last appearance, who shares
+  scenes with whom, a presence strip through the story, and characters introduced in action
+  who never speak.
+- Several scenes at once (outline and cards): color, status, move (together) and remove.
 - Scene cards with sizes, four ways to show the scene color, characters, status and length in
   pages and eighths; colored scenes are also tinted in the outline.
 
@@ -174,14 +178,15 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 | Minimal view | Mod+M |
 | Maximize / restore | Mod+Ö |
 | Save / quit | Mod+S / Mod+Q |
-| Script, Scene, Dialogue, Source view | Mod+1, Mod+2, Mod+3, Mod+4 |
+| Script, Scene, Cards, Dialogue, Characters, Source | Mod+1 … Mod+6 |
 | Rename character | Mod+R |
 | New project / open workspace folder | Mod+Shift+N / Mod+O |
 | Import Fountain file / import project backup | Mod+I / Mod+Shift+I |
 | Back up project / rename project | Mod+Shift+S / Mod+Shift+R |
 | Move scene up / down | ⌥⇧/Alt+Shift + ↑ / ↓ |
 | Go to passage (from Scene or Dialogue view) | Mod+Enter |
-| Scene cards | Mod+Shift+O |
+| Scene cards (also) | Mod+Shift+O |
+| Select several scenes (outline, cards) | Mod+click, Shift+click, Shift+arrows, Mod+A |
 | Rewrite / comment / highlight | ⌥A or Alt+A / Mod+Shift+M / Mod+H |
 | Cut to shelf / copy to shelf | Mod+Shift+X / Mod+Shift+C |
 | Save named draft / export Fountain | Mod+Shift+D / Mod+Shift+E |

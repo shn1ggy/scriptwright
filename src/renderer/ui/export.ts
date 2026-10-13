@@ -139,8 +139,9 @@ export function openExport(app: App) {
     refresh();
   });
   async function savePreset() {
-    const name = await promptDialog('Save export preset', 'Name', presetSel.value || '', { okLabel: 'Save' });
+    const name = (await promptDialog('Save export preset', 'Name', presetSel.value || '', { okLabel: 'Save' }))?.trim();
     if (!name) return;
+    if (meta.exportPresets.some((x) => x.name === name) && !(await confirmDialog('Replace preset', `A preset named "${name}" already exists. Replace it with the current settings?`, 'Replace'))) return;
     meta.exportPresets = [...meta.exportPresets.filter((x) => x.name !== name), { name, settings: { ...s } }];
     persist();
     renderPresets();
@@ -488,6 +489,7 @@ export function openExport(app: App) {
         chk('titlePage', 'Include the title page'),
         row('Title font', fontSel('titleFont', false)),
         row('Title size', numIn('titleSize', 8, 48, 1, 'pt')),
+        row('Letter spacing', numIn('titleTracking', 0, 200, 5, '% of the size')),
         chk('titleBold', 'Bold title'),
         chk('titleUnderline', 'Underline title'),
         chk('titleUppercase', 'Uppercase title'),

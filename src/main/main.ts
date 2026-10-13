@@ -68,6 +68,9 @@ function createWindow() {
     backgroundColor: '#272B33',
     show: false,
     title: 'Scriptwright',
+    // The app's own top bar takes the place of the system title bar.
+    titleBarStyle: 'hidden',
+    ...(isMac ? { trafficLightPosition: { x: 12, y: 9 } } : { titleBarOverlay: { color: '#272B33', symbolColor: '#C9CED6', height: 30 } }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -92,6 +95,8 @@ function createWindow() {
   };
   win.on('resize', scheduleSave);
   win.on('move', scheduleSave);
+  win.on('enter-full-screen', () => win?.webContents.send('event', 'fullscreen', true));
+  win.on('leave-full-screen', () => win?.webContents.send('event', 'fullscreen', false));
   win.on('maximize', saveWindowState);
   win.on('unmaximize', saveWindowState);
 
@@ -253,6 +258,21 @@ function setup() {
       case 'setTitle':
         win.setTitle(String(arg));
         return;
+      case 'titleBar': {
+        // Colors of the window buttons drawn over the app's top bar (Windows/Linux), and
+        // whether the macOS window buttons are shown (hidden in minimal view).
+        const a = (arg ?? {}) as { color?: string; symbolColor?: string; buttons?: boolean };
+        if (isMac) {
+          if (typeof a.buttons === 'boolean') win.setWindowButtonVisibility(a.buttons);
+        } else if (a.color && a.symbolColor) {
+          try {
+            win.setTitleBarOverlay({ color: a.color, symbolColor: a.symbolColor, height: 30 });
+          } catch {}
+        }
+        return;
+      }
+      case 'isFullScreen':
+        return win.isFullScreen();
       case 'closeReady':
         allowClose = true;
         win.close();

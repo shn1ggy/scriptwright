@@ -32,8 +32,8 @@ await check('Mod+F searches the screenplay, Mod+Shift+F searches scenes', async 
   await page.keyboard.press('Escape');
 });
 
-await check('Source is a tab (Mod+4) showing all operators', async () => {
-  await page.keyboard.press('Control+4');
+await check('Source is a tab (Mod+6) showing all operators', async () => {
+  await page.keyboard.press('Control+6');
   const r = await app(() => [window.__app.view, document.querySelector('.tab.on').textContent, document.querySelector('.ed-content').textContent.includes('**please**')]);
   assert(r[0] === 'source' && r[1] === 'Source' && r[2], JSON.stringify(r));
   await page.keyboard.press('Control+1');

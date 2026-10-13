@@ -70,7 +70,7 @@ export class RightPane {
     const m = this.app.project?.meta;
     const open = m ? m.comments.filter((c) => !c.resolved && !c.detached).length : 0;
     const detached = m ? [...m.comments, ...m.highlights, ...m.passages].filter((r) => r.detached).length : 0;
-    this.tabBtns.comments.textContent = open || detached ? `Review ${open + detached}` : 'Review';
+    this.tabBtns.comments.replaceChildren('Review', ...(open || detached ? [h('span', { class: 'tab-count' }, String(open + detached))] : []));
     this.tabBtns.comments.classList.toggle('has-warn', detached > 0);
     this.tabBtns.comments.title = detached ? `${open} open comments, ${detached} detached items` : `${open} open comments`;
   }
