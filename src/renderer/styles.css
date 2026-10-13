@@ -158,6 +158,8 @@ input, textarea, [contenteditable='true'], .selectable { user-select: text; -web
 .row.selected { background: var(--accent-tint); color: var(--text); }
 .row.active { color: var(--text); }
 .row.active::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; background: var(--accent); border-radius: 0 2px 2px 0; }
+/* With a scene color edge, the marker for the current scene sits just inside it. */
+.row.tinted.active::before { left: 5px; border-radius: 2px; }
 .row .num { width: 24px; flex: none; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; font-size: var(--ui-small); }
 .row .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .row .meta { color: var(--text-3); font-size: 11px; flex: none; }
@@ -206,7 +208,7 @@ input, textarea, [contenteditable='true'], .selectable { user-select: text; -web
 .ed-scroller { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; background: var(--bg); cursor: text; outline: none; /* The text never shifts when the scrollbar appears or goes. */ scrollbar-gutter: stable both-edges; }
 .ed-column {
   --gutter: 7ch;
-  position: relative; margin: 0 auto; box-sizing: content-box;
+  position: relative; margin: 0 auto; box-sizing: content-box; left: var(--center-shift, 0px);
   width: calc(var(--ed-measure) * 1ch); max-width: calc(100% - 2 * var(--gutter));
   padding: 40px var(--gutter) 45vh;
   font-family: var(--ed-font); font-size: var(--ed-size); line-height: var(--ed-lh);
@@ -330,7 +332,7 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 .palette .msg.warn { color: var(--warn); }
 
 /* Settings */
-.settings { width: 860px; height: min(640px, 84vh); }
+.settings { width: min(960px, 92vw); height: min(900px, 90vh); }
 .settings .split { display: flex; flex: 1; min-height: 0; }
 .settings nav { width: 210px; border-right: 1px solid var(--line); padding: 12px 8px; flex: none; display: flex; flex-direction: column; gap: 2px; }
 .settings nav .row { height: 30px; border-radius: 6px; padding: 0 12px; color: var(--text-2); }
@@ -765,3 +767,12 @@ label.check > input[type='checkbox'] { margin: 0; flex: none; }
 .history-view .btn { font-size: var(--ui-small); }
 .hist-text-bar { display: flex; align-items: center; gap: 12px; }
 .hist-text { flex: 1; overflow: auto; margin: 0; padding: 16px 20px; border: 1px solid var(--line); border-radius: 8px; font-family: var(--ed-font, 'Courier Prime', monospace); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; cursor: text; color: var(--text); background: var(--panel); }
+.ch-shared-row.open { background: var(--panel-2); }
+.ch-shared-scenes { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 8px 12px; padding-left: 8px; border-left: 1px solid var(--line-2); }
+.ch-shared-go { align-self: flex-start; margin-top: 4px; }
+.rp-body > .kind-toggles { margin-bottom: -2px; }
+.kind-toggle .rv-swatch { width: 8px; height: 8px; border-radius: 2px; }
+.kind-toggle:not(.on) .rv-swatch { opacity: 0.45; }
+.rv-swatch.highlight { background: var(--hl-yellow-dot, #e8c547); }
+/* Comparison text can be selected and copied */
+.cmp-detail, .hist-changes, .hist-changes .pl { user-select: text; -webkit-user-select: text; cursor: text; }

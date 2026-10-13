@@ -22,6 +22,28 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
   const ann = app.annotations;
   const m = app.project!.meta;
 
+  // Toggles: comments, alternatives and highlights, alone or together (remembered).
+  type RK = 'comments' | 'passages' | 'highlights';
+  const shown = () => new Set<RK>((app.state.layout.reviewKinds?.length ? app.state.layout.reviewKinds : ['comments', 'passages', 'highlights']) as RK[]);
+  const toggles = h('div', { class: 'kind-toggles', role: 'group', 'aria-label': 'Show' });
+  for (const [k, label, sw] of [['comments', 'Comments', 'comment'], ['passages', 'Alternatives', 'passage'], ['highlights', 'Highlights', 'highlight']] as Array<[RK, string, string]>) {
+    const on = shown().has(k);
+    toggles.append(
+      h('button', { class: `kind-toggle${on ? ' on' : ''}`, 'aria-pressed': String(on), 'data-k': k, onclick: () => {
+        const next = shown();
+        if (next.has(k)) {
+          if (next.size === 1) return;
+          next.delete(k);
+        } else next.add(k);
+        app.state.layout.reviewKinds = [...next];
+        app.saveStateSoon();
+        rerender();
+      } }, h('span', { class: `rv-swatch ${sw}` }), label),
+    );
+  }
+  body.append(toggles);
+  const kinds = shown();
+
   // Comments ---------------------------------------------------------------------------
   const open = m.comments.filter((c) => !c.detached && !c.resolved);
   const resolved = m.comments.filter((c) => !c.detached && c.resolved);
@@ -42,7 +64,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
       rerender();
     }),
   );
-  const secComments = h('div', { class: 'rv-section' });
+  const secComments = h('div', { class: `rv-section${kinds.has('comments') ? '' : ' hidden'}` });
   body.append(secComments);
   secComments.append(
     h(
@@ -69,7 +91,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
 
   // Alternatives -----------------------------------------------------------------------
   const passages = m.passages.filter((p) => !p.detached);
-  const secPassages = h('div', { class: 'rv-section' });
+  const secPassages = h('div', { class: `rv-section${kinds.has('passages') ? '' : ' hidden'}` });
   body.append(secPassages);
   secPassages.append(h('div', { class: 'rv-head' }, h('span', { class: 'rv-swatch passage' }), h('span', null, `Alternative passages (${passages.length})`)));
   if (!passages.length) secPassages.append(h('div', { class: 'notice' }, `Select a passage and choose Rewrite… (${app.commands.label('edit.rewrite') || 'context menu'}) to keep several versions.`));
@@ -95,7 +117,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
 
   // Highlights ---------------------------------------------------------------------------
   const hls = m.highlights.filter((x) => !x.detached);
-  const secHl = h('div', { class: 'rv-section' });
+  const secHl = h('div', { class: `rv-section${kinds.has('highlights') ? '' : ' hidden'}` });
   body.append(secHl);
   secHl.append(h('div', { class: 'rv-head' }, h('span', null, `Highlights (${hls.length})`)));
   for (const hl of hls) {

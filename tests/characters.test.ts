@@ -45,7 +45,13 @@ test('speaking characters: cues, words, scenes, mentions and shared scenes', () 
   assert.deepEqual(tom.speaksIn, [0, 1]);
   assert.equal(tom.firstScene, 0);
   assert.equal(tom.lastScene, 1);
-  assert.deepEqual(lisa.sharedWith, [{ name: 'TOM', scenes: 1 }]);
+  // Silent characters named in action share the scene too.
+  assert.deepEqual(lisa.sharedWith, [
+    { name: 'POSTMAN', scenes: 1, sceneIdx: [0] },
+    { name: 'TOM', scenes: 1, sceneIdx: [0] },
+  ]);
+  // Tom is named in Lisa's dialogue in scene 0 only; Lisa named in action of scene 2 shares nothing with Tom there.
+  assert.deepEqual(tom.sharedWith.find((s) => s.name === 'LISA'), { name: 'LISA', scenes: 1, sceneIdx: [0] });
   assert.ok(Math.abs(lisa.share + tom.share - 1) < 1e-9);
 });
 

@@ -82,17 +82,20 @@ export function putBack(app: App, item: ShelfItem, rerender: () => void) {
   const ed = app.editor;
   ed.replaceRange(at, at, item.text, 'other', 'command', { anchor: at, head: posAfterInsert(at, item.text) });
   ed.history.seal();
+  // It is back in the screenplay, so it leaves the shelf (Undo brings both back).
+  app.undoable(() => {
+    app.project!.meta.shelf = app.project!.meta.shelf.filter((x) => x.id !== item.id);
+    app.markMetaDirty();
+  }, 'Put Back');
+  rerender();
   app.revealRange(at, posAfterInsert(at, item.text));
   toast(m.quality === 'exact' ? 'Put back where it was cut.' : 'Put back next to the text it followed (the other side has changed).', {
     actions: [
-      { label: 'Undo', run: () => app.run('edit.undo') },
       {
-        label: 'Remove from shelf',
+        label: 'Undo',
         run: () => {
-          app.undoable(() => {
-            app.project!.meta.shelf = app.project!.meta.shelf.filter((x) => x.id !== item.id);
-            app.markMetaDirty();
-          }, 'Remove from Shelf');
+          app.run('edit.undo');
+          app.run('edit.undo');
           rerender();
         },
       },

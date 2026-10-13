@@ -302,7 +302,8 @@ export class OutlinePane {
       this.select(items[items.length - 1].id);
     } else if (e.key === 'Enter' || e.key === ' ') {
       if (cur) this.app.goToScene(cur);
-    } else if ((e.key === 'Delete' || e.key === 'Backspace') && cur?.kind === 'scene') {
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && (isMac ? e.metaKey : e.ctrlKey) && cur?.kind === 'scene') {
+      // Only with Mod: a plain Delete or Backspace (e.g. while still typing) never removes scenes.
       this.app.deleteScenes(this.app.scenesFor(cur)).then(() => this.list.focus());
     } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
       if (cur) {

@@ -21,8 +21,12 @@ export interface CharacterStats {
   cuesByScene: Map<number, number>;
   firstScene: number;
   lastScene: number;
-  /** Other speaking characters by number of scenes shared, most first. */
-  sharedWith: Array<{ name: string; scenes: number }>;
+  /**
+   * Other characters by number of scenes shared, most first. A character is in a scene when
+   * they speak there or are named in its action (a name only spoken about in dialogue does
+   * not count).
+   */
+  sharedWith: Array<{ name: string; scenes: number; sceneIdx: number[] }>;
   /** Only introduced in action ("TOM (40s)"), never speaks. */
   silent: boolean;
 }
@@ -115,14 +119,16 @@ export function analyzeCharacters(lines: string[], parse: ParseResult, scenes: A
     s.lastScene = all.length ? Math.max(...all) : -1;
   }
 
-  const speaking = [...stats.values()].filter((s) => s.cues > 0);
-  for (const a of speaking) {
-    const shared: Array<{ name: string; scenes: number }> = [];
-    for (const b of speaking) {
+  const all = [...stats.values()];
+  const present = new Map(all.map((s) => [s, new Set([...s.speaksIn, ...s.mentionedIn])]));
+  for (const a of all) {
+    const shared: Array<{ name: string; scenes: number; sceneIdx: number[] }> = [];
+    const mine = present.get(a)!;
+    for (const b of all) {
       if (a === b) continue;
-      let n = 0;
-      for (const sc of a.speaksIn) if (b.cuesByScene.has(sc)) n++;
-      if (n) shared.push({ name: b.name, scenes: n });
+      const theirs = present.get(b)!;
+      const idx = [...mine].filter((sc) => theirs.has(sc)).sort((x, y) => x - y);
+      if (idx.length) shared.push({ name: b.name, scenes: idx.length, sceneIdx: idx });
     }
     a.sharedWith = shared.sort((x, y) => y.scenes - x.scenes || x.name.localeCompare(y.name));
   }

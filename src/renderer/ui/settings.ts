@@ -171,10 +171,11 @@ export function openSettings(app: App, section: Section = 'editor') {
         c[key] = v.toUpperCase();
         i.value = v.toLowerCase();
         hex.value = v.toUpperCase();
-        changed();
+        app.applyLookSoon();
         updateContrast();
       };
       i.addEventListener('input', () => apply(i.value));
+      i.addEventListener('change', () => changed());
       hex.addEventListener('change', () => apply(hex.value.startsWith('#') ? hex.value : '#' + hex.value));
       return h('div', { class: 'inline' }, i, hex);
     };
@@ -193,9 +194,10 @@ export function openSettings(app: App, section: Section = 'editor') {
       s.addEventListener('input', () => {
         c.background[k] = Number(s.value);
         out.textContent = s.value;
-        changed();
+        app.applyLookSoon();
         updateContrast();
       });
+      s.addEventListener('change', () => changed());
       return h('div', { class: 'inline' }, s, out);
     };
     updateContrast();
@@ -235,8 +237,9 @@ export function openSettings(app: App, section: Section = 'editor') {
         const col = h('input', { type: 'color', value: hl.color, 'aria-label': `Highlight color ${k}` });
         col.addEventListener('input', () => {
           hl.color = col.value;
-          changed();
+          app.applyLookSoon();
         });
+        col.addEventListener('change', () => changed());
         const label = h('input', { class: 'field', value: hl.label, 'aria-label': `Highlight name ${k}`, placeholder: k === 'pink' ? 'Red' : k[0].toUpperCase() + k.slice(1) });
         label.addEventListener('change', () => {
           hl.label = label.value.trim() || (k === 'pink' ? 'Red' : k[0].toUpperCase() + k.slice(1));

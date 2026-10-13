@@ -57,6 +57,8 @@ export interface Settings {
   cards: CardSettings;
   /** The four highlight slots: their color and the name shown in menus (e.g. "Fix later"). */
   highlights: Record<HighlightColor, { color: string; label: string }>;
+  /** Export presets, shared by all projects of the workspace. */
+  exportPresets: ExportPreset[];
 }
 
 export interface CardSettings {
@@ -116,6 +118,7 @@ export function defaultSettings(): Settings {
       blue: { color: '#5AA0F0', label: 'Blue' },
       pink: { color: '#E5534B', label: 'Red' },
     },
+    exportPresets: [],
     cards: { size: 'medium', colorStyle: 'tint', showSummary: true, showStatus: true, showCharacters: true, showLength: true, tintOutline: true },
   };
 }
@@ -652,6 +655,10 @@ export interface LayoutState {
   previewBrightness?: number;
   /** Export settings groups that are open. */
   exportOpen?: string[];
+  /** Review pane: kinds of notes shown. */
+  reviewKinds?: Array<'comments' | 'passages' | 'highlights'>;
+  /** History: show only the scenes that differ. */
+  historyOnlyDiff?: boolean;
   /** History lists: kinds of versions shown. */
   historyKinds?: Array<'draft' | 'export' | 'snapshot'>;
 }

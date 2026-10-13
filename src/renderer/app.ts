@@ -286,6 +286,15 @@ export class App {
     const alignStatus = () => {
       if (!this.editor) return;
       const r = this.editor.dom.getBoundingClientRect();
+      // The text column stays centred on the window (not on the space between the panes),
+      // so it does not move when a pane opens or closes, as long as it fits.
+      const col = this.editor.dom.querySelector<HTMLElement>('.ed-column');
+      if (col && r.width) {
+        const room = Math.max(0, (r.width - col.offsetWidth) / 2 - 8);
+        const want = window.innerWidth / 2 - (r.left + r.width / 2);
+        const shift = Math.round(Math.max(-room, Math.min(room, want)));
+        this.editor.dom.style.setProperty('--center-shift', `${shift}px`);
+      }
       const full = !r.width || document.body.classList.contains('in-export');
       status.style.paddingLeft = `${(full ? 0 : Math.max(0, r.left)) + 14}px`;
       status.style.paddingRight = `${(full ? 0 : Math.max(0, window.innerWidth - r.right)) + 14}px`;
@@ -390,6 +399,23 @@ export class App {
     this.updateMenu();
     this.updateTooltips();
     this.applySettings();
+  }
+
+  private lookFrame = 0;
+
+  /**
+   * Colors only (theme, highlights, title bar), at most once per frame: used while a color
+   * or slider is dragged, so the picker stays smooth. Full settings follow on release.
+   */
+  applyLookSoon() {
+    if (this.lookFrame) return;
+    this.lookFrame = requestAnimationFrame(() => {
+      this.lookFrame = 0;
+      applyTheme(this.settings.appearance);
+      applyHighlightColors(this.settings.highlights, this.settings.appearance.theme === 'light');
+      this.syncTitleBar();
+      this.saveSettings();
+    });
   }
 
   applySettings() {
@@ -3110,6 +3136,18 @@ export class App {
     // Keyboard-navigable lists (outline, cards) keep their own arrow keys.
     if (!editorFocused && active?.getAttribute('role') === 'listbox' && isNavigationCombo(combo)) return;
     const inDialog = overlayOpen() || !!active?.closest('.dialog, .menu');
+    // Undo and redo are handled here on every system (not left to the menu or the hidden
+    // input's own undo, which on Windows swallowed Ctrl+Z most of the time). Other text fields
+    // keep their native undo for their own typing.
+    const isUndo = combo === 'Mod+Z';
+    const isRedo = combo === 'Mod+Shift+Z' || (!isMac && combo === 'Mod+Y');
+    if (isUndo || isRedo) {
+      if (inField || (inDialog && !editorFocused)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.undoRedo(isUndo ? 'undo' : 'redo');
+      return;
+    }
     // The Export tab handles its own zoom keys (Mod+= / Mod+- / Mod+0).
     if (this.panel === 'export' && /^Mod\+(=|-|0)$/.test(combo)) return;
     const matches = this.commands.lookup(combo);

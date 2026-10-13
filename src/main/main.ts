@@ -192,8 +192,9 @@ function buildMenu() {
   // Standard edit items; the renderer's own Edit entries (find, replace, rename…) follow them
   // in the same menu, so there is only one Edit menu.
   const editBasics: MenuItemConstructorOptions[] = [
-    { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => sendCommand('edit.undo') },
-    { label: 'Redo', accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', click: () => sendCommand('edit.redo') },
+    // The renderer handles these keys itself (reliably on every system); the menu shows them.
+    { label: 'Undo', accelerator: 'CmdOrCtrl+Z', registerAccelerator: false, click: () => sendCommand('edit.undo') },
+    { label: 'Redo', accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', registerAccelerator: false, click: () => sendCommand('edit.redo') },
     { type: 'separator' },
     { role: 'cut' },
     { role: 'copy' },

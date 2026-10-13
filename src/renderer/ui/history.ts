@@ -445,7 +445,11 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
 
   // Scenes: list of scenes with their differences ----------------------------------------
   function renderScenes(body: HTMLElement, rows: CompareRow[], oldS: ReturnType<typeof scenesOf>, newS: ReturnType<typeof scenesOf>) {
-    const only = h('input', { type: 'checkbox', checked: true, 'aria-label': 'Only differences' });
+    const only = h('input', { type: 'checkbox', checked: app.state.layout.historyOnlyDiff !== false, 'aria-label': 'Only differences' });
+    only.addEventListener('change', () => {
+      app.state.layout.historyOnlyDiff = only.checked;
+      app.saveStateSoon();
+    });
     const sceneList = h('div', { class: 'cmp-list', role: 'listbox', tabindex: '0' });
     const diff = h('div', { class: 'cmp-detail diff preview-text' });
     let sel = rows.findIndex((r) => r.kind !== 'same');

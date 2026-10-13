@@ -16,6 +16,7 @@ export class CharactersPanel {
   private search: HTMLInputElement;
   private sortSel: HTMLSelectElement;
   private selected: string | null = null;
+  private openShared: string | null = null;
   private body!: HTMLElement;
   private detailResizer: HTMLElement;
 
@@ -236,9 +237,38 @@ export class CharactersPanel {
       d.append(h('h4', null, 'Shares scenes with'));
       const max = c.sharedWith[0].scenes;
       const box = h('div', { class: 'ch-shared' });
-      for (const o of c.sharedWith.slice(0, 8)) {
-        const b = h('button', { class: 'ch-shared-row', title: `Show ${o.name}`, onclick: () => this.select(o.name) }, h('span', { class: 'ch-name' }, o.name), h('span', { class: 'ch-bar' }, h('i', { style: { width: `${(o.scenes / max) * 100}%` } })), h('span', { class: 'dim' }, String(o.scenes)));
+      for (const o of c.sharedWith.slice(0, 12)) {
+        // A click opens the shared scenes underneath; each opens in Scene view.
+        const open = this.openShared === o.name;
+        const b = h(
+          'button',
+          { class: `ch-shared-row${open ? ' open' : ''}`, title: open ? 'Hide the shared scenes' : `Show the scenes ${c.name} and ${o.name} share`, 'aria-expanded': String(open), onclick: () => {
+            this.openShared = open ? null : o.name;
+            this.renderDetail();
+          } },
+          h('span', { class: 'ch-name' }, o.name),
+          h('span', { class: 'ch-bar' }, h('i', { style: { width: `${(o.scenes / max) * 100}%` } })),
+          h('span', { class: 'dim' }, String(o.scenes)),
+        );
         box.append(b);
+        if (open) {
+          const list = h('div', { class: 'ch-shared-scenes' });
+          for (const i of o.sceneIdx) {
+            const sc = scenes[i];
+            if (!sc) continue;
+            list.append(
+              h(
+                'button',
+                { class: 'ch-scene-row', title: 'Open the scene', onclick: () => this.openScene(sc) },
+                h('span', { class: 'num' }, sc.number),
+                sc.record?.color ? h('span', { class: 'swatch', style: { background: sc.record.color } }) : null,
+                h('span', { class: 'label' }, sc.heading),
+              ),
+            );
+          }
+          list.append(h('button', { class: 'btn sm ch-shared-go', onclick: () => this.select(o.name) }, `Show ${o.name}`));
+          box.append(list);
+        }
       }
       d.append(box);
     }
