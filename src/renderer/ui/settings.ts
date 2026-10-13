@@ -145,6 +145,7 @@ export function openSettings(app: App, section: Section = 'editor') {
         return sel;
       })(), 'Written numbers such as #12A# are shown as written; other scenes show their position in the outline.'),
       row('Page breaks', check(e.showPageBreaks, (v) => (e.showPageBreaks = v), 'Show where pages end with the current export settings')),
+      row('Title page', check(e.titlePageInScript, (v) => (e.titlePageInScript = v), 'Show the title page in Script view'), `When off, edit it in its own view (${app.commands.label('view.titlePage') || 'Title Page'} or “Title page” in the scene list).`),
       h('h3', null, 'Writing'),
       row('Typewriter scrolling', check(e.typewriter, (v) => (e.typewriter = v), 'Keep the caret line near the middle')),
       row('Spellchecking', check(e.spellcheck, (v) => (e.spellcheck = v), bridge.spell ? 'Check spelling' : 'Available in the desktop app')),
@@ -250,6 +251,35 @@ export function openSettings(app: App, section: Section = 'editor') {
         'div',
         { class: 'notice' },
         'Retention: all automatic snapshots from the last 24 hours are kept; older ones are reduced to one per day and removed after 30 days. Snapshots made before restoring or resolving a conflict are kept.',
+      ),
+      h('h3', null, 'Storage'),
+      (() => {
+        const where = h('div', { class: 'notice' });
+        const showWhere = async () => {
+          const loc = await bridge.call('settingsLocation');
+          where.textContent = loc.inWorkspace
+            ? `Settings are saved in the workspace (${loc.file}), so they move with it to other computers.`
+            : `Settings are saved on this computer only (${loc.file}).`;
+        };
+        void showWhere();
+        const c = h('input', { type: 'checkbox', checked: app.state.settingsInWorkspace !== false, 'aria-label': 'Keep settings in the workspace folder' });
+        c.addEventListener('change', async () => {
+          app.state.settingsInWorkspace = c.checked;
+          await bridge.call('saveState', app.state);
+          await bridge.call('saveSettings', app.settings);
+          await showWhere();
+        });
+        return h(
+          'div',
+          null,
+          row('Settings', h('label', { class: 'inline' }, c, h('span', null, 'Keep settings in the workspace folder')), 'Another workspace brings its own settings; one without any starts from the current ones.'),
+          where,
+        );
+      })(),
+      h(
+        'div',
+        { class: 'notice' },
+        'Each project folder holds everything belonging to the screenplay: the Fountain file plus a .scriptwright folder with history snapshots, named drafts, export versions, comments, alternatives, the shelf and scene information. Copy or sync the workspace folder and all of it comes along. Only window positions, the last caret positions and recovery copies stay on this computer.',
       ),
       h('h3', null, 'Recovery'),
       h('div', { class: 'notice' }, 'While there are unsaved changes, a recovery copy is written outside the project folder. It is offered when the project is opened again and removed after a successful save.'),

@@ -2,7 +2,7 @@
 
 import type { App } from '../app';
 import { h } from './dom';
-import { confirmDialog, toast } from './overlay';
+import { confirmDialog, openDialog, toast } from './overlay';
 import { CommentRecord, HighlightRecord, PassageRecord } from '../../shared/types';
 import { uid } from './dom';
 import { openRewriteFor } from './rewrite';
@@ -31,31 +31,36 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
     ann.showResolved = showRes.checked;
     ann.refresh();
   });
-  body.append(
+  const secComments = h('div', { class: 'rv-section' });
+  body.append(secComments);
+  secComments.append(
     h(
       'div',
       { class: 'rv-head' },
+      h('span', { class: 'rv-swatch comment' }),
       h('span', null, `Comments (${open.length})`),
       h('span', { class: 'spacer' }),
       h('label', { class: 'rv-toggle' }, showRes, `Resolved (${resolved.length})`),
     ),
   );
   const comments = [...open, ...(ann.showResolved ? resolved : [])];
-  if (!comments.length) body.append(h('div', { class: 'notice' }, `Select text and choose Comment (${app.commands.label('edit.comment') || 'context menu'}) to add one.`));
-  for (const c of comments) body.append(commentCard(app, c, rerender));
+  if (!comments.length) secComments.append(h('div', { class: 'notice' }, `Select text and choose Comment (${app.commands.label('edit.comment') || 'context menu'}) to add one.`));
+  for (const c of comments) secComments.append(commentCard(app, c, rerender));
 
   // Alternatives -----------------------------------------------------------------------
   const passages = m.passages.filter((p) => !p.detached);
-  body.append(h('div', { class: 'rv-head' }, h('span', null, `Alternative passages (${passages.length})`)));
-  if (!passages.length) body.append(h('div', { class: 'notice' }, `Select a passage and choose Rewrite… (${app.commands.label('edit.rewrite') || 'context menu'}) to keep several versions.`));
+  const secPassages = h('div', { class: 'rv-section' });
+  body.append(secPassages);
+  secPassages.append(h('div', { class: 'rv-head' }, h('span', { class: 'rv-swatch passage' }), h('span', null, `Alternative passages (${passages.length})`)));
+  if (!passages.length) secPassages.append(h('div', { class: 'notice' }, `Select a passage and choose Rewrite… (${app.commands.label('edit.rewrite') || 'context menu'}) to keep several versions.`));
   for (const p of passages) {
     const active = p.alternatives.find((a) => a.id === p.activeId);
-    body.append(
+    secPassages.append(
       h(
         'div',
-        { class: 'rv-item' },
+        { class: 'rv-item rv-passage' },
         h('button', { class: 'rv-quote', onclick: () => app.revealAnnotation(p.id) }, p.name),
-        h('div', { class: 'rv-meta' }, `${p.alternatives.length} versions · using “${active?.name ?? '?'}”${p.sceneHeading ? ' · ' + p.sceneHeading : ''}`),
+        h('div', { class: 'rv-meta' }, `${p.alternatives.length} version${p.alternatives.length === 1 ? '' : 's'} · using “${active?.name ?? '?'}”${p.sceneHeading ? ' · ' + p.sceneHeading : ''}`),
         h('div', { class: 'rv-actions' }, h('button', { class: 'btn sm', onclick: () => openRewriteFor(app, p.id) }, 'Open…')),
       ),
     );
@@ -63,9 +68,11 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
 
   // Highlights ---------------------------------------------------------------------------
   const hls = m.highlights.filter((x) => !x.detached);
-  body.append(h('div', { class: 'rv-head' }, h('span', null, `Highlights (${hls.length})`)));
+  const secHl = h('div', { class: 'rv-section' });
+  body.append(secHl);
+  secHl.append(h('div', { class: 'rv-head' }, h('span', null, `Highlights (${hls.length})`)));
   for (const hl of hls) {
-    body.append(
+    secHl.append(
       h(
         'div',
         { class: 'rv-item rv-row' },
@@ -87,11 +94,13 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
   // Detached ----------------------------------------------------------------------------
   const detached = ann.records().filter((r) => r.rec.detached);
   if (detached.length) {
-    body.append(h('div', { class: 'rv-head warn' }, h('span', null, `Detached (${detached.length})`)));
-    body.append(h('div', { class: 'notice' }, 'The text these belonged to was deleted or changed. Select the right text and attach them again, or delete them.'));
+    const secDet = h('div', { class: 'rv-section' });
+    body.append(secDet);
+    secDet.append(h('div', { class: 'rv-head warn' }, h('span', null, `Detached (${detached.length})`)));
+    secDet.append(h('div', { class: 'notice' }, 'The text these belonged to was deleted or changed. Select the right text and attach them again, or delete them.'));
     for (const { kind, rec } of detached) {
       const label = kind === 'comment' ? `Comment: ${quote((rec as CommentRecord).text, 50)}` : kind === 'passage' ? `Passage: ${(rec as PassageRecord).name}` : `${COLOR_NAMES[(rec as HighlightRecord).color]} highlight`;
-      body.append(
+      secDet.append(
         h(
           'div',
           { class: 'rv-item' },
@@ -175,12 +184,93 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
       }, c.resolved ? 'Reopen' : 'Resolve'),
       h('button', {
         class: 'btn sm',
-        onclick: () => {
-          const an = ann.live.get(c.id) ?? null;
-          ann.removeRecord(c.id);
-          toast('Comment deleted.', { actions: [{ label: 'Undo', run: () => ann.restoreRecord('comment', c, an) }] });
-        },
+        onclick: () => deleteComment(app, c.id),
       }, 'Delete'),
     ),
   );
+}
+
+/** Deletes a comment, with Undo in the notice. */
+export function deleteComment(app: App, id: string) {
+  const ann = app.annotations;
+  const c = app.project?.meta.comments.find((x) => x.id === id);
+  if (!c) return;
+  const an = ann.live.get(c.id) ?? null;
+  ann.removeRecord(c.id);
+  toast('Comment deleted.', { actions: [{ label: 'Undo', run: () => ann.restoreRecord('comment', c, an) }] });
+}
+
+/** A comment on its own: edit the text, read and add replies, resolve or delete. */
+export function openCommentDialog(app: App, id: string) {
+  const ann = app.annotations;
+  const c = app.project?.meta.comments.find((x) => x.id === id);
+  if (!c) return;
+  const ta = h('textarea', { class: 'field', rows: 4, 'aria-label': 'Comment' });
+  ta.value = c.text;
+  const reply = h('input', { class: 'field', placeholder: 'Add a reply', 'aria-label': 'Reply' });
+  const replies = h('div', { class: 'cm-replies' });
+  const renderReplies = () => {
+    replies.textContent = '';
+    for (const r of c.replies) replies.append(h('div', { class: 'rv-reply' }, h('span', { class: 'rv-meta' }, when(r.created)), ' ', r.text));
+  };
+  renderReplies();
+  const save = () => {
+    const t = ta.value.trim();
+    let changed = false;
+    if (t && t !== c.text) {
+      c.text = t;
+      changed = true;
+    }
+    if (reply.value.trim()) {
+      c.replies.push({ id: uid(), text: reply.value.trim(), created: new Date().toISOString() });
+      changed = true;
+    }
+    if (changed) {
+      app.markMetaDirty();
+      app.rightPane.annotationsChanged();
+    }
+  };
+  const d = openDialog({
+    title: c.resolved ? 'Comment (resolved)' : 'Comment',
+    cls: 'comment-dialog',
+    body: [
+      h('div', { class: 'notice' }, `“${quote(ann.textOf(c.id), 140)}”`),
+      h('div', { class: 'rv-meta' }, when(c.created), c.sceneHeading ? ` · ${c.sceneHeading}` : ''),
+      ta,
+      replies,
+      reply,
+    ],
+    buttons: [
+      { label: 'Delete', danger: true, run: () => deleteComment(app, c.id) },
+      {
+        label: c.resolved ? 'Reopen' : 'Resolve',
+        run: () => {
+          save();
+          c.resolved = !c.resolved;
+          app.markMetaDirty();
+          ann.refresh();
+          app.rightPane.annotationsChanged();
+        },
+      },
+      { label: 'Save', primary: true, run: () => save() },
+    ],
+    initialFocus: ta,
+    onClose: () => app.editor.focus(),
+  });
+  const submitOnModEnter = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      save();
+      d.close();
+    }
+  };
+  ta.addEventListener('keydown', submitOnModEnter);
+  reply.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey) && reply.value.trim()) {
+      e.preventDefault();
+      save();
+      reply.value = '';
+      renderReplies();
+    } else submitOnModEnter(e);
+  });
 }

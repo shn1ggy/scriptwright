@@ -8,6 +8,7 @@ export function createApi(b: Backend) {
   return {
     loadSettings: () => b.loadSettings(),
     saveSettings: (s: Settings) => b.saveSettings(s),
+    settingsLocation: () => b.settingsLocation(),
     loadState: () => b.loadState(),
     saveState: (s: AppState) => b.saveState(s),
     setWorkspace: (dir: string) => b.setWorkspace(dir),

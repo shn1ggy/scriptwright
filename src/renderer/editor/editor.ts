@@ -65,6 +65,8 @@ export interface EditorHooks {
   onScroll?(): void;
   onFocusChange?(focused: boolean): void;
   onContextMenu?(e: MouseEvent, pos: Pos | null): void;
+  /** Cmd-click (macOS) / Ctrl-click: return true when the click was used (e.g. to open a comment). */
+  onModClick?(e: MouseEvent, pos: Pos): boolean;
   /** Label for a gap between two displayed lines in filtered views (null = plain gap). */
   gapLabel?(prevLine: number, nextLine: number): string | null;
   /** Spellchecking: returns true for misspelled words. */
@@ -124,6 +126,7 @@ export class Editor {
   /** Visible line keys in filtered views; null shows everything. */
   private filter: Set<number> | null = null;
   private filterKind: 'scene' | 'dialogue' | null = null;
+  private hidden: Set<number> | null = null;
   private sourceMode = false;
   private focused = false;
   private composing = false;
@@ -242,7 +245,25 @@ export class Editor {
   }
 
   isVisibleLine(i: number): boolean {
-    return !this.filter || this.filter.has(this.lines[i]?.key);
+    const k = this.lines[i]?.key;
+    return (!this.filter || this.filter.has(k)) && !(this.hidden && this.hidden.has(k));
+  }
+
+  /**
+   * Lines hidden in addition to any view filter (the title page in Script view). Unlike a
+   * filter, new lines stay visible; only these keys are hidden.
+   */
+  setHidden(keys: Set<number> | null) {
+    const next = keys && keys.size ? keys : null;
+    const cur = this.hidden;
+    if (!next && !cur) return;
+    if (next && cur && next.size === cur.size && [...next].every((k) => cur.has(k))) return;
+    this.hidden = next ? new Set(next) : null;
+    this.render();
+    if (this.hidden && !this.isVisibleLine(this.sel.head.line)) {
+      const first = this.displayed[0];
+      if (first !== undefined) this.setSelection(cursor({ line: first, ch: 0 }), { scroll: false });
+    }
   }
 
   get displayedLines(): readonly number[] {
@@ -607,7 +628,8 @@ export class Editor {
     const active = this.activeLine();
     this.renderedActive = active;
     const displayed: number[] = [];
-    for (let i = 0; i < lines.length; i++) if (!this.filter || this.filter.has(lines[i].key)) displayed.push(i);
+    const hidden = this.hidden;
+    for (let i = 0; i < lines.length; i++) if ((!this.filter || this.filter.has(lines[i].key)) && !(hidden && hidden.has(lines[i].key))) displayed.push(i);
     this.displayed = displayed;
     this.displayedPos.clear();
     displayed.forEach((d, k) => this.displayedPos.set(d, k));
@@ -1480,6 +1502,8 @@ export class Editor {
     this.focus();
     let pos = this.posAtCoords(e.clientX, e.clientY);
     if (!pos) return;
+    const mod = /Mac/.test(navigator.platform) ? e.metaKey : e.ctrlKey;
+    if (mod && e.detail === 1 && !e.shiftKey && !e.altKey && this.hooks.onModClick?.(e, pos)) return;
     const now = Date.now();
     // A double/triple click reuses the position resolved by the first click, because
     // revealing syntax after that click may have moved the text under the pointer.

@@ -134,7 +134,9 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
   const revRgb = hexRgb(s.revColor);
   // Light tint of the revision color for highlighting.
   const revTint: [number, number, number] = revRgb.map((c) => 1 - (1 - c) * 0.22) as [number, number, number];
-  const markX = Math.min(W - 3 * charW, actionRight + (s.sceneNumbers === 'right' || s.sceneNumbers === 'both' ? 9 : 4) * charW);
+  const leftGap = Math.max(0, s.sceneNumberLeftGap ?? 4);
+  const rightGap = Math.max(0, s.sceneNumberRightGap ?? 1);
+  const markX = Math.min(W - 3 * charW, actionRight + (s.sceneNumbers === 'right' || s.sceneNumbers === 'both' ? rightGap + 6 : 4) * charW);
 
   for (const page of result.pages) {
     doc.addPage(W, H);
@@ -202,8 +204,9 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
       if (line.mark && s.revMargin && s.revMarkChar.trim()) doc.text(markX, y, s.revMarkChar.trim().slice(0, 3), 'F1', s.fontSize, 0, s.revColorText || s.revHighlight || s.revUnderline ? revRgb : undefined);
       if (line.sceneNumber && s.sceneNumbers !== 'off') {
         const num = line.sceneNumber;
-        if (s.sceneNumbers === 'left' || s.sceneNumbers === 'both') doc.text(Math.max(18, left - (num.length + 4) * charW), y, num, 'F0', s.fontSize);
-        if (s.sceneNumbers === 'right' || s.sceneNumbers === 'both') doc.text(actionRight + 4 * charW, y, num, 'F0', s.fontSize);
+        if (s.sceneNumbers === 'left' || s.sceneNumbers === 'both') doc.text(Math.max(18, left - (num.length + leftGap) * charW), y, num, 'F0', s.fontSize);
+        // Right: just outside the text column, but never into the outer half-inch of the paper.
+        if (s.sceneNumbers === 'right' || s.sceneNumbers === 'both') doc.text(Math.min(actionRight + rightGap * charW, W - 36 - num.length * charW), y, num, 'F0', s.fontSize);
       }
     }
   }

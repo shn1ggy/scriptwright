@@ -835,7 +835,8 @@ export function parsePageRanges(spec: string, max: number): Set<number> {
 
 function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings, cap: Capacity): Page {
   const fields = titleFields(lines, parse);
-  const get = (...keys: string[]) => fields.filter((f) => keys.includes(f.key)).map((f) => strip(f.value));
+  // Empty fields (placeholders like "Contact:") print nothing.
+  const get = (...keys: string[]) => fields.filter((f) => keys.includes(f.key)).map((f) => strip(f.value)).filter((v) => v.trim() !== '');
   const items: TitleItem[] = [];
   const lh = cap.lineHeight;
   let y = s.titleLine * lh;

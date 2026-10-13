@@ -2,6 +2,7 @@
 
 import type { App } from '../app';
 import { bridge } from '../bridge';
+import { formatCombo } from '../commands';
 import { h, iconButton, debounce, uid } from './dom';
 import { alertDialog, confirmDialog, promptDialog, pushEscape, toast } from './overlay';
 import { ExportScope, ExportSettings, PaperSize, defaultExportSettings, normalizeExportSettings, paperLines } from '../../shared/types';
@@ -67,6 +68,20 @@ export function openExport(app: App) {
 
   const side = h('div', { class: 'scroll' });
   const preview = h('div', { class: 'export-preview', 'aria-label': 'Preview' });
+  // Preview zoom: 'fit' fits the page width; a number is the size relative to the printed page.
+  let zoom: number | 'fit' = 'fit';
+  const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+  let previewDoc: any = null;
+  let previewToken = 0;
+  const zoomLabel = h('button', { class: 'btn sm zoom-label', title: 'Fit to width', onclick: () => setZoom('fit') }, 'Fit');
+  const zoomBar = h(
+    'div',
+    { class: 'zoom-bar' },
+    h('button', { class: 'icon-btn', title: `Zoom out (${formatCombo('Mod+-')})`, 'aria-label': 'Zoom out', onclick: () => stepZoom(-1) }, '−'),
+    zoomLabel,
+    h('button', { class: 'icon-btn', title: `Zoom in (${formatCombo('Mod+=')})`, 'aria-label': 'Zoom in', onclick: () => stepZoom(1) }, '+'),
+  );
+  const previewWrap = h('div', { class: 'export-preview-wrap' }, preview, zoomBar);
   const warnings = h('div', { class: 'warnings' });
   const cap = h('div', { class: 'capacity' });
   const revSummary = h('div', { class: 'capacity', style: { color: 'var(--text-2)' } });
@@ -91,7 +106,7 @@ export function openExport(app: App) {
       h('button', { class: 'btn', onclick: () => resetDefaults() }, 'Reset to defaults'),
       iconButton('close', 'Close (Esc)', () => close()),
     ),
-    h('div', { class: 'export-main' }, h('div', { class: 'export-side' }, side, h('div', { class: 'foot' }, cap, warnings, pageInfo, exportBtn)), preview),
+    h('div', { class: 'export-main' }, h('div', { class: 'export-side' }, side, h('div', { class: 'foot' }, cap, warnings, pageInfo, exportBtn)), previewWrap),
   );
   document.body.append(root);
   const popEsc = pushEscape(() => close());
@@ -453,6 +468,8 @@ export function openExport(app: App) {
         chk('sceneStartsNewPage', 'Start every scene on a new page'),
         row('Scene numbers', sel('sceneNumbers', [['off', 'Off'], ['left', 'Left'], ['right', 'Right'], ['both', 'Both sides']])),
         row('Number format', textIn('sceneNumberFormat', '{n}')),
+        row('Left number gap', numIn('sceneNumberLeftGap', 0, 10, 1, 'characters')),
+        row('Right number gap', numIn('sceneNumberRightGap', 0, 10, 1, 'characters')),
         chk('autoSceneNumbers', 'Number scenes without a written #number#'),
       ),
       section(
@@ -660,24 +677,91 @@ export function openExport(app: App) {
     }
     const doc = await pdfjs.getDocument({ data: data.slice() }).promise;
     if (token !== renderToken) return;
-    const frag: HTMLElement[] = [];
-    const width = Math.min(820, preview.clientWidth - 48);
-    preview.replaceChildren();
+    previewDoc = doc;
+    const ratio = preview.scrollHeight > preview.clientHeight ? preview.scrollTop / preview.scrollHeight : 0;
+    await renderPages(ratio);
+  }
+
+  function fitScale(pageWidth: number) {
+    return Math.max(0.2, Math.min(820, preview.clientWidth - 48) / pageWidth);
+  }
+
+  function effectiveZoom(): number {
+    // The zoom level shown for 'fit', relative to the printed size (A4/Letter ≈ 595–612 pt).
+    return zoom === 'fit' ? fitScale(600) : zoom;
+  }
+
+  /** Draws every page at the current zoom; keeps the reading position (as a fraction of the height). */
+  async function renderPages(ratio: number) {
+    const doc = previewDoc;
+    if (!doc) return;
+    const token = ++previewToken;
+    const pagesEl = h('div', { class: 'pages' });
+    const dpr = window.devicePixelRatio || 1;
+    const items: Array<{ page: any; canvas: HTMLCanvasElement; vp: any }> = [];
     for (let i = 1; i <= doc.numPages; i++) {
-      if (token !== renderToken) return;
       const page = await doc.getPage(i);
+      if (token !== previewToken) return;
       const vp1 = page.getViewport({ scale: 1 });
-      const scale = width / vp1.width;
-      const dpr = window.devicePixelRatio || 1;
+      const scale = zoom === 'fit' ? fitScale(vp1.width) : zoom;
       const vp = page.getViewport({ scale: scale * dpr });
       const canvas = h('canvas', { width: Math.floor(vp.width), height: Math.floor(vp.height), 'aria-label': `Page ${i}` });
       canvas.style.width = `${Math.floor(vp.width / dpr)}px`;
       canvas.style.height = `${Math.floor(vp.height / dpr)}px`;
-      preview.append(canvas, h('div', { class: 'page-label' }, `${i} / ${doc.numPages}`));
-      await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
-      void frag;
+      pagesEl.append(canvas, h('div', { class: 'page-label' }, `${i} / ${doc.numPages}`));
+      items.push({ page, canvas, vp });
+    }
+    preview.replaceChildren(pagesEl);
+    preview.scrollTop = ratio * preview.scrollHeight;
+    zoomLabel.textContent = zoom === 'fit' ? 'Fit' : `${Math.round(zoom * 100)}%`;
+    zoomLabel.title = zoom === 'fit' ? 'Fitted to the width' : 'Fit to width';
+    for (const it of items) {
+      if (token !== previewToken) return;
+      await it.page.render({ canvasContext: it.canvas.getContext('2d')!, viewport: it.vp }).promise;
     }
   }
+
+  const rerenderZoomSoon = debounce((ratio: number) => renderPages(ratio), 120);
+
+  function setZoom(z: number | 'fit', anchor?: { x: number; y: number }) {
+    if (z !== 'fit') z = Math.min(4, Math.max(0.25, z));
+    if (z === zoom) return;
+    const old = effectiveZoom();
+    // Keep the point under the pointer (or the middle of the view) in place.
+    const r = preview.getBoundingClientRect();
+    const ax = anchor ? anchor.x - r.left : preview.clientWidth / 2;
+    const ay = anchor ? anchor.y - r.top : preview.clientHeight / 2;
+    const fx = preview.scrollLeft + ax;
+    const fy = preview.scrollTop + ay;
+    zoom = z;
+    const k = effectiveZoom() / old;
+    // Instant feedback by resizing the canvases; a sharp redraw follows.
+    for (const c of Array.from(preview.querySelectorAll('canvas'))) {
+      c.style.width = `${parseFloat(c.style.width) * k}px`;
+      c.style.height = `${parseFloat(c.style.height) * k}px`;
+    }
+    preview.scrollLeft = fx * k - ax;
+    preview.scrollTop = fy * k - ay;
+    zoomLabel.textContent = zoom === 'fit' ? 'Fit' : `${Math.round(zoom * 100)}%`;
+    rerenderZoomSoon(preview.scrollHeight ? preview.scrollTop / preview.scrollHeight : 0);
+  }
+
+  function stepZoom(dir: number) {
+    const cur = effectiveZoom();
+    const next = dir > 0 ? ZOOMS.find((z) => z > cur + 0.01) : [...ZOOMS].reverse().find((z) => z < cur - 0.01);
+    if (next !== undefined) setZoom(next);
+  }
+
+  // Pinch on a trackpad and Ctrl/Cmd + wheel zoom the preview.
+  preview.addEventListener(
+    'wheel',
+    (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setZoom(effectiveZoom() * Math.exp(-e.deltaY * 0.01), { x: e.clientX, y: e.clientY });
+    },
+    { passive: false },
+  );
 
   async function doExport() {
     await app.flush();
@@ -731,6 +815,23 @@ export function openExport(app: App) {
   refresh();
   setTimeout(() => (side.querySelector('select, input') as HTMLElement | null)?.focus(), 0);
   root.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+      if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+        e.preventDefault();
+        e.stopPropagation();
+        return stepZoom(1);
+      }
+      if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+        e.preventDefault();
+        e.stopPropagation();
+        return stepZoom(-1);
+      }
+      if (e.code === 'Digit0' || e.code === 'Numpad0') {
+        e.preventDefault();
+        e.stopPropagation();
+        return setZoom('fit');
+      }
+    }
     if (e.key === 'Tab') {
       // Keep focus inside the export workspace.
       const f = Array.from(root.querySelectorAll<HTMLElement>('button:not([tabindex="-1"]), input, select')).filter((x) => !x.hasAttribute('disabled') && x.offsetParent !== null);

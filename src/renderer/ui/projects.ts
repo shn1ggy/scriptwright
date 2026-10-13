@@ -37,6 +37,26 @@ export class ProjectsPane {
     this.app.saveStateSoon();
   }
 
+  /** Actions for one project (right-click); other projects are opened first. */
+  private projectMenu(rel: string, at: { x: number; y: number }) {
+    const isOpen = this.app.project?.rel === rel;
+    const entry = this.app.projects.find((x) => x.rel === rel);
+    const withProject = (cmd: string) => async () => {
+      if (!isOpen) await this.app.openProject(rel);
+      if (this.app.project?.rel === rel) this.app.run(cmd);
+    };
+    openMenu(
+      [
+        ...(isOpen ? [] : [{ label: 'Open', run: () => this.app.openProject(rel) }, { sep: true }]),
+        { label: 'Rename Project…', kbd: this.app.commands.label('project.rename'), disabled: entry?.loose, run: withProject('project.rename') },
+        { label: 'Back Up Project…', kbd: this.app.commands.label('project.backup'), disabled: entry?.loose, run: withProject('project.backup') },
+        ...(bridge.isElectron ? [{ label: 'Show Project Folder', run: withProject('project.reveal') }] : []),
+        ...(isOpen ? [{ sep: true }, { label: 'Close Project', run: () => this.app.run('project.close') }] : []),
+      ],
+      at,
+    );
+  }
+
   private moreMenu(anchor: HTMLElement) {
     const has = !!this.app.project;
     openMenu(
@@ -79,6 +99,10 @@ export class ProjectsPane {
         p.conflicts.length ? h('span', { class: 'meta warn', title: `Other screenplay copies: ${p.conflicts.join(', ')}` }, '⚠') : null,
       );
       row.addEventListener('click', () => this.app.openProject(p.rel));
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.projectMenu(p.rel, { x: e.clientX, y: e.clientY });
+      });
       this.list.append(row);
     }
   }

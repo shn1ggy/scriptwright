@@ -762,3 +762,11 @@ export function reparseLine(lines: string[], prev: ParseResult, line: number, ol
   }
   return { ...prev, lines: linesOut, scenes };
 }
+
+/**
+ * A title page with every common Fountain key, so the writer only fills in values.
+ * Empty fields are not printed.
+ */
+export function titlePageTemplate(title: string, date: string): string {
+  return [`Title: ${title}`, 'Credit: Written by', 'Author: ', 'Source: ', `Draft date: ${date}`, 'Contact: ', 'Copyright: ', 'Notes: ', 'Revision: '].join('\n') + '\n';
+}

@@ -17,6 +17,8 @@ export interface EditorSettings {
   sceneNumbers: 'off' | 'left' | 'right' | 'both';
   /** Show where pages break with the current export settings (Script and Source view). */
   showPageBreaks: boolean;
+  /** Show the title page at the top of Script view (otherwise it is edited in its own view). */
+  titlePageInScript: boolean;
 }
 
 export interface Hsb {
@@ -101,6 +103,7 @@ export function defaultSettings(): Settings {
       typewriter: false,
       sceneNumbers: 'both',
       showPageBreaks: false,
+      titlePageInScript: true,
     },
     appearance: { theme: 'dark', dark: { ...DEFAULT_DARK, background: { ...DEFAULT_DARK.background } }, light: { ...DEFAULT_LIGHT, background: { ...DEFAULT_LIGHT.background } } },
     saving: { autosaveDelayMs: 800, snapshotIntervalMin: 10 },
@@ -250,6 +253,15 @@ export interface ShelfItem {
   sceneId?: string;
   sceneHeading?: string;
   note?: string;
+  /** Text around the place it came from, to find that place again. */
+  origin?: ShelfOrigin;
+}
+
+export interface ShelfOrigin {
+  before: string;
+  after: string;
+  /** Character offset in the screenplay when it was shelved (tie-breaker). */
+  offset: number;
 }
 
 export interface DraftInfo {
@@ -329,6 +341,9 @@ export interface ExportSettings {
   sceneNumbers: 'off' | 'left' | 'right' | 'both';
   autoSceneNumbers: boolean;
   sceneNumberFormat: string; // e.g. "{n}" or "{n}."
+  /** Gap between the scene number and the text column, in characters. */
+  sceneNumberLeftGap: number;
+  sceneNumberRightGap: number;
   // Page breaks ---------------------------------------------------------------------
   minLinesBeforeBreak: number;
   minLinesAfterBreak: number;
@@ -412,6 +427,8 @@ export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettin
     sceneNumbers: 'off',
     autoSceneNumbers: true,
     sceneNumberFormat: '{n}',
+    sceneNumberLeftGap: 4,
+    sceneNumberRightGap: 1,
     minLinesBeforeBreak: 2,
     minLinesAfterBreak: 2,
     splitDialogue: true,
@@ -567,6 +584,8 @@ export interface AppState {
   sessions: Record<string, ProjectSession>;
   layout: LayoutState;
   window: WindowState;
+  /** Keep settings in the workspace folder (default) instead of only on this computer. */
+  settingsInWorkspace?: boolean;
 }
 
 export function defaultAppState(): AppState {

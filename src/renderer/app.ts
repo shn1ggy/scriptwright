@@ -7,7 +7,7 @@ import { h, icon, iconButton, debounce, fmtNum, uid } from './ui/dom';
 import { alertDialog, choiceDialog, confirmDialog, handleEscape, openDialog, openMenu, overlayOpen, promptDialog, toast, MenuItem } from './ui/overlay';
 import { applyTheme } from './theme';
 import { Line, Pos, Selection, Step, cursor, joinLines, makeLines, selEmpty, selFrom, selTo, newKey } from '../shared/doc';
-import { ParseResult, SceneInfo, characterLabel, characterList, cleanText, countWords, sceneIndexAt } from '../shared/fountain';
+import { ParseResult, SceneInfo, characterLabel, characterList, cleanText, countWords, sceneIndexAt, titlePageTemplate } from '../shared/fountain';
 import { AppState, ProjectMeta, ProjectSession, SceneRecord, Settings, ViewName, defaultAppState, defaultSettings } from '../shared/types';
 import { detach, fingerprint, hasInfo, reconcile } from '../shared/scenes';
 import type { ProjectEntry, ExternalEvent } from '../main/backend';
@@ -23,12 +23,13 @@ import { openRename } from './ui/rename';
 import { compareDialog } from './ui/compare';
 import { SceneCards } from './ui/cards';
 import { Annotations } from './annotations';
-import { openRewrite } from './ui/rewrite';
+import { openRewrite, openRewriteFor } from './ui/rewrite';
+import { openCommentDialog, deleteComment } from './ui/review';
 import { renderShelf, toShelf } from './ui/shelf';
 import { saveDraft } from './ui/drafts';
 import { openFountainExport, openSceneNumbers } from './ui/fountaintools';
 import { keyIndex } from '../shared/anchors';
-import { HighlightColor } from '../shared/types';
+import { CommentRecord, HighlightColor, PassageRecord } from '../shared/types';
 
 export interface SceneItem {
   kind: 'scene' | 'title' | 'opening';
@@ -128,8 +129,11 @@ export class App {
   private rightToggle!: HTMLButtonElement;
 
   async start() {
-    this.settings = await bridge.call('loadSettings');
     this.state = await bridge.call('loadState');
+    // Settings can live in the workspace, so the workspace is selected before they are read.
+    let wsOk = false;
+    if (this.state.workspace) wsOk = (await bridge.call('setWorkspace', this.state.workspace)).ok;
+    this.settings = await bridge.call('loadSettings');
     this.commands.overrides = { ...this.settings.keymap };
     this.commands.onChange = () => {
       this.settings.keymap = { ...this.commands.overrides };
@@ -147,8 +151,7 @@ export class App {
     this.updateMenu();
     this.setupSpell();
     if (this.state.workspace) {
-      const r = await bridge.call('setWorkspace', this.state.workspace);
-      if (r.ok) {
+      if (wsOk) {
         await this.refreshProjects();
         const last = this.state.lastProject;
         if (last && this.projects.some((p) => p.rel === last && !p.loose)) await this.openProject(last);
@@ -221,6 +224,7 @@ export class App {
       onSelection: () => this.onSelectionChange(),
       onScroll: () => this.onScroll(),
       onContextMenu: (e, pos) => this.editorContextMenu(e, pos),
+      onModClick: (e, pos) => this.openAnnotationAt(e, pos),
       gapLabel: (a, b) => this.dialogueGapLabel(a, b),
       isMisspelled: bridge.spell ? (w) => this.isMisspelled(w) : undefined,
     };
@@ -293,6 +297,16 @@ export class App {
     return bridge.call('saveState', this.state).catch(() => {});
   }
 
+  /** Reads settings again (another workspace brings its own) and applies them. */
+  async reloadSettings() {
+    const s = await bridge.call('loadSettings');
+    this.settings = s;
+    this.commands.overrides = { ...s.keymap };
+    this.updateMenu();
+    this.updateTooltips();
+    this.applySettings();
+  }
+
   applySettings() {
     applyTheme(this.settings.appearance);
     const offset = this.editor.measureCaretOffset();
@@ -336,6 +350,8 @@ export class App {
   }
 
   async setWorkspace(dir: string) {
+    // Pending settings belong to the workspace being left.
+    this.saveSettings.flush?.();
     const r = await bridge.call('setWorkspace', dir);
     if (!r.ok) {
       await alertDialog('Workspace unavailable', r.message ?? 'The folder cannot be used.');
@@ -345,6 +361,7 @@ export class App {
     this.state.workspace = dir;
     this.state.recentWorkspaces = [dir, ...this.state.recentWorkspaces.filter((d) => d !== dir)].slice(0, 8);
     this.state.lastProject = undefined;
+    await this.reloadSettings();
     await this.refreshProjects();
     this.saveStateSoon();
     this.updateWelcome();
@@ -372,7 +389,7 @@ export class App {
     }
     const name = await promptDialog('New project', 'Name', '', { okLabel: 'Create' });
     if (!name) return;
-    const text = `Title: ${name}\nCredit: Written by\nAuthor: \nDraft date: ${new Date().toLocaleDateString()}\n\n${this.settings.editor.defaultHeading}\n\n`;
+    const text = `${titlePageTemplate(name, new Date().toLocaleDateString())}\n${this.settings.editor.defaultHeading}\n\n`;
     try {
       const p = await bridge.call('createProject', name, text);
       await this.refreshProjects();
@@ -992,6 +1009,19 @@ export class App {
     this.derivedTimer = setTimeout(() => this.updateCounts(), force ? 0 : 250);
     this.findbar.onDocChange();
     this.updatePageMarkers();
+    this.updateTitleHiding();
+  }
+
+  /** Script view without the title page (setting): hides the title lines and the blank lines after them. */
+  updateTitleHiding() {
+    const ed = this.editor;
+    const hide = !!this.project && this.view === 'script' && !this.settings.editor.titlePageInScript && ed.parsed.titleEnd > 0;
+    if (!hide) return ed.setHidden(null);
+    const keys = new Set<number>();
+    let i = 0;
+    for (; i < ed.parsed.titleEnd && i < ed.lines.length; i++) keys.add(ed.lines[i].key);
+    for (; i < ed.lines.length - 1 && ed.lines[i].text.trim() === ''; i++) keys.add(ed.lines[i].key);
+    ed.setHidden(keys);
   }
 
   private fonts: FontEntry[] | null = null;
@@ -1283,6 +1313,7 @@ export class App {
       this.dialogueSceneKey = this.activeScene()?.key ?? null;
       this.applyDialogueFilter(true, offset);
     }
+    this.updateTitleHiding();
     this.updateChrome();
     this.outline.updateActive();
     this.updatePageMarkers();
@@ -1307,6 +1338,7 @@ export class App {
       keys.delete(this.editor.lines[last].key);
       last--;
     }
+    this.editor.setHidden(null);
     this.editor.setFilter(keys, 'scene');
     const ctx = p.sceneCtx.get(item.id);
     let sel: Selection | null = null;
@@ -1380,7 +1412,7 @@ export class App {
   /** Navigates to a scene: Script view scrolls, Scene view focuses it. */
   goToScene(item: SceneItem, opts: { focusEditor?: boolean } = {}) {
     if (!this.project) return;
-    if (this.view === 'scene') {
+    if (this.view === 'scene' || (item.kind === 'title' && !this.settings.editor.titlePageInScript)) {
       this.enterScene(item);
     } else {
       if (this.view === 'dialogue') this.setView('script', { quiet: true });
@@ -1413,7 +1445,7 @@ export class App {
     }
     if (!title) {
       // Create a title page above the existing screenplay.
-      const tpl = `Title: ${this.project.name}\nCredit: Written by\nAuthor: \nDraft date: ${new Date().toLocaleDateString()}\n`;
+      const tpl = titlePageTemplate(this.project.name, new Date().toLocaleDateString());
       const L = this.editor.lines;
       const needBlank = L.length > 0 && L[0].text.trim() !== '';
       this.editor.edit((tx) => {
@@ -1427,6 +1459,35 @@ export class App {
       this.enterScene(t, { caret: !title ? { line: 0, ch: this.editor.lines[0].text.length } : undefined });
       this.editor.focus();
     }
+  }
+
+  /** Adds the common title page keys that are missing (empty ones are not printed). */
+  addMissingTitleFields() {
+    if (!this.project) return;
+    const parsed = this.editor.parsed;
+    if (parsed.titleEnd <= 0) return this.toggleTitlePage();
+    const have = new Set<string>();
+    let lastKeyLine = -1;
+    for (let i = 0; i < parsed.titleEnd; i++) {
+      const k = parsed.lines[i].titleKey;
+      if (k) {
+        have.add(k === 'authors' ? 'author' : k === 'date' ? 'draft date' : k);
+      }
+      if (parsed.lines[i].type === 'title' && this.editor.lines[i].text.trim()) lastKeyLine = i;
+    }
+    const missing = titlePageTemplate('', '')
+      .split('\n')
+      .filter((l) => l && !have.has(l.slice(0, l.indexOf(':')).toLowerCase()));
+    if (!missing.length) {
+      toast('The title page already has all common fields.');
+      return;
+    }
+    const at = lastKeyLine + 1;
+    this.editor.edit((tx) => {
+      tx.insertLines(at, makeLines(missing.join('\n')));
+      return cursor({ line: at, ch: missing[0].length });
+    });
+    toast(`Added ${missing.length} title page field${missing.length === 1 ? '' : 's'}. Empty fields are not printed.`);
   }
 
   // ---------------------------------------------------------------------------------
@@ -1500,6 +1561,7 @@ export class App {
     this.view = 'script';
     this.focus = null;
     this.editor.setFilter(null, null);
+    this.updateTitleHiding();
     this.editor.setSelection(cursor(caret), { scroll: false });
     const ret = this.fullViewReturn;
     if (ret && ret.ch === caret.ch && this.editor.lines[caret.line]?.key === ret.key) this.editor.restoreCaretOffset(ret.offset);
@@ -1857,9 +1919,14 @@ export class App {
     items.push({ label: 'Cut to shelf', kbd: this.commands.label('shelf.cut'), disabled: !hasSel, run: () => toShelf(this, true) });
     items.push({ label: 'Copy to shelf', kbd: this.commands.label('shelf.copy'), disabled: !hasSel, run: () => toShelf(this, false) });
     if (pos) {
-      const here = this.annotations.at(pos);
-      const c = here.find((r) => r.kind === 'comment');
-      if (c) items.push({ sep: true }, { label: 'Show comment', run: () => this.showRightTab('comments') });
+      const { comments, passages } = this.annotationsAt(pos);
+      if (comments.length || passages.length) items.push({ sep: true });
+      for (const c of comments) {
+        const label = comments.length > 1 ? ` “${c.text.slice(0, 24)}${c.text.length > 24 ? '…' : ''}”` : '';
+        items.push({ label: `Open comment${label}…`, kbd: formatCombo('Mod+Click'), run: () => openCommentDialog(this, c.id) });
+        items.push({ label: `Delete comment${label}`, run: () => deleteComment(this, c.id) });
+      }
+      for (const p of passages) items.push({ label: `Versions of ${p.name}…`, kbd: comments.length ? undefined : formatCombo('Mod+Click'), run: () => openRewriteFor(this, p.id) });
     }
     const pl = pos ? ed.parsed.lines[pos.line] : null;
     if (pl?.type === 'character' && pl.cue) {
@@ -1932,6 +1999,7 @@ export class App {
     reg('view.script', 'Script View', 'View', ['Mod+1'], () => this.setView('script'), { enabled: hasProject, menu: 'View' });
     reg('view.scene', 'Scene View', 'View', ['Mod+2'], () => this.setView('scene'), { enabled: hasProject, menu: 'View' });
     reg('view.dialogue', 'Dialogue View', 'View', ['Mod+3'], () => this.setView('dialogue'), { enabled: hasProject, menu: 'View' });
+    reg('title.addFields', 'Add Missing Title Page Fields', 'Edit', [], () => this.addMissingTitleFields(), { enabled: hasProject, menu: 'Edit' });
     reg('view.titlePage', 'Title Page', 'View', ['Mod+T'], () => this.toggleTitlePage(), { inFields: true, enabled: hasProject, menu: 'View' });
     reg('view.source', 'Source View', 'View', ['Mod+4'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
     reg('view.minimal', 'Minimal View', 'View', ['Mod+M'], () => this.toggleMinimal(), { inFields: true, menu: 'View' });
@@ -2010,6 +2078,34 @@ export class App {
   }
 
   /** Highlight colors at the caret (Mod+H). */
+  /** Comments (visible ones) and alternative passages covering a position. */
+  annotationsAt(pos: Pos) {
+    const here = this.annotations.at(pos);
+    const comments = here.filter((r) => r.kind === 'comment' && (!(r.rec as CommentRecord).resolved || this.annotations.showResolved)).map((r) => r.rec as CommentRecord);
+    const passages = here.filter((r) => r.kind === 'passage').map((r) => r.rec as PassageRecord);
+    return { comments, passages };
+  }
+
+  /** Cmd/Ctrl-click: opens the comment or the versions of the passage under the pointer. */
+  private openAnnotationAt(e: MouseEvent, pos: Pos): boolean {
+    const { comments, passages } = this.annotationsAt(pos);
+    const n = comments.length + passages.length;
+    if (!n) return false;
+    if (n === 1) {
+      if (comments.length) openCommentDialog(this, comments[0].id);
+      else openRewriteFor(this, passages[0].id);
+      return true;
+    }
+    openMenu(
+      [
+        ...comments.map((c) => ({ label: `Comment: “${c.text.slice(0, 40)}${c.text.length > 40 ? '…' : ''}”`, dot: 'var(--comment)', run: () => openCommentDialog(this, c.id) })),
+        ...passages.map((p) => ({ label: `Versions: ${p.name}`, dot: 'var(--passage)', run: () => openRewriteFor(this, p.id) })),
+      ],
+      { x: e.clientX, y: e.clientY },
+    );
+    return true;
+  }
+
   private highlightMenu() {
     const c = this.editor.coordsAtPos(this.editor.sel.head);
     const at = c ? { x: c.left, y: c.bottom + 4 } : { x: 200, y: 200 };
@@ -2061,8 +2157,11 @@ export class App {
       return;
     }
     const idx = keyIndex(this.editor.lines);
-    const a = { line: idx.get(an.a.key)!, ch: an.a.ch };
-    const b = { line: idx.get(an.b.key)!, ch: an.b.ch };
+    this.revealRange({ line: idx.get(an.a.key)!, ch: an.a.ch }, { line: idx.get(an.b.key)!, ch: an.b.ch });
+  }
+
+  /** Selects a range in the editor, switching scene or view when the current view hides it. */
+  revealRange(a: Pos, b: Pos, focus = true) {
     if (!this.editor.isVisibleLine(a.line)) {
       if (this.view === 'scene') {
         const item = this.sceneAt(a.line);
@@ -2070,7 +2169,7 @@ export class App {
       } else this.setView('script', { quiet: true });
     }
     this.editor.setSelection({ anchor: a, head: b }, { scroll: 'center' });
-    this.editor.focus();
+    if (focus) this.editor.focus();
   }
 
   showRightTab(tab: 'notes' | 'scene' | 'comments' | 'shelf' | 'history') {

@@ -152,12 +152,42 @@ export class Backend extends EventEmitter {
     }
   }
 
+  /**
+   * Settings live in the workspace (<workspace>/.scriptwright/settings.json) so they travel
+   * with it between machines, like an Obsidian vault. The copy in the app's own folder is
+   * the starting point for workspaces that have none yet. Turning this off keeps settings
+   * on this computer only.
+   */
+  private workspaceSettingsFile(): string | null {
+    if (!this.workspace) return null;
+    if (this.loadState().settingsInWorkspace === false) return null;
+    return path.join(this.workspace, META_DIR, 'settings.json');
+  }
+
   loadSettings(): Settings {
-    return mergeSettings(this.readJson(path.join(this.userData, 'settings.json')));
+    const wsFile = this.workspaceSettingsFile();
+    const fromWs = wsFile ? this.readJson(wsFile) : null;
+    return mergeSettings(fromWs ?? this.readJson(path.join(this.userData, 'settings.json')));
+  }
+
+  /** Where settings are stored right now (shown in Settings). */
+  settingsLocation(): { inWorkspace: boolean; file: string } {
+    const wsFile = this.workspaceSettingsFile();
+    return { inWorkspace: !!wsFile, file: wsFile ?? path.join(this.userData, 'settings.json') };
   }
 
   saveSettings(s: Settings) {
-    atomicWrite(path.join(this.userData, 'settings.json'), JSON.stringify(s, null, 2));
+    const json = JSON.stringify(s, null, 2);
+    atomicWrite(path.join(this.userData, 'settings.json'), json);
+    const wsFile = this.workspaceSettingsFile();
+    if (wsFile) {
+      try {
+        fs.mkdirSync(path.dirname(wsFile), { recursive: true });
+        atomicWrite(wsFile, json);
+      } catch {
+        // A read-only or missing workspace must not block saving the local copy.
+      }
+    }
   }
 
   loadState(): AppState {
