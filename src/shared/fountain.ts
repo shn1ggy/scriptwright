@@ -575,7 +575,19 @@ export function parse(lines: string[], opts: ParseOptions = {}): ParseResult {
 
   // Scene ends and order numbers
   for (let k = 0; k < scenes.length; k++) {
-    scenes[k].end = k + 1 < scenes.length ? scenes[k + 1].line : n;
+    let end = k + 1 < scenes.length ? scenes[k + 1].line : n;
+    // An act or sequence (a section) after the last line of a scene opens what follows: it
+    // and its synopsis are not part of the scene, so moving the scene leaves them in place.
+    let j = end;
+    let hasSection = false;
+    while (j - 1 > scenes[k].line) {
+      const t = result[j - 1].type;
+      if (t === 'section') hasSection = true;
+      else if (!(t === 'blank' || t === 'synopsis')) break;
+      j--;
+    }
+    if (hasSection) end = j;
+    scenes[k].end = end;
     scenes[k].order = k + 1;
   }
 

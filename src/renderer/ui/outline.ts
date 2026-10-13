@@ -1,6 +1,7 @@
 // Scene outline: compact single-line rows with order numbers, search, keyboard
 // navigation, drag-and-drop and keyboard reordering.
 
+import { sceneStructureMenu } from './structure';
 import type { App, SceneItem } from '../app';
 import { h, icon, iconButton, withClear } from './dom';
 import { MenuItem, openMenu } from './overlay';
@@ -340,6 +341,7 @@ export class OutlinePane {
       items.push({ head: 'Color' });
       for (const c of SCENE_COLORS) items.push({ label: c.name, dot: c.value, run: () => this.app.updateSceneRecord(it, { color: c.value }) });
       items.push({ label: 'No color', run: () => this.app.updateSceneRecord(it, { color: undefined }) });
+      items.push(...sceneStructureMenu(this.app, it, { beats: false }));
     }
     openMenu(items, { x: e.clientX, y: e.clientY });
   }

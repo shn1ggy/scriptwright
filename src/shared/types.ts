@@ -178,6 +178,8 @@ export interface ProjectMeta {
   detached: DetachedRecord[];
   dictionary: string[];
   exportPresets: ExportPreset[];
+  /** The export preset last chosen for this project (its settings may have changed since). */
+  exportPresetName?: string;
   exportSettings?: ExportSettings;
   highlights: HighlightRecord[];
   comments: CommentRecord[];
@@ -189,6 +191,8 @@ export interface ProjectMeta {
   lastBaseline?: string;
   /** Scene numbers are locked for production (see shared/scenenumbers.ts). */
   numbersLocked?: boolean;
+  /** Story structure: the chosen model, which scene carries each beat, and an own model's beats. */
+  structure?: StructureState;
 }
 
 /** A copy of the screenplay saved with every PDF export, to compare later versions against. */
@@ -651,12 +655,14 @@ export interface LayoutState {
   /** Characters view: width of the detail pane and of the name column. */
   charDetailWidth?: number;
   charNameWidth?: number;
+  /** Cards panel: the card grid or the timeline. */
+  cardsMode?: 'cards' | 'timeline';
   /** Export preview: brightness of the white page, 40–100 (%). */
   previewBrightness?: number;
   /** Export settings groups that are open. */
   exportOpen?: string[];
-  /** Review pane: kinds of notes shown. */
-  reviewKinds?: Array<'comments' | 'passages' | 'highlights'>;
+  /** Review pane: groups that are folded closed. */
+  reviewFolded?: string[];
   /** History: show only the scenes that differ. */
   historyOnlyDiff?: boolean;
   /** History lists: kinds of versions shown. */
@@ -692,4 +698,12 @@ export function defaultAppState(): AppState {
     layout: { leftWidth: 280, leftVisible: true, rightWidth: 320, rightVisible: false, rightTab: 'notes', projectsCollapsed: false },
     window: { width: 1280, height: 820, maximized: false },
   };
+}
+
+export interface StructureState {
+  model: string;
+  /** Beat id → scene id. */
+  beats: Record<string, string>;
+  /** Beats of the project's own model. */
+  custom: Array<{ id: string; name: string; at: number; hint?: string }>;
 }

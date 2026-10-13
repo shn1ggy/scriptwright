@@ -978,7 +978,7 @@ export class App {
 
   private metaSnapshot() {
     const m = this.project!.meta;
-    const json = JSON.stringify({ highlights: m.highlights, comments: m.comments, passages: m.passages, shelf: m.shelf, scenes: m.scenes, detached: m.detached });
+    const json = JSON.stringify({ highlights: m.highlights, comments: m.comments, passages: m.passages, shelf: m.shelf, scenes: m.scenes, detached: m.detached, structure: m.structure ?? null });
     const anchors = new Map<string, any>();
     for (const [id, an] of this.annotations.live) anchors.set(id, { a: { ...an.a }, b: { ...an.b } });
     return { json, anchors, live: JSON.stringify([...anchors]) };
@@ -986,7 +986,12 @@ export class App {
 
   private restoreMetaSnapshot(s: { json: string; anchors: Map<string, any> }) {
     const m = this.project!.meta;
-    Object.assign(m, JSON.parse(s.json));
+    const o = JSON.parse(s.json);
+    if (o.structure === null) {
+      delete o.structure;
+      delete m.structure;
+    }
+    Object.assign(m, o);
     this.annotations.restoreLive(s.anchors);
     this.markMetaDirty();
     this.updateScenes();
@@ -1582,6 +1587,8 @@ export class App {
    * the new view (as far as the new view's content allows), so switching never jumps.
    */
   setView(v: ViewName, opts: { quiet?: boolean } = {}) {
+    // Only Script and Scene are written in minimal view; every other tab leaves it.
+    if (this.minimal && v !== 'script' && v !== 'scene' && !opts.quiet) this.toggleMinimal();
     if (this.panel) {
       this.closePanel(false);
       if (v === this.view) {
@@ -1994,8 +2001,8 @@ export class App {
     if (this.panel === p) return;
     if (this.panel) this.closePanel(false);
     this.findbar.close(false);
-    // Export and History need the whole window: leave minimal view first.
-    if ((p === 'export' || p === 'history') && this.minimal) this.toggleMinimal();
+    // Only Script and Scene are written in minimal view; every other tab leaves it.
+    if (this.minimal) this.toggleMinimal();
     if (p === 'export') {
       // Export covers both panes as well; it starts below the tab bar like every tab.
       this.flush();
@@ -2758,7 +2765,12 @@ export class App {
     reg('project.history', 'History', 'Scenes', [], () => this.showRightTab('history'), { enabled: hasProject, menu: 'Scene' });
   }
 
-  private undoRedo(which: 'undo' | 'redo') {
+  /** Acts, sequences, beats or the story model changed: redraw what shows them. */
+  structureChanged() {
+    this.cards.structureChanged();
+  }
+
+  undoRedo(which: 'undo' | 'redo') {
     const a = document.activeElement as HTMLElement | null;
     // Text fields undo their own typing; everywhere else (buttons, lists, panes) undo goes to
     // the screenplay history, which also holds comments, highlights, the shelf and scene details.

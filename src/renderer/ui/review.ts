@@ -1,7 +1,7 @@
 // Review tab: comments, alternative passages, highlights and detached annotations.
 
 import type { App } from '../app';
-import { h } from './dom';
+import { h, icon } from './dom';
 import { confirmDialog, openDialog, toast } from './overlay';
 import { CommentRecord, HighlightRecord, PassageRecord } from '../../shared/types';
 import { uid } from './dom';
@@ -22,27 +22,26 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
   const ann = app.annotations;
   const m = app.project!.meta;
 
-  // Toggles: comments, alternatives and highlights, alone or together (remembered).
+  // Each group folds open and closed; the choice is remembered.
   type RK = 'comments' | 'passages' | 'highlights';
-  const shown = () => new Set<RK>((app.state.layout.reviewKinds?.length ? app.state.layout.reviewKinds : ['comments', 'passages', 'highlights']) as RK[]);
-  const toggles = h('div', { class: 'kind-toggles', role: 'group', 'aria-label': 'Show' });
-  for (const [k, label, sw] of [['comments', 'Comments', 'comment'], ['passages', 'Alternatives', 'passage'], ['highlights', 'Highlights', 'highlight']] as Array<[RK, string, string]>) {
-    const on = shown().has(k);
-    toggles.append(
-      h('button', { class: `kind-toggle${on ? ' on' : ''}`, 'aria-pressed': String(on), 'data-k': k, onclick: () => {
-        const next = shown();
-        if (next.has(k)) {
-          if (next.size === 1) return;
-          next.delete(k);
-        } else next.add(k);
-        app.state.layout.reviewKinds = [...next];
-        app.saveStateSoon();
-        rerender();
-      } }, h('span', { class: `rv-swatch ${sw}` }), label),
-    );
-  }
-  body.append(toggles);
-  const kinds = shown();
+  const folded = () => new Set<string>(app.state.layout.reviewFolded ?? []);
+  const fold = (k: RK, sec: HTMLElement, ...title: Array<Node | string>) => {
+    const isOpen = !folded().has(k);
+    const btn = h('button', { class: 'rv-fold', 'aria-expanded': String(isOpen), 'data-k': k }, h('span', { class: 'collapse-mark' }, icon(isOpen ? 'chevronDown' : 'chevronRight')), ...title);
+    sec.classList.toggle('folded', !isOpen);
+    btn.addEventListener('click', () => {
+      const f = folded();
+      const opening = f.has(k);
+      if (opening) f.delete(k);
+      else f.add(k);
+      app.state.layout.reviewFolded = [...f];
+      app.saveStateSoon();
+      sec.classList.toggle('folded', !opening);
+      btn.setAttribute('aria-expanded', String(opening));
+      btn.querySelector('.collapse-mark')!.replaceChildren(icon(opening ? 'chevronDown' : 'chevronRight'));
+    });
+    return btn;
+  };
 
   // Comments ---------------------------------------------------------------------------
   const open = m.comments.filter((c) => !c.detached && !c.resolved);
@@ -64,18 +63,9 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
       rerender();
     }),
   );
-  const secComments = h('div', { class: `rv-section${kinds.has('comments') ? '' : ' hidden'}` });
+  const secComments = h('div', { class: 'rv-section' });
   body.append(secComments);
-  secComments.append(
-    h(
-      'div',
-      { class: 'rv-head' },
-      h('span', { class: 'rv-swatch comment' }),
-      h('span', null, 'Comments'),
-      h('span', { class: 'spacer' }),
-      switcher,
-    ),
-  );
+  secComments.append(h('div', { class: 'rv-head' }, fold('comments', secComments, h('span', { class: 'rv-swatch comment' }), h('span', null, `Comments (${open.length})`)), h('span', { class: 'spacer' }), switcher));
   const comments = ann.showResolved ? resolved : open;
   if (!comments.length)
     secComments.append(
@@ -91,9 +81,9 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
 
   // Alternatives -----------------------------------------------------------------------
   const passages = m.passages.filter((p) => !p.detached);
-  const secPassages = h('div', { class: `rv-section${kinds.has('passages') ? '' : ' hidden'}` });
+  const secPassages = h('div', { class: 'rv-section' });
   body.append(secPassages);
-  secPassages.append(h('div', { class: 'rv-head' }, h('span', { class: 'rv-swatch passage' }), h('span', null, `Alternative passages (${passages.length})`)));
+  secPassages.append(h('div', { class: 'rv-head' }, fold('passages', secPassages, h('span', { class: 'rv-swatch passage' }), h('span', null, `Alternative passages (${passages.length})`))));
   if (!passages.length) secPassages.append(h('div', { class: 'notice' }, `Select a passage and choose Rewrite… (${app.commands.label('edit.rewrite') || 'context menu'}) to keep several versions.`));
   for (const p of passages) {
     const active = p.alternatives.find((a) => a.id === p.activeId);
@@ -117,9 +107,9 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
 
   // Highlights ---------------------------------------------------------------------------
   const hls = m.highlights.filter((x) => !x.detached);
-  const secHl = h('div', { class: `rv-section${kinds.has('highlights') ? '' : ' hidden'}` });
+  const secHl = h('div', { class: 'rv-section' });
   body.append(secHl);
-  secHl.append(h('div', { class: 'rv-head' }, h('span', null, `Highlights (${hls.length})`)));
+  secHl.append(h('div', { class: 'rv-head' }, fold('highlights', secHl, h('span', null, `Highlights (${hls.length})`))));
   for (const hl of hls) {
     secHl.append(
       h(

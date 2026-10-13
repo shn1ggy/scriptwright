@@ -38,14 +38,16 @@ await check('Ctrl+Z undoes typing and a deleted comment; Ctrl+Y redoes', async (
   assert((await app(() => window.__app.project.meta.comments.length)) === n0 + 1, 'comment delete not undone by the key');
 });
 
-await check('Review toggles show comments, alternatives and highlights separately', async () => {
-  await page.click('.rp-body .kind-toggle[data-k="passages"]');
-  await page.click('.rp-body .kind-toggle[data-k="highlights"]');
+await check('Review groups fold open and closed and stay that way', async () => {
+  await page.click('.rp-body .rv-fold[data-k="passages"]');
+  await page.click('.rp-body .rv-fold[data-k="highlights"]');
   await sleep(100);
-  const hidden = await page.locator('.rp-body .rv-section.hidden').count();
-  assert(hidden === 2, String(hidden));
-  await page.click('.rp-body .kind-toggle[data-k="passages"]');
-  await page.click('.rp-body .kind-toggle[data-k="highlights"]');
+  const folded = await page.locator('.rp-body .rv-section.folded').count();
+  assert(folded === 2, String(folded));
+  const kept = await app(() => window.__app.state.layout.reviewFolded.join(','));
+  assert(kept === 'passages,highlights', kept);
+  await page.click('.rp-body .rv-fold[data-k="passages"]');
+  await page.click('.rp-body .rv-fold[data-k="highlights"]');
 });
 
 await check('putting cut material back removes it from the shelf', async () => {

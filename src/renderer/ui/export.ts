@@ -176,18 +176,38 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     app.saveSettings();
   };
 
+  // The chosen preset is remembered by the project. When the settings no longer match it,
+  // the menu says "changed", so it is clear the preset could be saved again.
+  const plainOf = (x: ExportSettings) => {
+    const { numbersLocked: _nl, ...rest } = normalizeExportSettings(x, s.paper, scriptLanguage(app));
+    return JSON.stringify(rest);
+  };
+  const presetChanged = () => {
+    const pr = presets().find((x) => x.name === meta.exportPresetName);
+    return !!pr && plainOf(pr.settings) !== plainOf(s);
+  };
   function renderPresets() {
     presetSel.textContent = '';
-    presetSel.append(h('option', { value: '' }, 'Current settings'));
-    for (const pr of presets()) presetSel.append(h('option', { value: pr.name }, pr.name));
-    presetSel.value = '';
+    presetSel.append(h('option', { value: '' }, 'No preset'));
+    const current = meta.exportPresetName && presets().some((x) => x.name === meta.exportPresetName) ? meta.exportPresetName : '';
+    const changed = presetChanged();
+    for (const pr of presets()) presetSel.append(h('option', { value: pr.name }, pr.name === current && changed ? `${pr.name} (changed)` : pr.name));
+    presetSel.value = current;
+    presetSel.classList.toggle('changed', !!current && changed);
+    presetSel.title = current && changed ? 'The settings differ from this preset. Save as preset… to keep them.' : '';
   }
   presetSel.addEventListener('change', () => {
-    const pr = presets().find((x) => x.name === presetSel.value);
-    if (!pr) return;
-    s = normalizeExportSettings(pr.settings, s.paper, scriptLanguage(app));
-    build();
-    refresh();
+    const name = presetSel.value;
+    meta.exportPresetName = name || undefined;
+    app.markMetaDirty();
+    const pr = presets().find((x) => x.name === name);
+    if (pr) {
+      s = normalizeExportSettings(pr.settings, s.paper, scriptLanguage(app));
+      build();
+      persist();
+      refresh();
+    }
+    renderPresets();
   });
   async function savePreset() {
     const name = (await promptDialog('Save export preset', 'Name', presetSel.value || '', { okLabel: 'Save' }))?.trim();
@@ -195,8 +215,9 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     if (presets().some((x) => x.name === name) && !(await confirmDialog('Replace preset', `A preset named "${name}" already exists. Replace it with the current settings?`, 'Replace'))) return;
     const { numbersLocked: _nl, ...plain } = s;
     setPresets([...presets().filter((x) => x.name !== name), { name, settings: plain as ExportSettings }]);
+    meta.exportPresetName = name;
+    app.markMetaDirty();
     renderPresets();
-    presetSel.value = name;
     toast(`Preset "${name}" saved.`);
   }
   async function deletePreset() {
@@ -207,6 +228,8 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     }
     if (!(await confirmDialog('Delete preset', `Delete the preset "${name}"?`, 'Delete', { danger: true }))) return;
     setPresets(presets().filter((x) => x.name !== name));
+    meta.exportPresetName = undefined;
+    app.markMetaDirty();
     renderPresets();
   }
   function resetDefaults() {
@@ -713,6 +736,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   const refreshSoon = debounce(() => refresh(), 350);
 
   async function refresh() {
+    renderPresets();
     const token = ++renderToken;
     const sc = scope();
     if (scopeKind === 'scenes' && !selectedScenes.size) {

@@ -56,7 +56,11 @@ file first, then the code.
   uses the full width. The editor reserves its scrollbar space, so text never shifts.
 - The text column is centred on the window, not on the space between the panes, so it stays
   put when a pane opens or closes (as long as the space allows).
-- A scene's selection mark sits inside its colour edge, never across it.
+- A scene with a colour has no second marker when it is the current one: the colour edge
+  stays and the row brightens. Colour on cards belongs to the scene alone (headings are not
+  tinted), so a card never shows two colours.
+- Only Script and Scene are written in minimal view; every other tab (by click or shortcut)
+  leaves it.
 - Double-clicking a tab hides both panes; double-clicking again brings them back.
 - Esc never closes Cards or Characters: in Cards it clears the selection.
 - Settings, the layout and view options (pane widths, open groups, preview brightness …) are
@@ -64,8 +68,10 @@ file first, then the code.
 - Export settings are grouped and fold open and closed; This version, Content and Mark changes
   start open. Change marks are red by default and run on across the spaces between words.
   Export presets belong to the workspace, so every project can use them.
-- Review and History have toggles for what they list (comments, alternatives, highlights);
-  the choice is remembered, like "Only differences".
+- Review groups (comments, alternatives, highlights) fold open and closed with the chevron
+  in the left padding; History has toggles for what it lists. Both are remembered.
+- The project remembers its export preset. When the settings drift from it, the menu says
+  "(changed)" so it is clear the preset could be saved again.
 
 ## 3. Spacing and sizes
 
@@ -148,6 +154,18 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 - A dialog takes keyboard focus the moment it opens, so nothing typed lands in the script.
 - Feedback after an action is a short toast naming the result ("Moved to the archive."), with
   Undo when possible.
+
+## 7b. Structure
+
+- Acts and sequences are Fountain sections in the text (# act, ## sequence), so they travel
+  with the file. A section after a scene belongs to what follows: moving the scene leaves it.
+- Cards shows acts and sequences as dividers; Timeline draws scenes as wide as their pages,
+  under the chosen story model (typical parts, dashed) and the writer's own acts (solid).
+- Story models are offered side by side, none is "right": three acts, Freytag, hero's
+  journey, Save the Cat, eight sequences, story circle, seven-point, kishōtenketsu, or an own
+  model. A beat sits on a scene; its row shows the typical place (hollow) and the actual one
+  (filled) with the distance in pages. Beats are neutral; colour stays with scenes.
+- Placing beats, starting and removing acts are undoable like any edit.
 
 ## 8. The printed page
 
