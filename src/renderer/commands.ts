@@ -29,9 +29,23 @@ export function comboFromEvent(e: KeyboardEvent): string | null {
   if (isMac && e.ctrlKey) parts.push('Ctrl');
   if (!isMac && e.metaKey) parts.push('Meta');
   if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
+  if (e.shiftKey || numpadShift(e)) parts.push('Shift');
   parts.push(key);
   return parts.join('+');
+}
+
+/**
+ * Windows turns Shift + a number-pad digit (with Num Lock on) into Insert, End, … and reports
+ * Shift as released. The digit's key code survives, so a non-digit key on a digit pad key
+ * means Shift was held: Ctrl+Shift+Num 0 then works like Ctrl+Shift+0.
+ */
+function numpadShift(e: KeyboardEvent): boolean {
+  if (!/^Numpad\d$/.test(e.code) || /^\d$/.test(e.key)) return false;
+  try {
+    return e.getModifierState('NumLock');
+  } catch {
+    return false;
+  }
 }
 
 function keyName(e: KeyboardEvent): string | null {

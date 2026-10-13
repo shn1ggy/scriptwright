@@ -114,7 +114,7 @@ export function defaultSettings(): Settings {
       yellow: { color: '#E8C547', label: 'Yellow' },
       green: { color: '#6EC878', label: 'Green' },
       blue: { color: '#5AA0F0', label: 'Blue' },
-      pink: { color: '#EB78B4', label: 'Pink' },
+      pink: { color: '#E5534B', label: 'Red' },
     },
     cards: { size: 'medium', colorStyle: 'tint', showSummary: true, showStatus: true, showCharacters: true, showLength: true, tintOutline: true },
   };
@@ -135,6 +135,9 @@ export function mergeSettings(stored: any): Settings {
   };
   const s = merge(d, stored) as Settings;
   s.keymap = stored.keymap && typeof stored.keymap === 'object' ? stored.keymap : {};
+  // The fourth highlight used to be pink by default; red is the default now.
+  const hp = s.highlights?.pink;
+  if (hp && hp.color.toUpperCase() === '#EB78B4' && hp.label === 'Pink') s.highlights.pink = { ...d.highlights.pink };
   return s;
 }
 
@@ -412,6 +415,8 @@ export interface ExportSettings {
   revMarkMoved: boolean;
   revChangedPagesOnly: boolean;
   revHeaderNote: boolean;
+  /** Header note for marked changes; {version} is the version compared with. */
+  revHeaderText: string;
   // Content -----------------------------------------------------------------------------
   includeNotes: boolean;
   includeSections: boolean;
@@ -491,7 +496,7 @@ export function defaultExportSettings(paper: PaperSize = 'Letter', lang: ScriptL
     draftDate: '',
     label: '',
     watermark: '',
-    revColor: '#1E63C8',
+    revColor: '#D0312D',
     revColorText: true,
     revHighlight: false,
     revUnderline: false,
@@ -504,6 +509,7 @@ export function defaultExportSettings(paper: PaperSize = 'Letter', lang: ScriptL
     revMarkMoved: false,
     revChangedPagesOnly: false,
     revHeaderNote: true,
+    revHeaderText: lang === 'de' ? 'Änderungen seit {version}' : 'Changes since {version}',
     includeNotes: false,
     includeSections: false,
     includeSynopses: false,
@@ -584,6 +590,8 @@ export function normalizeExportSettings(stored: Partial<ExportSettings> | undefi
     if (v !== undefined && typeof v === typeof (d as any)[k]) out[k] = v;
   }
   if (out.titleFont === 'Helvetica' || out.titleFont === 'Times') out.titleFont = 'Courier Prime';
+  // Change marks used to default to blue; red is the convention.
+  if (out.revColor === '#1E63C8') out.revColor = d.revColor;
   // Guard against impossible values from damaged settings: fall back to defaults.
   if (out.actionWidth < 20 || out.dialogueWidth < 8 || out.linesPerPage < 10) {
     for (const k of ['actionWidth', 'characterIndent', 'dialogueIndent', 'dialogueWidth', 'parentheticalIndent', 'parentheticalWidth', 'linesPerPage', 'topMarginPt', 'leftMargin', 'lineHeight'] as const) (out as any)[k] = (d as any)[k];
@@ -642,6 +650,10 @@ export interface LayoutState {
   charNameWidth?: number;
   /** Export preview: brightness of the white page, 40–100 (%). */
   previewBrightness?: number;
+  /** Export settings groups that are open. */
+  exportOpen?: string[];
+  /** History lists: kinds of versions shown. */
+  historyKinds?: Array<'draft' | 'export' | 'snapshot'>;
 }
 
 export interface WindowState {

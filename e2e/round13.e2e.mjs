@@ -58,11 +58,11 @@ await check('History view: timeline, filter, scenes / all changes / pages', asyn
   await page.click('.history-view .btn:has-text("Snapshot Now")');
   await sleep(500);
   const named = await page.locator('.hist-row').count();
-  await page.click('.seg-btn[data-f="all"]');
+  await page.click('.history-view .kind-toggle[data-k="snapshot"]');
   await sleep(100);
   const all = await page.locator('.hist-row').count();
   assert(all > named, `${named} → ${all}`);
-  await page.click('.seg-btn[data-f="named"]');
+  await page.click('.history-view .kind-toggle[data-k="snapshot"]');
   await page.locator('.hist-row:has-text("Before the storm")').click();
   await sleep(400);
   const summary = await page.textContent('.hist-summary');
@@ -89,8 +89,15 @@ await check('History view: timeline, filter, scenes / all changes / pages', asyn
 await check('notes pane History: recent versions open the History view', async () => {
   await app(() => window.__app.showRightTab('history'));
   await sleep(400);
+  // Drafts and exports by default; snapshots appear when switched on.
+  const n1 = await page.locator('.hist-mini').count();
+  await page.click('.rp-body .kind-toggle[data-k="snapshot"]');
+  await sleep(300);
   const n = await page.locator('.hist-mini').count();
-  assert(n >= 2, String(n));
+  assert(n1 >= 1 && n > n1, `${n1} → ${n}`);
+  await page.screenshot({ path: path.join(os.tmpdir(), 'sw-r13-pane.png') });
+  await page.click('.rp-body .kind-toggle[data-k="snapshot"]');
+  await sleep(200);
   await page.locator('.hist-mini').first().click();
   await page.waitForSelector('.history-view .hist-row.selected');
   await page.screenshot({ path: path.join(os.tmpdir(), 'sw-r13-history-open.png') });

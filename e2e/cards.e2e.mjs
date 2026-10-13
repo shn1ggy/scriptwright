@@ -28,7 +28,11 @@ await check('global shortcuts keep working while cards or search are open', asyn
   await sleep(200);
   const st = await page.locator('.save-state').textContent();
   assert(st === 'Saved', st);
+  // Esc no longer leaves Cards (it clears the selection); the Script tab does.
   await page.keyboard.press('Escape');
+  assert((await page.locator('.cards:not(.hidden)').count()) === 1, 'Esc closed cards');
+  assert((await page.locator('.card.selected').count()) === 0, 'selection kept');
+  await page.click('.viewbar .tab:text-is("Script")');
   const open = await page.locator('.cards:not(.hidden)').count();
   assert(open === 0, 'cards still open');
 });

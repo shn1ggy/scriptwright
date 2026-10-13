@@ -110,7 +110,8 @@ export class CharactersPanel {
   open() {
     this.el.classList.remove('hidden');
     this.applyWidths();
-    if (!this.popEsc) this.popEsc = pushEscape(() => this.app.closePanel(), false);
+    // Esc never closes Characters; it returns from a field to the list.
+    if (!this.popEsc) this.popEsc = pushEscape(() => this.list.focus(), false);
     this.render();
     this.list.focus();
   }

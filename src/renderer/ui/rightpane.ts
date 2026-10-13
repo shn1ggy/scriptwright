@@ -9,7 +9,7 @@ import { SceneStatus } from '../../shared/types';
 import { renderReview } from './review';
 import { renderShelf } from './shelf';
 import { saveDraft } from './drafts';
-import { historyEntries } from './history';
+import { historyEntries, kindToggles, shownKinds } from './history';
 
 type Tab = 'notes' | 'scene' | 'comments' | 'shelf' | 'history';
 
@@ -105,6 +105,7 @@ export class RightPane {
 
   render() {
     this.body.textContent = '';
+    this.body.classList.remove('rp-history');
     const p = this.app.project;
     if (!p) {
       this.body.append(h('div', { class: 'notice' }, 'Open a project to see its notes.'));
@@ -222,35 +223,41 @@ export class RightPane {
     );
   }
 
-  /** Quick actions and the latest versions; browsing happens in the History view. */
+  /** Quick actions and the versions that fit; browsing and comparing happen in the History view. */
   private async renderHistory() {
     const k = this.app.commands.label('view.history');
-    const recent = h('div', { class: 'hist-recent' });
+    const list = h('div', { class: 'hist-recent' });
+    const fill = async () => {
+      const kinds = shownKinds(this.app);
+      const all = (await historyEntries(this.app)).filter((e) => kinds.has(e.kind as 'draft' | 'export' | 'snapshot'));
+      this.historyStale = false;
+      list.textContent = '';
+      if (!all.length) {
+        list.append(h('div', { class: 'notice' }, 'No versions of this kind yet.'));
+        return;
+      }
+      // As many as the pane has room for; the list scrolls for the rest.
+      for (const e of all) {
+        const when = new Date(e.time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        list.append(
+          h(
+            'button',
+            { class: 'history-row hist-mini', title: 'Show in History', onclick: () => this.app.openHistoryAt(e.key) },
+            h('span', { class: `hist-kind k-${e.kind}` }),
+            h('span', { class: 'label' }, e.kind === 'snapshot' ? 'Snapshot' : e.name),
+            h('span', { class: 'dim' }, when),
+          ),
+        );
+      }
+    };
+    this.body.classList.add('rp-history');
     this.body.append(
       h('div', { class: 'rv-actions' }, h('button', { class: 'btn', onclick: () => void saveDraft(this.app) }, 'Save as Draft…'), h('button', { class: 'btn', onclick: () => this.snapshotNow() }, 'Snapshot Now')),
-      h('div', { class: 'rv-head' }, h('span', null, 'Recent versions')),
-      recent,
-      h('button', { class: 'btn', onclick: () => this.app.openHistoryAt() }, k ? `Open History (${k})` : 'Open History'),
-      h('div', { class: 'notice' }, 'Named drafts and exported versions are kept until you delete them. Snapshots are taken while you write: all from the last 24 hours, then one per day for 30 days.'),
+      h('button', { class: 'btn hist-open', onclick: () => this.app.openHistoryAt() }, k ? `Open History (${k})` : 'Open History'),
+      kindToggles(this.app, () => void fill()),
+      list,
     );
-    const list = await historyEntries(this.app);
-    this.historyStale = false;
-    if (!list.length) {
-      recent.append(h('div', { class: 'notice' }, 'No versions yet.'));
-      return;
-    }
-    for (const e of list.slice(0, 5)) {
-      const when = new Date(e.time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      recent.append(
-        h(
-          'button',
-          { class: 'history-row hist-mini', title: 'Show in History', onclick: () => this.app.openHistoryAt(e.key) },
-          h('span', { class: `hist-kind k-${e.kind}` }),
-          h('span', { class: 'label' }, e.kind === 'snapshot' ? 'Snapshot' : e.name),
-          h('span', { class: 'dim' }, when),
-        ),
-      );
-    }
+    await fill();
   }
 
   private async snapshotNow() {

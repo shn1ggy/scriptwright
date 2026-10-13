@@ -208,6 +208,32 @@ export class Backend extends EventEmitter {
 
   saveState(s: AppState) {
     atomicWrite(path.join(this.userData, 'state.json'), JSON.stringify(s, null, 2));
+    // The layout, view options and reading positions travel with the workspace too (the
+    // window's size and place stay with this computer and its screen).
+    const wsFile = this.workspaceStateFile(s);
+    if (wsFile) {
+      try {
+        fs.mkdirSync(path.dirname(wsFile), { recursive: true });
+        atomicWrite(wsFile, JSON.stringify({ layout: s.layout, sessions: s.sessions, lastProject: s.lastProject }, null, 2));
+      } catch {
+        // A read-only workspace must not block saving the local copy.
+      }
+    }
+  }
+
+  private workspaceStateFile(s: AppState = this.loadState()): string | null {
+    if (!this.workspace || s.settingsInWorkspace === false) return null;
+    return path.join(this.workspace, META_DIR, 'state.json');
+  }
+
+  /** Layout, view options and positions saved in the workspace (null when there are none). */
+  loadWorkspaceState(): Pick<AppState, 'layout' | 'sessions' | 'lastProject'> | null {
+    const f = this.workspaceStateFile();
+    if (!f) return null;
+    const s = this.readJson<Partial<AppState>>(f);
+    if (!s || typeof s !== 'object') return null;
+    const d = defaultAppState();
+    return { layout: { ...d.layout, ...(s.layout ?? {}) }, sessions: s.sessions ?? {}, lastProject: s.lastProject };
   }
 
   // ---------------------------------------------------------------------------------

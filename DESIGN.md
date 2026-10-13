@@ -28,7 +28,7 @@ file first, then the code.
 │  1 INT. …      │                                               │           │
 │ ─────────────  │                                               │           │
 │ workspace ⌄ ⌘⚙ │                                               │           │
-├ status bar 26 ─ saved · counts ················· Scene 4 of 38  ‹ › (Scene) ┤
+├ status bar 26 ─ (under the text view only) saved · counts ···· Scene 4 of 38 ‹ › ┤
 ```
 
 - The **tab bar holds only tabs.** Options of a view live in that view's own header row.
@@ -36,8 +36,10 @@ file first, then the code.
   and starts below the tab bar like every other view. **History** works the same way: one
   timeline of drafts, exports and snapshots (grouped by time, older months folded, pins on top,
   Named / Snapshots / All) and the chosen version as Scenes, All changes or Pages, compared
-  with the current screenplay or any other version. The notes pane only keeps quick actions
-  and the latest five versions.
+  with the current screenplay or any other version. Kinds are switched with three toggles
+  (Drafts, Exports, Snapshots; drafts and exports by default). Views: Scenes, All changes,
+  Pages and Text (the plain Fountain text to copy from). The notes pane keeps Save as Draft,
+  Snapshot Now, Open History, the same toggles and as many versions as fit.
 - While Cards is open, the notes pane's Scene tab follows the card with the cursor.
 - The title bar holds only the pane toggles and the project name. Commands and Settings sit at
   the bottom of the scene pane, next to the workspace switcher.
@@ -50,6 +52,14 @@ file first, then the code.
 - The notes pane's tabs are right-aligned, so the last one ends 14 px from the window edge.
 - **Scene pane:** minimum 220 px, default 280 px. **Notes pane:** minimum 310 px, default 320 px.
 - Text in the interface is not selectable; text a person writes is.
+- The status bar lines up with the text view between the panes; with both panes hidden it
+  uses the full width. The editor reserves its scrollbar space, so text never shifts.
+- Double-clicking a tab hides both panes; double-clicking again brings them back.
+- Esc never closes Cards or Characters: in Cards it clears the selection.
+- Settings, the layout and view options (pane widths, open groups, preview brightness …) are
+  saved in the workspace so it looks the same on every computer; a switch keeps them local.
+- Export settings are grouped and fold open and closed; This version, Content and Mark changes
+  start open. Change marks are red by default and run on across the spaces between words.
 
 ## 3. Spacing and sizes
 

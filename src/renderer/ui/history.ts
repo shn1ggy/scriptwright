@@ -29,8 +29,40 @@ export interface HistoryEntry {
   settings?: ExportSettings;
 }
 
-type Filter = 'all' | 'named' | 'snapshots';
-type Mode = 'scenes' | 'changes' | 'pages';
+type ListKind = 'draft' | 'export' | 'snapshot';
+type Mode = 'scenes' | 'changes' | 'pages' | 'text';
+
+/** Which kinds of versions the lists show (remembered; drafts and exports by default). */
+export function shownKinds(app: App): Set<ListKind> {
+  const k = app.state.layout.historyKinds;
+  return new Set((k && k.length ? k : ['draft', 'export']) as ListKind[]);
+}
+
+/** Three toggles (Drafts, Exports, Snapshots); at least one stays on. */
+export function kindToggles(app: App, onChange: () => void): HTMLElement {
+  const wrap = h('div', { class: 'kind-toggles', role: 'group', 'aria-label': 'Show' });
+  const draw = () => {
+    const on = shownKinds(app);
+    wrap.textContent = '';
+    for (const [k, label] of [['draft', 'Drafts'], ['export', 'Exports'], ['snapshot', 'Snapshots']] as Array<[ListKind, string]>) {
+      const b = h('button', { class: `kind-toggle${on.has(k) ? ' on' : ''}`, 'aria-pressed': String(on.has(k)), 'data-k': k }, h('span', { class: `hist-kind k-${k}` }), label);
+      b.addEventListener('click', () => {
+        const next = shownKinds(app);
+        if (next.has(k)) {
+          if (next.size === 1) return;
+          next.delete(k);
+        } else next.add(k);
+        app.state.layout.historyKinds = [...next];
+        app.saveStateSoon();
+        draw();
+        onChange();
+      });
+      wrap.append(b);
+    }
+  };
+  draw();
+  return wrap;
+}
 
 const KIND_LABEL: Record<EntryKind, string> = { draft: 'Draft', export: 'Export', snapshot: 'Snapshot', now: 'Now' };
 
@@ -122,7 +154,6 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
   if (!p) return null;
   const extra = app.settings.editor.extraPrefixes;
   let entries: HistoryEntry[] = [];
-  let filter: Filter = initialKey?.startsWith('snap:') ? 'all' : 'named';
   let query = '';
   let selKey = initialKey ?? '';
   let cmpKey = 'now';
@@ -143,8 +174,11 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
   // Layout -------------------------------------------------------------------------------
   const countEl = h('span', { class: 'view-head-info' });
   const search = h('input', { class: 'field', placeholder: 'Search names and notes', 'aria-label': 'Search versions' });
-  const segBtn = (f: Filter, label: string) => h('button', { class: 'seg-btn', 'data-f': f, onclick: () => setFilter(f) }, label);
-  const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Show' }, segBtn('named', 'Named'), segBtn('snapshots', 'Snapshots'), segBtn('all', 'All'));
+  // Opening a snapshot from the notes pane shows snapshots even when they were hidden.
+  if (initialKey?.startsWith('snap:') && !shownKinds(app).has('snapshot')) {
+    app.state.layout.historyKinds = [...shownKinds(app), 'snapshot'];
+  }
+  let seg = kindToggles(app, () => renderList());
   const list = h('div', { class: 'hist-list', role: 'listbox', tabindex: '0', 'aria-label': 'Versions' });
   const detail = h('div', { class: 'hist-detail' });
   const root = h(
@@ -179,18 +213,14 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
   }
 
   function visible(): HistoryEntry[] {
+    const kinds = shownKinds(app);
     return entries.filter((e) => {
-      if (filter === 'named' && e.kind === 'snapshot') return false;
-      if (filter === 'snapshots' && e.kind !== 'snapshot') return false;
+      if (!kinds.has(e.kind as ListKind)) return false;
       if (query && !`${e.name} ${e.note ?? ''} ${KIND_LABEL[e.kind]}`.toLowerCase().includes(query)) return false;
       return true;
     });
   }
 
-  function setFilter(f: Filter) {
-    filter = f;
-    renderList();
-  }
 
   // List ---------------------------------------------------------------------------------
   function row(e: HistoryEntry): HTMLElement {
@@ -211,7 +241,6 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
   }
 
   function renderList() {
-    for (const b of Array.from(seg.children) as HTMLElement[]) b.classList.toggle('on', b.dataset.f === filter);
     const items = visible();
     list.textContent = '';
     if (!items.length) {
@@ -324,7 +353,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       void renderBody();
     });
     const modeBtn = (m: Mode, label: string) => h('button', { class: `seg-btn${mode === m ? ' on' : ''}`, onclick: () => setMode(m) }, label);
-    const modes = h('div', { class: 'seg', role: 'group', 'aria-label': 'View' }, modeBtn('scenes', 'Scenes'), modeBtn('changes', 'All changes'), modeBtn('pages', 'Pages'));
+    const modes = h('div', { class: 'seg', role: 'group', 'aria-label': 'View' }, modeBtn('scenes', 'Scenes'), modeBtn('changes', 'All changes'), modeBtn('pages', 'Pages'), modeBtn('text', 'Text'));
     const mark = h('input', { type: 'checkbox', checked: markChanges, 'aria-label': 'Mark changes' });
     mark.addEventListener('change', () => {
       markChanges = mark.checked;
@@ -357,7 +386,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
 
     function setMode(m: Mode) {
       mode = m;
-      for (const b of Array.from(modes.children) as HTMLElement[]) b.classList.toggle('on', b.textContent === { scenes: 'Scenes', changes: 'All changes', pages: 'Pages' }[m]);
+      for (const b of Array.from(modes.children) as HTMLElement[]) b.classList.toggle('on', b.textContent === { scenes: 'Scenes', changes: 'All changes', pages: 'Pages', text: 'Text' }[m]);
       void renderBody();
     }
 
@@ -389,10 +418,29 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       body.textContent = '';
       if (mode === 'scenes') renderScenes(body, rows, oldS, newS);
       else if (mode === 'changes') renderChanges(body, a, b);
+      else if (mode === 'text') renderText(body, a, e!);
       else await renderPages(body, e!, a, b, other, () => mine === token);
     }
     void renderBody();
     if (my !== token) return;
+  }
+
+  // Text: the version's plain text, to read or copy from ------------------------------------
+  function renderText(body: HTMLElement, a: string, e: HistoryEntry) {
+    const pre = h('pre', { class: 'hist-text', tabindex: '0', 'aria-label': 'Text of this version' }, a);
+    const copy = h('button', {
+      class: 'btn',
+      onclick: async () => {
+        const sel = window.getSelection();
+        const part = sel && pre.contains(sel.anchorNode) ? sel.toString() : '';
+        await bridge.clipboard.writeText(part || a);
+        toast(part ? 'Selection copied.' : 'The whole text was copied.');
+      },
+    }, 'Copy');
+    body.append(
+      h('div', { class: 'hist-text-bar' }, h('span', { class: 'hist-summary' }, `The Fountain text of ${e.kind === 'snapshot' ? 'this snapshot' : `“${e.name}”`}. Select a part to copy only that, or copy everything.`), h('span', { class: 'spacer' }), copy),
+      pre,
+    );
   }
 
   // Scenes: list of scenes with their differences ----------------------------------------
@@ -635,7 +683,12 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       root.remove();
     },
     select(key: string) {
-      if (key.startsWith('snap:') && filter === 'named') filter = 'all';
+      if (key.startsWith('snap:') && !shownKinds(app).has('snapshot')) {
+        app.state.layout.historyKinds = [...shownKinds(app), 'snapshot'];
+        const fresh = kindToggles(app, () => renderList());
+        seg.replaceWith(fresh);
+        seg = fresh;
+      }
       selKey = key;
       void reload();
     },

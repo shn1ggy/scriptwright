@@ -63,7 +63,12 @@ export class SceneCards {
     if (this.selected && !this.app.sceneSel.has(this.selected)) this.app.setSceneSelection([this.selected], this.selected);
     this.lastSig = '';
     this.render();
-    if (!this.popEsc) this.popEsc = pushEscape(() => this.app.closePanel(), false);
+    // Esc clears the selection; Cards stays open (another tab or Mod+3 leaves it).
+    if (!this.popEsc)
+      this.popEsc = pushEscape(() => {
+        if (this.app.sceneSel.size) this.app.setSceneSelection([], null);
+        this.grid.focus();
+      }, false);
     this.grid.focus();
     this.cardEl(this.selected)?.scrollIntoView({ block: 'nearest' });
   }

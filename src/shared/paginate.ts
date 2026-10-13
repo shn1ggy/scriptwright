@@ -170,6 +170,14 @@ export function styledText(text: string, flags: Uint8Array | null, keepNotes = f
   return { text: out, styles };
 }
 
+/** Spaces between two changed words count as changed, so marks run on without gaps. */
+function bridgeChangedSpaces(runs: Run[]): Run[] {
+  if (runs.length < 3) return runs;
+  return runs.map((r, i) =>
+    i > 0 && i < runs.length - 1 && !(r.style & S_CHANGED) && /^\s+$/.test(r.text) && runs[i - 1].style & S_CHANGED && runs[i + 1].style & S_CHANGED ? { ...r, style: r.style | S_CHANGED } : r,
+  );
+}
+
 function toRuns(text: string, styles: number[], from: number, to: number, extra = 0): Run[] {
   const runs: Run[] = [];
   let cur: Run | null = null;
@@ -631,6 +639,7 @@ export function paginate(
     return false;
   };
   const place = (ol: OutLine) => {
+    ol.runs = bridgeChangedSpaces(ol.runs);
     const mark = rowMark(ol) || (ol.dual ? rowMark(ol.dual) : false);
     cur.lines.push({ row: used, col: ol.col, runs: ol.runs, kind: ol.kind, sceneNumber: ol.sceneNumber, sourceLine: ol.sourceLine, mark: mark || undefined });
     if (ol.dual) cur.lines.push({ row: used, col: ol.dual.col, runs: ol.dual.runs, kind: ol.dual.kind, sourceLine: ol.dual.sourceLine });

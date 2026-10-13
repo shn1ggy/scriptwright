@@ -115,7 +115,8 @@ await check('notes pane tabs sit at the right edge; export labels start 14 px in
   assert(Math.abs(gap - 14) <= 1.5, 'gap ' + gap);
   await page.keyboard.press('Control+E');
   await page.waitForSelector('.export-side .form-row label');
-  const x = await page.locator('.export-side .ex-section h3').first().evaluate((e) => e.getBoundingClientRect().left);
+  await sleep(300);
+  const x = await page.locator('.export-side .ex-head span:visible').first().evaluate((e) => e.getBoundingClientRect().left);
   assert(Math.abs(x - 14) <= 1, 'label x ' + x);
   const top = await page.locator('.export-side input[aria-label="topMarginPt"]').inputValue();
   assert(top === '72', 'top margin ' + top);

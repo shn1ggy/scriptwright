@@ -11,6 +11,7 @@ export function createApi(b: Backend) {
     settingsLocation: () => b.settingsLocation(),
     loadState: () => b.loadState(),
     saveState: (s: AppState) => b.saveState(s),
+    loadWorkspaceState: () => b.loadWorkspaceState(),
     setWorkspace: (dir: string) => b.setWorkspace(dir),
     getWorkspace: () => b.workspace,
     listProjects: () => b.listProjects(),

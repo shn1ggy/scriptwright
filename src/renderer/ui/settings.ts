@@ -237,9 +237,9 @@ export function openSettings(app: App, section: Section = 'editor') {
           hl.color = col.value;
           changed();
         });
-        const label = h('input', { class: 'field', value: hl.label, 'aria-label': `Highlight name ${k}`, placeholder: k[0].toUpperCase() + k.slice(1) });
+        const label = h('input', { class: 'field', value: hl.label, 'aria-label': `Highlight name ${k}`, placeholder: k === 'pink' ? 'Red' : k[0].toUpperCase() + k.slice(1) });
         label.addEventListener('change', () => {
-          hl.label = label.value.trim() || k[0].toUpperCase() + k.slice(1);
+          hl.label = label.value.trim() || (k === 'pink' ? 'Red' : k[0].toUpperCase() + k.slice(1));
           label.value = hl.label;
           changed();
         });
@@ -307,11 +307,11 @@ export function openSettings(app: App, section: Section = 'editor') {
         const showWhere = async () => {
           const loc = await bridge.call('settingsLocation');
           where.textContent = loc.inWorkspace
-            ? `Settings are saved in the workspace (${loc.file}), so they move with it to other computers.`
-            : `Settings are saved on this computer only (${loc.file}).`;
+            ? `Settings, the window layout and view options are saved in the workspace (${loc.file.replace(/settings\.json$/, '')}), so the app looks and works the same on every computer that opens it. Only the window's size and place stay with each computer.`
+            : `Settings and the layout are saved on this computer only (${loc.file}).`;
         };
         void showWhere();
-        const c = h('input', { type: 'checkbox', checked: app.state.settingsInWorkspace !== false, 'aria-label': 'Keep settings in the workspace folder' });
+        const c = h('input', { type: 'checkbox', checked: app.state.settingsInWorkspace !== false, 'aria-label': 'Keep settings and layout in the workspace folder' });
         c.addEventListener('change', async () => {
           app.state.settingsInWorkspace = c.checked;
           await bridge.call('saveState', app.state);
@@ -321,7 +321,7 @@ export function openSettings(app: App, section: Section = 'editor') {
         return h(
           'div',
           { class: 'settings-block' },
-          row('Settings', h('label', { class: 'inline' }, c, h('span', null, 'Keep settings in the workspace folder')), 'Another workspace brings its own settings; one without any starts from the current ones.'),
+          row('Settings', h('label', { class: 'check' }, c, h('span', null, 'Keep settings and layout in the workspace folder')), 'Another workspace brings its own; one without any starts from the current ones. Turn this off to keep your own setup when several people share a workspace.'),
           where,
         );
       })(),

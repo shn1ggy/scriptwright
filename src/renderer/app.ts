@@ -116,6 +116,7 @@ export class App {
   private tabs!: Record<ViewName | PanelName, HTMLButtonElement>;
   /** Cards and Characters cover the writing view as tabs of their own. */
   panel: PanelName | null = null;
+  private alignStatus: () => void = () => {};
   private mainEl!: HTMLElement;
   private exportHandle: { close(): void } | null = null;
   private historyHandle: HistoryHandle | null = null;
@@ -171,6 +172,7 @@ export class App {
     // Settings can live in the workspace, so the workspace is selected before they are read.
     let wsOk = false;
     if (this.state.workspace) wsOk = (await bridge.call('setWorkspace', this.state.workspace)).ok;
+    if (wsOk) this.adoptWorkspaceState(await bridge.call('loadWorkspaceState'));
     this.settings = await bridge.call('loadSettings');
     this.commands.overrides = { ...this.settings.keymap };
     this.commands.onChange = () => {
@@ -279,11 +281,23 @@ export class App {
       iconButton('right', 'Next scene', () => this.stepScene(1)),
     );
     const status = h('div', { class: 'statusbar' }, this.statusSave, this.statusCount, h('span', { class: 'spacer' }), this.statusView, this.statusScene, this.statusNav);
+    // The status line stays under the writing area: it starts and ends where the text view
+    // does (full width when both panes are hidden or a full-window tab is open).
+    const alignStatus = () => {
+      if (!this.editor) return;
+      const r = this.editor.dom.getBoundingClientRect();
+      const full = !r.width || document.body.classList.contains('in-export');
+      status.style.paddingLeft = `${(full ? 0 : Math.max(0, r.left)) + 14}px`;
+      status.style.paddingRight = `${(full ? 0 : Math.max(0, window.innerWidth - r.right)) + 14}px`;
+    };
+    window.addEventListener('resize', alignStatus);
+    this.alignStatus = alignStatus;
 
     this.root = h('div', { id: 'app' }, titlebar, viewbar, main, status);
     document.body.append(this.root);
 
     this.editor = new Editor(this.center, this.settings.editor);
+    new ResizeObserver(() => this.alignStatus()).observe(this.editor.dom);
     this.editor.editKeysFromMenu = bridge.isElectron;
     this.editor.hooks = {
       onChange: (origin, steps) => this.onEditorChange(origin, steps),
@@ -538,12 +552,26 @@ export class App {
     this.state.workspace = dir;
     this.state.recentWorkspaces = [dir, ...this.state.recentWorkspaces.filter((d) => d !== dir)].slice(0, 8);
     this.state.lastProject = undefined;
+    // Another workspace brings its own layout and view options (when it has saved any).
+    const ws = await bridge.call('loadWorkspaceState');
+    if (ws) {
+      this.adoptWorkspaceState(ws);
+      this.applyLayout();
+    }
     await this.reloadSettings();
     await this.refreshProjects();
     this.renderWorkspaceBar();
     this.saveStateSoon();
     this.updateWelcome();
     this.updateChrome();
+  }
+
+  /** Uses the layout, view options and positions saved in the workspace. */
+  private adoptWorkspaceState(ws: Pick<AppState, 'layout' | 'sessions' | 'lastProject'> | null) {
+    if (!ws) return;
+    this.state.layout = { ...this.state.layout, ...ws.layout };
+    this.state.sessions = { ...this.state.sessions, ...ws.sessions };
+    if (ws.lastProject) this.state.lastProject = ws.lastProject;
   }
 
   async refreshProjects() {
@@ -1922,6 +1950,8 @@ export class App {
     if (this.panel === p) return;
     if (this.panel) this.closePanel(false);
     this.findbar.close(false);
+    // Export and History need the whole window: leave minimal view first.
+    if ((p === 'export' || p === 'history') && this.minimal) this.toggleMinimal();
     if (p === 'export') {
       // Export covers both panes as well; it starts below the tab bar like every tab.
       this.flush();
@@ -1938,6 +1968,7 @@ export class App {
     else if (p === 'characters') this.characters.open();
     // Export and History cover both panes.
     document.body.classList.toggle('in-export', p === 'export' || p === 'history');
+    this.alignStatus();
     this.updateChrome();
     this.saveStateSoon();
   }
@@ -1957,6 +1988,7 @@ export class App {
       this.exportHandle = null;
     }
     document.body.classList.remove('in-export');
+    this.alignStatus();
     this.updateChrome();
     if (focusEditor) this.editor.focus();
     this.saveStateSoon();
@@ -2837,12 +2869,13 @@ export class App {
     this.openPanel('history');
   }
 
-  /** Hides both side panes (focus on the open tab). */
+  /** Hides both side panes (focus on the open tab), or shows them again when both are hidden. */
   hidePanes() {
     const l = this.state.layout;
-    if (!l.leftVisible && !l.rightVisible) return;
-    l.leftVisible = false;
-    l.rightVisible = false;
+    // Double-click again (panes already hidden): both panes come back.
+    const show = !l.leftVisible && !l.rightVisible;
+    l.leftVisible = show;
+    l.rightVisible = show;
     this.applyLayout();
     this.saveStateSoon();
     if (!this.panel) this.editor.focus();

@@ -33,7 +33,7 @@ export async function startHarness({ port = 5180 + Math.floor(Math.random() * 50
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   if (mac) await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }));
   await page.goto(`http://127.0.0.1:${port}/`);
-  await page.waitForFunction(() => window.__app && window.__app.ready, null, { timeout: 15000 });
+  await page.waitForFunction(() => window.__app && window.__app.ready, null, { timeout: 15000 }).catch((e) => { console.log('ERRORS', errors.join(' | ')); throw e; });
   return {
     tmp, ws, ud, port, page, browser, errors,
     url: `http://127.0.0.1:${port}`,

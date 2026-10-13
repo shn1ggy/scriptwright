@@ -3,7 +3,7 @@
 import type { App } from '../app';
 import { bridge } from '../bridge';
 import { formatCombo } from '../commands';
-import { h, debounce, uid } from './dom';
+import { h, debounce, icon, uid } from './dom';
 import { alertDialog, confirmDialog, promptDialog, pushEscape, toast } from './overlay';
 import { ExportScope, ExportSettings, PaperSize, ScriptLanguage, defaultExportSettings, normalizeExportSettings, paperLines } from '../../shared/types';
 import { characterLabel, characterList, titleFields } from '../../shared/fountain';
@@ -26,7 +26,9 @@ export function scriptLanguage(app: App): ScriptLanguage {
 
 /** The export settings currently stored for a project (or defaults). */
 export function projectExportSettings(app: App): ExportSettings {
-  return { ...normalizeExportSettings(app.project?.meta.exportSettings, defaultPaper(), scriptLanguage(app)), numbersLocked: !!app.project?.meta.numbersLocked };
+  const lang = scriptLanguage(app);
+  // German scripts are printed on A4 even on a computer set up for US English.
+  return { ...normalizeExportSettings(app.project?.meta.exportSettings, lang === 'de' ? 'A4' : defaultPaper(), lang), numbersLocked: !!app.project?.meta.numbersLocked };
 }
 
 export interface FontEntry {
@@ -272,6 +274,31 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   }
 
   /** "Mark changes since" with the marking style. */
+  /**
+   * A settings group that folds open and closed by its heading. Which groups are open is
+   * remembered; the everyday ones start open.
+   */
+  function collapsible(title: string, ...children: Array<Node | null>): HTMLElement {
+    const l = app.state.layout;
+    const open = new Set(l.exportOpen ?? ['This version', 'Content', 'Mark changes']);
+    const isOpen = open.has(title);
+    const body = h('div', { class: 'ex-body' }, ...children);
+    const head = h('button', { class: 'ex-head', 'aria-expanded': String(isOpen) }, h('span', null, title), h('span', { class: 'collapse-mark' }, icon(isOpen ? 'chevronDown' : 'chevronRight')));
+    const sec = h('section', { class: `ex-section${isOpen ? '' : ' folded'}` }, head, body);
+    head.addEventListener('click', () => {
+      const now = new Set(app.state.layout.exportOpen ?? ['This version', 'Content', 'Mark changes']);
+      const opening = !now.has(title);
+      if (opening) now.add(title);
+      else now.delete(title);
+      app.state.layout.exportOpen = [...now];
+      app.saveStateSoon();
+      sec.classList.toggle('folded', !opening);
+      head.setAttribute('aria-expanded', String(opening));
+      head.querySelector('.collapse-mark')!.replaceChildren(icon(opening ? 'chevronDown' : 'chevronRight'));
+    });
+    return sec;
+  }
+
   function revisionSection() {
     const sel = h('select', { class: 'field', 'aria-label': 'Mark changes since' }, h('option', { value: '' }, 'Don’t mark changes'));
     const groups = new Map<string, HTMLElement>();
@@ -327,11 +354,13 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
         chk('revMarkDeletions', 'Mark where text was removed'),
         chk('revMarkMoved', 'Mark the headings of moved scenes'),
         chk('revChangedPagesOnly', 'Only pages with changes'),
-        chk('revHeaderNote', 'Show “Changes since …” in the header'),
+        chk('revHeaderNote', 'Header note on every page'),
+        row('Note text', textIn('revHeaderText', 'Changes since {version}')),
+        h('div', { class: 'capacity' }, '{version} is replaced by the name of the version compared with.'),
         revSummary,
       );
     }
-    return h('section', { class: 'ex-section' }, h('h3', null, 'Mark changes'), ...rows);
+    return collapsible('Mark changes', ...rows);
   }
 
   /** Font menu: Courier fonts first, then system fonts after a separator. */
@@ -455,7 +484,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       if (help) r.append(h('div', { class: 'help' }, help));
       return r;
     };
-    const section = (title: string, ...children: Array<Node | null>) => h('section', { class: 'ex-section' }, h('h3', null, title), ...children);
+    const section = collapsible;
     side.append(
       section(
         'This version',
@@ -587,7 +616,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     const author = fields.find((f) => f.key === 'author' || f.key === 'authors')?.value;
     const base = baseline ? baselineCache.get(baseline) : undefined;
     const revision = base
-      ? { text: base.text, sceneIds: base.sceneIds, currentIds: app.scenes.filter((x) => x.kind === 'scene').map((x) => x.id), label: `Changes since ${base.label}` }
+      ? { text: base.text, sceneIds: base.sceneIds, currentIds: app.scenes.filter((x) => x.kind === 'scene').map((x) => x.id), label: (s.revHeaderText || 'Changes since {version}').replace(/\{version\}/g, base.label) }
       : undefined;
     return { title, author, extraPrefixes: app.settings.editor.extraPrefixes, revision };
   }

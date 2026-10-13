@@ -72,8 +72,8 @@ await check('cards: Shift-click selects a range; drag moves the group', async ()
   const after = await order();
   assert(JSON.stringify(after) === JSON.stringify([before[2], before[0], before[1]]), JSON.stringify(after));
   await page.screenshot({ path: path.join(os.tmpdir(), 'sw-r6-cards.png') });
-  await page.keyboard.press('Escape');
-  assert(await page.isHidden('.cards'), 'Escape did not leave cards');
+  await page.click('.viewbar .tab:text-is("Script")');
+  assert(await page.isHidden('.cards'), 'did not leave cards');
 });
 
 await check('Characters view: speeches, words, scenes, detail and Show dialogue', async () => {
@@ -109,6 +109,8 @@ await check('saving a preset under an existing name asks before replacing', asyn
 });
 
 await check('title letter spacing is written to the PDF', async () => {
+  // The title page settings are folded away at first.
+  if (await page.locator('.ex-section.folded .ex-head:has-text("Title page")').count()) await page.click('.ex-head:has-text("Title page")');
   await page.locator('input[aria-label="titleSize"]').fill('12');
   await page.locator('input[aria-label="titleSize"]').press('Tab');
   await page.fill('input[aria-label="Letter spacing"]', '50').catch(async () => {
