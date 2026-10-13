@@ -1,4 +1,5 @@
 // End-to-end checks of the editor in Chromium via the dev harness.
+import os from 'os';
 import { startHarness, assert, sleep } from './util.mjs';
 import fs from 'fs';
 import path from 'path';
@@ -13,7 +14,7 @@ async function check(name, fn) {
     results.push(['PASS', name]);
   } catch (e) {
     results.push(['FAIL', name, e.message]);
-    await page.screenshot({ path: `/tmp/claude-0/-home-claude/14b80900-66cb-5798-b9ca-df392d53185c/scratchpad/fail-${results.length}.png` });
+    await page.screenshot({ path: path.join(os.tmpdir(), `fail-${results.length}.png`) });
   }
 }
 const app = (fn, ...args) => page.evaluate(fn, ...args);
@@ -345,12 +346,12 @@ await check('export preview renders real PDF pages', async () => {
   await page.waitForSelector('.export-preview canvas', { timeout: 15000 });
   const info = await page.locator('.export-side .foot .muted').textContent();
   assert(/\d+ page/.test(info), info);
-  await page.screenshot({ path: '/tmp/claude-0/-home-claude/14b80900-66cb-5798-b9ca-df392d53185c/scratchpad/export.png' });
+  await page.screenshot({ path: path.join(os.tmpdir(), 'sw-export.png') });
   await page.keyboard.press('Escape');
 });
 
 console.log(results.map((r) => r.join(' — ')).join('\n'));
 console.log('page errors:', JSON.stringify(h.errors.filter((e) => !e.includes('404'))));
-await page.screenshot({ path: '/tmp/claude-0/-home-claude/14b80900-66cb-5798-b9ca-df392d53185c/scratchpad/final.png' });
+await page.screenshot({ path: path.join(os.tmpdir(), 'sw-final.png') });
 await h.stop();
 process.exit(results.some((r) => r[0] === 'FAIL') ? 1 : 0);

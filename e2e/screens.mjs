@@ -1,6 +1,8 @@
 // Screenshots of the main surfaces for visual review.
+import path from 'path';
+import os from 'os';
 import { startHarness, sleep } from './util.mjs';
-const out = '/tmp/claude-0/-home-claude/14b80900-66cb-5798-b9ca-df392d53185c/scratchpad/';
+const out = path.join(os.tmpdir(), 'sw-');
 const h = await startHarness();
 const { page } = h;
 await sleep(800);

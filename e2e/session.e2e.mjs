@@ -1,4 +1,5 @@
 // Session restore, recovery, damaged information, sync copies, backups, missing files.
+import os from 'os';
 import { startHarness, assert, sleep } from './util.mjs';
 import fs from 'fs';
 import path from 'path';
@@ -13,7 +14,7 @@ async function check(name, fn) {
     results.push(['PASS', name]);
   } catch (e) {
     results.push(['FAIL', name, e.message]);
-    await page.screenshot({ path: `/tmp/claude-0/-home-claude/14b80900-66cb-5798-b9ca-df392d53185c/scratchpad/session-fail-${results.length}.png` });
+    await page.screenshot({ path: path.join(os.tmpdir(), `session-fail-${results.length}.png`) });
   }
 }
 const app = (fn, ...a) => page.evaluate(fn, ...a);
