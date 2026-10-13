@@ -478,6 +478,7 @@ export class Backend extends EventEmitter {
     if (!lock || lock.instance === this.instanceId) return null;
     const age = Date.now() - Date.parse(lock.heartbeat ?? 0);
     if (age > 3 * 60 * 1000) return null;
+    if (lock.host === os.hostname() && typeof lock.pid === 'number' && !processAlive(lock.pid)) return null;
     return { host: lock.host === os.hostname() ? 'another window on this computer' : lock.host, since: lock.since };
   }
 
@@ -1001,5 +1002,16 @@ export class Backend extends EventEmitter {
     return ['CourierPrime-Regular.ttf', 'CourierPrime-Bold.ttf', 'CourierPrime-Italic.ttf', 'CourierPrime-BoldItalic.ttf'].every((f) =>
       fs.existsSync(path.join(this.fontsDir, f)),
     );
+  }
+}
+
+/** Whether a process with this id still runs here (a lock left by a closed or crashed window is stale). */
+function processAlive(pid: number): boolean {
+  if (pid === process.pid) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e: any) {
+    return e?.code === 'EPERM';
   }
 }

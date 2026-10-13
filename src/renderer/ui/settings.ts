@@ -127,7 +127,7 @@ export function openSettings(app: App, section: Section = 'editor') {
     }
     content.append(
       h('h3', null, 'Typography'),
-      row('Font', font, 'Courier Prime is recommended. Other fonts must be monospaced.'),
+      row('Font', font, `Courier Prime is recommended. Other fonts must be monospaced. ${document.fonts.check('16px "Courier Prime"') ? 'The built-in Courier Prime is loaded.' : 'The built-in Courier Prime could not be loaded on this computer.'}`),
       row('Font size', h('div', { class: 'inline' }, num(e.fontSize, 10, 32, 1, (v) => (e.fontSize = v), 'Font size'), h('span', { class: 'dim' }, 'px'))),
       row('Line height', h('div', { class: 'inline' }, num(e.lineHeight, 12, 64, 1, (v) => (e.lineHeight = v), 'Line height'), h('span', { class: 'dim' }, 'px'))),
       row('Characters per line', num(e.measure, 30, 120, 1, (v) => (e.measure = v), 'Characters per line'), 'Dialogue and parenthetical widths follow proportionally.'),
