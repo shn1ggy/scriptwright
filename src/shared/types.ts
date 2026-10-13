@@ -604,7 +604,7 @@ export function defaultAppState(): AppState {
     version: 1,
     recentWorkspaces: [],
     sessions: {},
-    layout: { leftWidth: 260, leftVisible: true, rightWidth: 300, rightVisible: false, rightTab: 'notes', projectsCollapsed: false },
+    layout: { leftWidth: 280, leftVisible: true, rightWidth: 320, rightVisible: false, rightTab: 'notes', projectsCollapsed: false },
     window: { width: 1280, height: 820, maximized: false },
   };
 }

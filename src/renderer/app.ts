@@ -66,7 +66,7 @@ type SaveState = 'saved' | 'unsaved' | 'saving' | 'error' | 'conflict' | 'missin
 
 const MIN_LEFT = 220;
 /** Height of the header row in Scene and Dialogue view (matches .view-head in the CSS). */
-const VIEW_HEAD_H = 34;
+const VIEW_HEAD_H = 40;
 
 /** CSS color (hex, rgb() or a name the canvas understands) to #rrggbb. */
 function toHex(c: string): string {
@@ -154,6 +154,9 @@ export class App {
 
   async start() {
     this.state = await bridge.call('loadState');
+    // The default pane widths grew (DESIGN.md); widths still at the old defaults follow.
+    if (this.state.layout.leftWidth === 260) this.state.layout.leftWidth = 280;
+    if (this.state.layout.rightWidth === 300) this.state.layout.rightWidth = 320;
     // Settings can live in the workspace, so the workspace is selected before they are read.
     let wsOk = false;
     if (this.state.workspace) wsOk = (await bridge.call('setWorkspace', this.state.workspace)).ok;
@@ -2183,7 +2186,10 @@ export class App {
     let fromCh = -1;
     let toCh = -1;
     const sel = this.editor.sel;
-    if (!selEmpty(sel)) {
+    // Cards and Characters cover the whole screenplay: count all of it.
+    if (this.panel) {
+      // keep the defaults
+    } else if (!selEmpty(sel)) {
       const a = selFrom(sel);
       const b = selTo(sel);
       from = a.line;
@@ -2203,7 +2209,7 @@ export class App {
     }
     let words = 0;
     let chars = 0;
-    const filter = this.view === 'dialogue' ? this.editor.filterKeys : null;
+    const filter = this.view === 'dialogue' && !this.panel ? this.editor.filterKeys : null;
     for (let i = from; i < to; i++) {
       if (filter && !filter.has(L[i].key)) continue;
       let text = L[i].text;

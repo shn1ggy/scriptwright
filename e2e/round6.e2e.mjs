@@ -143,7 +143,7 @@ await check('panes keep a minimum width; tab labels stay on one line', async () 
   const w = await app(() => [document.querySelector('.pane-left').getBoundingClientRect().width, document.querySelector('.pane-right').getBoundingClientRect().width]);
   assert(w[0] >= 220 && w[1] >= 310, JSON.stringify(w));
   const heights = await page.locator('.rp-tabs .tab').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
-  assert(heights.every((x) => x <= 31), JSON.stringify(heights));
+  assert(heights.every((x) => x <= 41), JSON.stringify(heights));
 });
 
 console.log(results.map((r) => r.join(' — ')).join('\n'));

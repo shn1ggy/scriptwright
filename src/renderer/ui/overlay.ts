@@ -248,9 +248,11 @@ export function openDialog(opts: {
     prevFocus?.focus?.({ preventScroll: true });
   }
   const focusTarget = opts.initialFocus ?? (dlg.querySelector('input, select, textarea') as HTMLElement | null) ?? (foot.querySelector('.btn.primary') as HTMLElement | null) ?? dlg;
+  // Focus at once, so keys typed right after the shortcut land in the dialog, not the script.
+  focusTarget.focus();
+  if (focusTarget instanceof HTMLInputElement) focusTarget.select();
   setTimeout(() => {
-    focusTarget.focus();
-    if (focusTarget instanceof HTMLInputElement) focusTarget.select();
+    if (!dlg.contains(document.activeElement)) focusTarget.focus();
   }, 0);
   return { el: dlg, body, close, setButtons };
 }

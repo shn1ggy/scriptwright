@@ -21,7 +21,7 @@ export class CharactersPanel {
 
   constructor(private app: App) {
     this.countEl = h('span', { class: 'dim' });
-    this.search = h('input', { class: 'field sm', placeholder: 'Filter', 'aria-label': 'Filter characters', spellcheck: 'false' });
+    this.search = h('input', { class: 'field', placeholder: 'Filter', 'aria-label': 'Filter characters', spellcheck: 'false' });
     this.search.dataset.esc = 'self';
     this.search.addEventListener('input', () => this.render());
     this.search.addEventListener('keydown', (e) => {
@@ -36,7 +36,7 @@ export class CharactersPanel {
     });
     this.sortSel = h(
       'select',
-      { class: 'field sm', 'aria-label': 'Sort by' },
+      { class: 'field', 'aria-label': 'Sort by' },
       h('option', { value: 'cues' }, 'Most speeches'),
       h('option', { value: 'words' }, 'Most words'),
       h('option', { value: 'scenes' }, 'Most scenes'),

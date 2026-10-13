@@ -51,6 +51,7 @@ Everything sits on a **4 px grid**. Spacing steps: **4 · 8 · 12 · 16 · 20 ·
 | Small control (inside lists, cards, toolbars) | 24 | 8 sides |
 | Icon button | 30 (26 in headings) | icon 16 |
 | Menu item | 28 | 10 sides; menu padding 6 |
+| Dialog (default width 480, settings 860 × 640) | | |
 | Dialog head / foot | 46 / 58 | 20 sides |
 | Dialog body | | 20 top/bottom, 24 sides, 14 between rows |
 | Settings: navigation row | 32 | 12 sides |
@@ -93,6 +94,7 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 - Switching views never moves the caret on screen.
 - One instance of each window (pressing a shortcut again focuses it). Esc closes the topmost
   thing and returns to writing.
+- A dialog takes keyboard focus the moment it opens, so nothing typed lands in the script.
 - Feedback after an action is a short toast naming the result ("Moved to the archive."), with
   Undo when possible.
 

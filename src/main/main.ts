@@ -70,7 +70,7 @@ function createWindow() {
     title: 'Scriptwright',
     // The app's own top bar takes the place of the system title bar.
     titleBarStyle: 'hidden',
-    ...(isMac ? { trafficLightPosition: { x: 12, y: 9 } } : { titleBarOverlay: { color: '#272B33', symbolColor: '#C9CED6', height: 30 } }),
+    ...(isMac ? { trafficLightPosition: { x: 14, y: 13 } } : { titleBarOverlay: { color: '#272B33', symbolColor: '#C9CED6', height: 38 } }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -266,7 +266,7 @@ function setup() {
           if (typeof a.buttons === 'boolean') win.setWindowButtonVisibility(a.buttons);
         } else if (a.color && a.symbolColor) {
           try {
-            win.setTitleBarOverlay({ color: a.color, symbolColor: a.symbolColor, height: 30 });
+            win.setTitleBarOverlay({ color: a.color, symbolColor: a.symbolColor, height: 38 });
           } catch {}
         }
         return;
