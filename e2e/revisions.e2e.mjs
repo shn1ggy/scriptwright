@@ -87,12 +87,12 @@ await check('strict order marks moved scenes; changed pages only', async () => {
 });
 
 await check('exported versions are listed in History with notes and comparison', async () => {
-  await app(() => window.__app.showRightTab('history'));
-  await sleep(200);
-  const items = await page.locator('.rv-item:has-text("Producer draft")').count();
+  await app(() => window.__app.run('view.history'));
+  await page.waitForSelector('.hist-row');
+  const items = await page.locator('.hist-row:has-text("Producer draft")').count();
   assert(items >= 1, String(items));
-  await page.click('.rv-item:has(.rv-label:text-is("Producer draft")) .btn:has-text("Compare")');
-  await page.waitForSelector('.compare-dialog');
+  await page.locator('.hist-row:has(.hist-name:text-is("Producer draft"))').click();
+  await page.waitForSelector('.cmp-list .chip');
   const chips = await page.locator('.cmp-list .chip').allTextContents();
   assert(chips.includes('Moved') && chips.includes('Changed'), JSON.stringify(chips));
   await page.keyboard.press('Escape');

@@ -30,6 +30,7 @@ import { openRewrite, openRewriteFor, passageLabel } from './ui/rewrite';
 import { openCommentDialog, deleteComment } from './ui/review';
 import { renderShelf, toShelf } from './ui/shelf';
 import { saveDraft } from './ui/drafts';
+import { HistoryHandle, openHistory } from './ui/history';
 import { exportFinalDraft, openFountainExport, openSceneNumbers } from './ui/fountaintools';
 import { keyIndex } from '../shared/anchors';
 import { CommentRecord, HighlightColor, PassageRecord } from '../shared/types';
@@ -81,7 +82,7 @@ function toHex(c: string): string {
 }
 const MIN_RIGHT = 310;
 
-export type PanelName = 'cards' | 'characters' | 'export';
+export type PanelName = 'cards' | 'characters' | 'history' | 'export';
 
 export class App {
   settings: Settings = defaultSettings();
@@ -117,6 +118,7 @@ export class App {
   panel: PanelName | null = null;
   private mainEl!: HTMLElement;
   private exportHandle: { close(): void } | null = null;
+  private historyHandle: HistoryHandle | null = null;
   characters!: CharactersPanel;
   /** Scenes selected in the outline and on the cards (ids); the anchor is where Shift-ranges start. */
   sceneSel = new Set<string>();
@@ -152,10 +154,12 @@ export class App {
     }
     for (const [v, label] of [['script', 'Script'], ['scene', 'Scene'], ['cards', 'Cards'], ['dialogue', 'Dialogue'], ['characters', 'Characters'], ['source', 'Source']] as const) {
       const k = this.commands.label(`view.${v}`);
-      this.tabs[v].title = k ? `${label} view (${k})` : `${label} view`;
+      this.tabs[v].title = `${k ? `${label} view (${k})` : `${label} view`} · double-click to hide the side panes`;
     }
     const ek = this.commands.label('file.export');
     this.tabs.export.title = ek ? `Export PDF (${ek})` : 'Export PDF';
+    const hk = this.commands.label('view.history');
+    this.tabs.history.title = hk ? `Drafts, exports and snapshots (${hk})` : 'Drafts, exports and snapshots';
   }
   private rightToggle!: HTMLButtonElement;
 
@@ -232,14 +236,13 @@ export class App {
     );
     // A double-click opens the tab in focus: both panes are hidden.
     const focusOpen = (b: HTMLButtonElement) => {
-      b.title = 'Double-click to open without the side panes';
       b.addEventListener('dblclick', () => this.hidePanes());
       return b;
     };
     const mkTab = (v: ViewName, label: string) => focusOpen(h('button', { class: 'tab', tabindex: '-1', onclick: () => this.setView(v) }, label));
     const mkPanelTab = (p: PanelName, label: string) => {
       const b = h('button', { class: 'tab', tabindex: '-1', onclick: () => this.openPanel(p) }, label);
-      return p === 'export' ? b : focusOpen(b);
+      return p === 'export' || p === 'history' ? b : focusOpen(b);
     };
     this.tabs = {
       script: mkTab('script', 'Script'),
@@ -248,12 +251,13 @@ export class App {
       dialogue: mkTab('dialogue', 'Dialogue'),
       characters: mkPanelTab('characters', 'Characters'),
       source: mkTab('source', 'Source'),
+      history: mkPanelTab('history', 'History'),
       export: mkPanelTab('export', 'Export'),
     };
     // Options of the Scene and Dialogue views live in the view itself, never in the tab bar.
     this.viewControls = h('div', { class: 'view-head hidden' });
     const t = this.tabs;
-    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, t.source, t.export));
+    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, t.source, t.history, t.export));
 
     this.leftPane = h('div', { class: 'pane pane-left' });
     this.rightPaneEl = h('div', { class: 'pane pane-right' });
@@ -1449,6 +1453,10 @@ export class App {
       r = { id: item.id, heading: item.heading, fingerprint: '', order: item.order };
       p.meta.scenes.push(r);
     }
+    // Lists read item.record; keep it pointing at the live record.
+    item.record = r;
+    const listed = this.scenes.find((s) => s.id === item.id);
+    if (listed) listed.record = r;
     return r;
   }
 
@@ -1919,11 +1927,17 @@ export class App {
       this.flush();
       this.exportHandle = openExport(this, this.mainEl, preset);
       if (!this.exportHandle) return;
+    } else if (p === 'history') {
+      this.flush();
+      this.historyHandle = openHistory(this, this.mainEl, this.historyKey ?? undefined);
+      this.historyKey = null;
+      if (!this.historyHandle) return;
     }
     this.panel = p;
     if (p === 'cards') this.cards.open();
     else if (p === 'characters') this.characters.open();
-    document.body.classList.toggle('in-export', p === 'export');
+    // Export and History cover both panes.
+    document.body.classList.toggle('in-export', p === 'export' || p === 'history');
     this.updateChrome();
     this.saveStateSoon();
   }
@@ -1935,7 +1949,10 @@ export class App {
     this.panel = null;
     if (p === 'cards') this.cards.close(false);
     else if (p === 'characters') this.characters.close();
-    else {
+    else if (p === 'history') {
+      this.historyHandle?.close();
+      this.historyHandle = null;
+    } else {
       this.exportHandle?.close();
       this.exportHandle = null;
     }
@@ -1983,6 +2000,8 @@ export class App {
     this.sceneSelAnchor = anchor;
     this.outline.applySelection();
     this.cards.applySelection();
+    // While Cards is open, the notes pane follows the card with the cursor.
+    if (this.panel === 'cards') this.rightPane?.onActiveSceneChange();
   }
 
   updateSceneRecords(items: SceneItem[], patch: Partial<SceneRecord>) {
@@ -2288,8 +2307,8 @@ export class App {
       b.disabled = !p;
     }
     // The panes are hidden under Export, so their toggles rest.
-    this.leftToggle.disabled = this.panel === 'export';
-    this.rightToggle.disabled = this.panel === 'export';
+    this.leftToggle.disabled = this.panel === 'export' || this.panel === 'history';
+    this.rightToggle.disabled = this.panel === 'export' || this.panel === 'history';
     this.updateViewControls();
     this.updateStatusScene();
     this.updateCounts();
@@ -2586,6 +2605,7 @@ export class App {
       await this.flush();
       if (this.saveState === 'saved') toast('Saved.');
     }, { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('view.history', 'History', 'View', [isMac ? 'Mod+Y' : 'Mod+Shift+H'], () => (this.panel === 'history' ? this.closePanel() : this.openPanel('history')), { inFields: true, enabled: hasProject, menu: 'View' });
     reg('file.export', 'Export PDF…', 'File', ['Mod+E'], () => (this.panel === 'export' ? this.closePanel() : this.openPanel('export')), { inFields: true, enabled: hasProject, menu: 'File' });
     reg('project.new', 'New Project…', 'File', ['Mod+Shift+N'], () => this.newProject(), { menu: 'File' });
     reg('project.openWorkspace', 'Open Folder as Workspace…', 'File', ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
@@ -2803,6 +2823,18 @@ export class App {
     this.applyLayout();
     this.rightPane.focusTab();
     this.saveStateSoon();
+  }
+
+  private historyKey: string | null = null;
+
+  /** Opens the History view on one version (e.g. 'draft:<id>', 'export:<id>', 'snap:<file>'). */
+  openHistoryAt(key?: string) {
+    if (this.panel === 'history') {
+      if (key) this.historyHandle?.select(key);
+      return;
+    }
+    this.historyKey = key ?? null;
+    this.openPanel('history');
   }
 
   /** Hides both side panes (focus on the open tab). */

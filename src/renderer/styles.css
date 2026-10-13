@@ -677,3 +677,67 @@ input[type='checkbox']:disabled { opacity: 0.45; }
 .preview-dim input[type='range'] { width: 120px; }
 .section-head .lock-mark { display: inline-flex; color: var(--text-3); margin-left: 6px; }
 .section-head .lock-mark svg { width: 12px; height: 12px; }
+
+/* History view (covers both panes, like Export) -------------------------------------- */
+.history-view { position: absolute; inset: 0; z-index: 40; background: var(--bg); display: grid; grid-template-rows: 40px minmax(0, 1fr); }
+.history-view > .view-head { position: static; }
+.hist-body { display: grid; grid-template-columns: 340px minmax(0, 1fr); min-height: 0; }
+.hist-side { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
+.hist-tools { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 8px; }
+.hist-tools .field-wrap, .hist-tools .field { width: 100%; }
+.hist-tools .seg { align-self: flex-start; }
+.hist-list { flex: 1; overflow-y: auto; padding: 0 0 16px; outline: none; }
+.hist-list .notice { margin: 8px 14px; }
+.hist-group { display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding: 0 14px; margin-top: 8px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: default; }
+.hist-group .dim { font-weight: 400; font-variant-numeric: tabular-nums; }
+.hist-group .collapse-mark { display: inline-flex; color: var(--text-3); margin-left: auto; }
+.hist-group .collapse-mark svg { width: 12px; height: 12px; }
+button.hist-group:hover { color: var(--text); }
+.hist-row { display: flex; align-items: center; gap: 10px; padding: 6px 14px; cursor: default; }
+.hist-row:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.hist-row.selected { background: var(--accent-tint-2); }
+.hist-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.hist-name { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-sub { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-pin { display: inline-flex; color: var(--text-3); }
+.hist-pin svg { width: 13px; height: 13px; }
+/* Kinds are told apart by shape, not colour: draft ●, export ■, snapshot ○ */
+.hist-kind { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-2); }
+.hist-kind.k-export { border-radius: 2px; }
+.hist-kind.k-snapshot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.hist-detail { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 16px 20px 0; gap: 12px; }
+.hist-top { display: flex; flex-direction: column; gap: 6px; }
+.hist-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.hist-meta { font-size: 12px; color: var(--text-2); }
+.hist-top-row { display: flex; align-items: flex-start; gap: 16px; }
+.hist-head { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.hist-head .hist-title span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.hist-note { max-width: 640px; min-height: 30px; height: 30px; resize: vertical; padding-top: 6px; }
+.hist-bar { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+.hist-cmp { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+.hist-cmp select { width: 280px; }
+.hist-summary { font-size: 12px; color: var(--text-2); }
+.hist-content { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden; padding-bottom: 16px; }
+.hist-content > .cmp-split { flex: 1; min-height: 0; }
+.hist-only { align-self: flex-start; }
+.hist-changes { flex: 1; overflow: auto; padding-right: 8px; }
+.hist-hunk { border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; margin-bottom: 10px; max-width: 760px; }
+.hist-hunk-scene { font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; font-weight: 600; }
+.hist-gap { font-size: 12px; color: var(--text-3); padding: 2px 0 10px 4px; }
+.hist-changes .pl { font-family: var(--ed-font, 'Courier Prime', monospace); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 62ch; }
+.hist-changes .pl.add { background: rgba(127, 196, 141, 0.18); }
+.hist-changes .pl.del { background: rgba(229, 112, 107, 0.18); text-decoration: line-through; }
+.hist-changes .t-heading { font-weight: 700; }
+.hist-changes .t-character { padding-left: 22ch; }
+.hist-changes .t-dialogue, .hist-changes .t-lyric { padding-left: 10ch; max-width: 47ch; }
+.hist-changes .t-parenthetical { padding-left: 16ch; max-width: 43ch; }
+.hist-changes .t-transition { text-align: right; }
+.hist-changes .t-centered { text-align: center; }
+.hist-pages { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 20px 0 48px; background: color-mix(in srgb, var(--bg) 80%, black); border-radius: 8px; }
+.hist-pages canvas { display: block; flex: none; background: white; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); filter: brightness(var(--preview-b, 1)); }
+.hist-pages .page-label { color: var(--text-3); font-size: 11px; margin-top: -12px; }
+.hist-mark.hidden { display: none; }
+.hist-recent { display: flex; flex-direction: column; }
+button.history-row.hist-mini { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: none; font: inherit; color: inherit; text-align: left; cursor: default; padding: 6px 4px; gap: 8px; border-radius: 0; }
+button.history-row.hist-mini:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }

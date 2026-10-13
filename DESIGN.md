@@ -19,7 +19,7 @@ file first, then the code.
 
 ```
 ┌ title bar 38 ─ ● ● ●  ▣  Project  file.fountain ························ ▣ ┐
-├ tab bar 40 ── Script  Scene  Cards  Dialogue  Characters ····· Source  Export ┤
+├ tab bar 40 ── Script  Scene  Cards  Dialogue  Characters ·· Source  History  Export ┤
 │ scene pane 280 │ view header 40 (Dialogue, Cards, Characters)  │ notes 320 │
 │ Projects  + …  │                                               │ tabs 40   │
 │  project       │            the page (Courier, centred)        │           │
@@ -33,7 +33,12 @@ file first, then the code.
 
 - The **tab bar holds only tabs.** Options of a view live in that view's own header row.
 - **Export is a tab** at the far right of the tab bar. It covers both panes (their toggles rest)
-  and starts below the tab bar like every other view.
+  and starts below the tab bar like every other view. **History** works the same way: one
+  timeline of drafts, exports and snapshots (grouped by time, older months folded, pins on top,
+  Named / Snapshots / All) and the chosen version as Scenes, All changes or Pages, compared
+  with the current screenplay or any other version. The notes pane only keeps quick actions
+  and the latest five versions.
+- While Cards is open, the notes pane's Scene tab follows the card with the cursor.
 - The title bar holds only the pane toggles and the project name. Commands and Settings sit at
   the bottom of the scene pane, next to the workspace switcher.
 - **Outer edge: 14 px.** Text and controls start 14 px from the window's left edge and end 14 px

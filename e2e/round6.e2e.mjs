@@ -16,7 +16,7 @@ const order = () => app(() => window.__app.scenes.filter((s) => s.kind === 'scen
 
 await check('tabs: Script, Scene, Cards, Dialogue, Characters, Source', async () => {
   const tabs = await page.locator('.viewbar .tab').allTextContents();
-  assert(JSON.stringify(tabs) === JSON.stringify(['Script', 'Scene', 'Cards', 'Dialogue', 'Characters', 'Source', 'Export']), JSON.stringify(tabs));
+  assert(JSON.stringify(tabs) === JSON.stringify(['Script', 'Scene', 'Cards', 'Dialogue', 'Characters', 'Source', 'History', 'Export']), JSON.stringify(tabs));
   await page.keyboard.press('Control+3');
   await page.waitForSelector('.cards:not(.hidden)');
   assert((await page.textContent('.viewbar .tab.on')) === 'Cards', 'Cards tab not active');

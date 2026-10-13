@@ -199,6 +199,10 @@ export interface ExportRecord {
   sceneIds: string[];
   /** The version this export marked changes against. */
   comparedWith?: string;
+  /** Print settings used, so the History view can show the pages as they were sent. */
+  settings?: ExportSettings;
+  /** Kept at the top of the History view. */
+  pinned?: boolean;
 }
 
 /** Text position stored as quoted text with context (see shared/anchors.ts). */
@@ -281,6 +285,9 @@ export interface DraftInfo {
   words: number;
   /** Scene ids in order, for comparisons that survive reordering. */
   sceneIds: string[];
+  note?: string;
+  /** Kept at the top of the History view. */
+  pinned?: boolean;
 }
 
 export function emptyMeta(id: string): ProjectMeta {

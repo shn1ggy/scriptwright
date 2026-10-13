@@ -42,7 +42,7 @@ export function loadFonts(): Promise<FontEntry[]> {
 }
 
 let pdfjsPromise: Promise<any> | null = null;
-function loadPdfjs(): Promise<any> {
+export function loadPdfjs(): Promise<any> {
   if (!pdfjsPromise) {
     const base = new URL('./pdfjs/', document.baseURI).href;
     pdfjsPromise = import(/* @vite-ignore */ base + 'pdf.min.mjs').then((m) => {
@@ -647,6 +647,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       file,
       sceneIds: app.scenes.filter((x) => x.kind === 'scene').map((x) => x.id),
       comparedWith: baseline ? baselineCache.get(baseline)?.label : undefined,
+      settings: withLock(),
     });
     meta.lastBaseline = baseline || undefined;
     app.markMetaDirty();

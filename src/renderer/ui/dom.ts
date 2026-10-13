@@ -33,6 +33,8 @@ const PATHS: Record<string, string> = {
   command: 'M7 4.5a2 2 0 1 0-2 2h2zm0 0v11m0-9h6m0 0v-2a2 2 0 1 1 2 2zm0 0v7m0 0h2a2 2 0 1 1-2 2zm0 0H7m0 0v2a2 2 0 1 1-2-2z',
   plus: 'M10 4v12M4 10h12',
   lock: 'M6 9V7a4 4 0 0 1 8 0v2M5 9h10v8H5z',
+  pin: 'M7 3h6l-1 5 3 3H5l3-3zM10 11v6',
+  history: 'M4 10a6 6 0 1 0 1.8-4.3M4 4v3h3M10 7v3.5l2.5 1.5',
   more: 'M5 10h.01M10 10h.01M15 10h.01',
   left: 'M12 5l-5 5 5 5',
   right: 'M8 5l5 5-5 5',

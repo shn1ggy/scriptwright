@@ -285,6 +285,11 @@ export class SceneCards {
     );
   }
 
+  /** The card with the keyboard cursor (shown in the notes pane while Cards is open). */
+  currentItem(): SceneItem | undefined {
+    return this.app.scenes.find((s) => s.id === this.selected && s.kind === 'scene');
+  }
+
   private select(id: string, extend = false) {
     this.selected = id;
     if (extend && this.app.sceneSelAnchor) {
@@ -356,9 +361,10 @@ export class SceneCards {
     const items = [
       { label: 'Open scene', run: () => this.openScene(it) },
       { label: 'Edit summary & notes…', run: () => {
-        this.app.closePanel(false);
-        this.app.goToScene(it, { focusEditor: false });
+        // Stays in Cards: the notes pane shows this scene and takes the typing.
+        this.select(it.id);
         this.app.showRightTab('scene');
+        this.app.rightPane.focusSummary();
       } },
       { sep: true },
       { head: 'Status' },

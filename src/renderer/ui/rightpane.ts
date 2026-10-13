@@ -3,12 +3,13 @@
 import type { App, SceneItem } from '../app';
 import { bridge } from '../bridge';
 import { h } from './dom';
-import { confirmDialog, openDialog, toast } from './overlay';
+import { confirmDialog, toast } from './overlay';
 import { SCENE_COLORS, STATUS_LABELS } from './outline';
 import { SceneStatus } from '../../shared/types';
 import { renderReview } from './review';
 import { renderShelf } from './shelf';
-import { openComparison, renderDrafts, renderExports } from './drafts';
+import { saveDraft } from './drafts';
+import { historyEntries } from './history';
 
 type Tab = 'notes' | 'scene' | 'comments' | 'shelf' | 'history';
 
@@ -83,6 +84,14 @@ export class RightPane {
     if (this.tab === 'history' && this.app.state.layout.rightVisible) this.render();
   }
 
+  /** Puts the caret in the scene summary (Scene tab). */
+  focusSummary() {
+    if (this.tab !== 'scene') return;
+    this.render();
+    const ta = this.body.querySelector<HTMLTextAreaElement>('textarea[aria-label="Scene summary"]');
+    ta?.focus();
+  }
+
   onActiveSceneChange() {
     if (this.tab !== 'scene') return;
     const s = this.currentScene();
@@ -90,6 +99,7 @@ export class RightPane {
   }
 
   private currentScene(): SceneItem | undefined {
+    if (this.app.panel === 'cards') return this.app.cards.currentItem() ?? this.app.activeScene();
     return this.app.view === 'scene' ? this.app.focusedItem() ?? this.app.activeScene() : this.app.activeScene();
   }
 
@@ -111,8 +121,6 @@ export class RightPane {
     else if (this.tab === 'comments') renderReview(this.app, this.body, rerender);
     else if (this.tab === 'shelf') renderShelf(this.app, this.body, rerender);
     else {
-      renderDrafts(this.app, this.body, rerender);
-      renderExports(this.app, this.body, rerender);
       this.renderHistory();
     }
   }
@@ -206,7 +214,7 @@ export class RightPane {
       this.app.markMetaDirty();
     });
     this.body.append(
-      h('div', { class: 'notice', title: item.heading }, h('strong', null, `${item.order}. `), item.heading),
+      h('div', { class: 'notice', title: item.heading }, h('strong', null, `${item.number}. `), item.heading),
       h('div', null, h('label', { class: 'cap' }, 'Summary'), summary),
       h('div', { style: { display: 'flex', gap: '10px', alignItems: 'flex-end' } }, h('div', { style: { flex: '1' } }, h('label', { class: 'cap' }, 'Status'), status), h('div', null, h('label', { class: 'cap' }, 'Color'), sw)),
       h('label', { class: 'cap', style: { marginBottom: '-6px' } }, 'Scene notes'),
@@ -214,29 +222,32 @@ export class RightPane {
     );
   }
 
+  /** Quick actions and the latest versions; browsing happens in the History view. */
   private async renderHistory() {
-    const p = this.app.project!;
-    const wrap = h('div', { style: { display: 'flex', flexDirection: 'column' } });
+    const k = this.app.commands.label('view.history');
+    const recent = h('div', { class: 'hist-recent' });
     this.body.append(
-      h('div', { class: 'rv-head' }, h('span', null, 'Automatic history'), h('span', { class: 'spacer' }), h('button', { class: 'btn sm', onclick: () => this.snapshotNow() }, 'Snapshot now')),
-      h('div', { class: 'notice' }, 'Saved while you write (at most every few minutes). Everything from the last 24 hours is kept, then one per day for 30 days. Named drafts are never removed automatically.'),
-      wrap,
+      h('div', { class: 'rv-actions' }, h('button', { class: 'btn', onclick: () => void saveDraft(this.app) }, 'Save as Draft…'), h('button', { class: 'btn', onclick: () => this.snapshotNow() }, 'Snapshot Now')),
+      h('div', { class: 'rv-head' }, h('span', null, 'Recent versions')),
+      recent,
+      h('button', { class: 'btn', onclick: () => this.app.openHistoryAt() }, k ? `Open History (${k})` : 'Open History'),
+      h('div', { class: 'notice' }, 'Named drafts and exported versions are kept until you delete them. Snapshots are taken while you write: all from the last 24 hours, then one per day for 30 days.'),
     );
-    const list = await bridge.call('listHistory', p.rel);
+    const list = await historyEntries(this.app);
     this.historyStale = false;
     if (!list.length) {
-      wrap.append(h('div', { class: 'notice' }, 'No snapshots yet.'));
+      recent.append(h('div', { class: 'notice' }, 'No versions yet.'));
       return;
     }
-    for (const it of list) {
-      const label = it.name.replace(/^\d{4}-\d{2}-\d{2}_\d{6}\s*/, '').replace(/\.fountain$/, '');
-      const when = new Date(it.time).toLocaleString();
-      wrap.append(
+    for (const e of list.slice(0, 5)) {
+      const when = new Date(e.time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      recent.append(
         h(
-          'div',
-          { class: 'history-row' },
-          h('span', { class: 'label' }, when, label && label !== 'auto' ? h('span', { class: 'dim' }, ` · ${label}`) : null),
-          h('button', { class: 'btn sm', onclick: () => this.preview(it.name, when) }, 'Compare…'),
+          'button',
+          { class: 'history-row hist-mini', title: 'Show in History', onclick: () => this.app.openHistoryAt(e.key) },
+          h('span', { class: `hist-kind k-${e.kind}` }),
+          h('span', { class: 'label' }, e.kind === 'snapshot' ? 'Snapshot' : e.name),
+          h('span', { class: 'dim' }, when),
         ),
       );
     }
@@ -249,9 +260,4 @@ export class RightPane {
     this.render();
   }
 
-  private async preview(name: string, when: string) {
-    const p = this.app.project!;
-    const text = await bridge.call('readHistory', p.rel, name);
-    openComparison(this.app, { title: `Snapshot from ${when}`, text, label: `snapshot from ${when}` });
-  }
 }
