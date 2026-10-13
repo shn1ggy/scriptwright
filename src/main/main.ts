@@ -184,22 +184,23 @@ function buildMenu() {
     });
   }
   const model = menuModel.length ? menuModel : [{ label: 'File', items: [{ id: 'app.quit', label: 'Quit' }] }];
+  // Standard edit items; the renderer's own Edit entries (find, replace, rename…) follow them
+  // in the same menu, so there is only one Edit menu.
+  const editBasics: MenuItemConstructorOptions[] = [
+    { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => sendCommand('edit.undo') },
+    { label: 'Redo', accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', click: () => sendCommand('edit.redo') },
+    { type: 'separator' },
+    { role: 'cut' },
+    { role: 'copy' },
+    { role: 'paste' },
+    { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendCommand('edit.selectAll') },
+  ];
+  const hasEdit = model.some((m) => m.label === 'Edit');
   for (const m of model) {
-    template.push(fromModel(m));
-    if (m.label === 'File') {
-      template.push({
-        label: 'Edit',
-        submenu: [
-          { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => sendCommand('edit.undo') },
-          { label: 'Redo', accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', click: () => sendCommand('edit.redo') },
-          { type: 'separator' },
-          { role: 'cut' },
-          { role: 'copy' },
-          { role: 'paste' },
-          { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendCommand('edit.selectAll') },
-        ],
-      });
-    }
+    const item = fromModel(m);
+    if (m.label === 'Edit') item.submenu = [...editBasics, { type: 'separator' }, ...(item.submenu as MenuItemConstructorOptions[])];
+    template.push(item);
+    if (m.label === 'File' && !hasEdit) template.push({ label: 'Edit', submenu: editBasics });
   }
   // Custom Window menu: the standard one claims ⌘M, which is the minimal-view shortcut.
   template.push({
