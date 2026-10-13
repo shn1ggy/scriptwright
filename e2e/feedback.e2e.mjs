@@ -24,7 +24,7 @@ await check('minimal view shows the screenplay', async () => {
 await check('Mod+F searches the screenplay, Mod+Shift+F searches scenes', async () => {
   await page.keyboard.press('Control+F');
   const a = await app(() => document.activeElement.getAttribute('aria-label'));
-  assert(a === 'Search in screenplay', a);
+  assert(a === 'Find in screenplay', a);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+Shift+F');
   const b = await app(() => document.activeElement.getAttribute('aria-label'));

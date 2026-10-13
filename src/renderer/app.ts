@@ -1921,7 +1921,8 @@ export class App {
     reg('edit.undo', 'Undo', 'Edit', [], () => this.undoRedo('undo'), { inFields: true });
     reg('edit.redo', 'Redo', 'Edit', [], () => this.undoRedo('redo'), { inFields: true });
     reg('edit.selectAll', 'Select All', 'Edit', [], () => this.selectAll(), { inFields: true });
-    reg('search.script', 'Search in Screenplay', 'Search', ['Mod+F'], () => this.findbar.open(), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('search.script', 'Find in Screenplay', 'Search', ['Mod+F'], () => this.findbar.open(), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('search.replace', 'Find and Replace', 'Search', ['Mod+Alt+F'], () => this.findbar.open(true), { inFields: true, enabled: hasProject, menu: 'Edit' });
     reg('search.scenes', 'Search Scenes', 'Search', ['Mod+Shift+F'], () => this.outline.focusSearch(), { inFields: true, enabled: hasProject, menu: 'Edit' });
     reg('search.next', 'Find Next', 'Search', ['F3', 'Mod+G'], () => this.findbar.step(1), { enabled: () => this.findbar.hasQuery() });
     reg('search.prev', 'Find Previous', 'Search', ['Shift+F3', 'Mod+Shift+G'], () => this.findbar.step(-1), { enabled: () => this.findbar.hasQuery() });

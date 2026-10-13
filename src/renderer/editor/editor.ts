@@ -1098,6 +1098,7 @@ export class Editor {
     const inp = this.input;
     inp.addEventListener('focus', () => {
       this.focused = true;
+      if (inp.value) inp.select();
       this.dom.classList.add('ed-focused');
       if (this.renderedActive !== this.activeLine()) this.renderKeepingCaret();
       this.paint();
@@ -1178,7 +1179,8 @@ export class Editor {
     if (!selEmpty(this.sel)) {
       const t = this.selectedText();
       inp.value = t.length <= 20000 ? t : ' ';
-      inp.select();
+      // select() would also take focus away from a find field; selecting on focus covers that case.
+      if (document.activeElement === inp) inp.select();
     } else if (inp.value) {
       inp.value = '';
     }

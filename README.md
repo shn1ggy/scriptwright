@@ -85,6 +85,10 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
   window size and position.
 
 **Commands and appearance**
+- Find & Replace (Mod+Alt+F): match case, whole words (umlaut-aware), regular expressions with
+  `$1` groups, and preserve case (ANDREA → MARIA in cues, Andrea → Maria in action). The result
+  list previews each replacement; Replace steps through results, Replace All is one undo step with
+  an Undo button in its notice. In Dialogue view only the visible lines are searched and replaced.
 - Command window (⌘K / Ctrl+K) to search and run commands, record shortcuts (the pressed keys
   never trigger their old command), see and resolve conflicts, clear and restore defaults.
   Changes apply immediately and are saved.
@@ -164,7 +168,8 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 | Title page | Mod+T |
 | New scene after the current one | Mod+N |
 | Export | Mod+E |
-| Search in screenplay / search scenes | Mod+F / Mod+Shift+F |
+| Find in screenplay / search scenes | Mod+F / Mod+Shift+F |
+| Find and replace | Mod+Alt+F (in the replace field: Enter replaces, Mod+Enter replaces all) |
 | Settings / commands & shortcuts | Mod+P / Mod+K |
 | Minimal view | Mod+M |
 | Maximize / restore | Mod+Ö |

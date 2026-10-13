@@ -84,7 +84,7 @@ await check('moved scenes keep their text intact', async () => {
 
 await check('deleting a heading detaches its information; undo reattaches it', async () => {
   const idx = await app(() => window.__app.scenes.find((s) => s.heading === 'INT. PANTRY - NIGHT').line);
-  await app((i) => window.__app.editor.setSelection({ anchor: { line: i, ch: 0 }, head: { line: i, ch: window.__app.editor.lines[i].text.length } }), idx);
+  await app((i) => { window.__app.editor.setSelection({ anchor: { line: i, ch: 0 }, head: { line: i, ch: window.__app.editor.lines[i].text.length } }); window.__app.editor.focus(); }, idx);
   await page.keyboard.press('Backspace');
   const det = await app(() => window.__app.project.meta.detached.map((d) => d.summary));
   assert(det.includes('Tea before the storm'), JSON.stringify(det));

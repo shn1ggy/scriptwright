@@ -461,3 +461,21 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 .rw-text { flex: 1; min-height: 180px; font-family: var(--ed-font, 'Courier Prime', monospace); font-size: 13px; line-height: 1.5; }
 .rw-text[readonly] { color: var(--text-2); }
 .rw-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Find & Replace */
+.findbar { position: absolute; top: 8px; right: 16px; z-index: 30; width: 440px; max-width: calc(100% - 32px); background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.findbar.hidden { display: none; }
+.findbar-main { display: flex; align-items: flex-start; gap: 2px; padding: 6px 6px 6px 2px; }
+.findbar-rows { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.findbar-row { display: flex; align-items: center; gap: 4px; }
+.findbar-row.hidden { display: none; }
+.findbar-row .field { flex: 1; min-width: 0; }
+.findbar-toggle { margin-top: 2px; }
+.findbar-toggle svg { transition: transform 0.12s; }
+.findbar-toggle.open svg { transform: rotate(90deg); }
+.findbar-opt { font-size: 11px; font-weight: 600; min-width: 24px; font-family: var(--mono, ui-monospace, monospace); }
+.findbar-count { min-width: 64px; text-align: right; font-size: 11.5px; white-space: nowrap; }
+.findbar-count.warn { color: var(--warn); }
+.findbar-results { max-height: 260px; border-top: 1px solid var(--line); }
+.findbar-old { color: var(--text-3, var(--dim)); }
+.findbar-new { color: var(--accent); margin-left: 2px; }
