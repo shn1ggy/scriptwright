@@ -978,6 +978,25 @@ export class Backend extends EventEmitter {
     return fs.readFileSync(file, 'utf8');
   }
 
+  /** The bundled Courier Prime faces, for the editor (loaded as data, not through file URLs). */
+  scriptFontFaces(): Array<{ weight: string; style: string; data: Uint8Array }> {
+    const faces: Array<[string, string, string]> = [
+      ['CourierPrime-Regular.ttf', '400', 'normal'],
+      ['CourierPrime-Bold.ttf', '700', 'normal'],
+      ['CourierPrime-Italic.ttf', '400', 'italic'],
+      ['CourierPrime-BoldItalic.ttf', '700', 'italic'],
+    ];
+    const out: Array<{ weight: string; style: string; data: Uint8Array }> = [];
+    for (const [f, weight, style] of faces) {
+      try {
+        out.push({ weight, style, data: new Uint8Array(fs.readFileSync(path.join(this.fontsDir, f))) });
+      } catch {
+        // Missing faces fall back to the stylesheet (or Courier).
+      }
+    }
+    return out;
+  }
+
   fontsAvailable(): boolean {
     return ['CourierPrime-Regular.ttf', 'CourierPrime-Bold.ttf', 'CourierPrime-Italic.ttf', 'CourierPrime-BoldItalic.ttf'].every((f) =>
       fs.existsSync(path.join(this.fontsDir, f)),

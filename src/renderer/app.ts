@@ -184,6 +184,7 @@ export class App {
     };
     applyTheme(this.settings.appearance);
     applyHighlightColors(this.settings.highlights, this.settings.appearance.theme === 'light');
+    await this.loadScriptFont();
     if (bridge.isElectron) {
       document.body.classList.add('frameless', `platform-${bridge.platform}`);
       bridge.on('fullscreen', (on: boolean) => document.body.classList.toggle('fullscreen', on));
@@ -399,6 +400,23 @@ export class App {
     this.updateMenu();
     this.updateTooltips();
     this.applySettings();
+  }
+
+  /**
+   * Registers the bundled Courier Prime from its data. The stylesheet also points at the font
+   * files, but on Windows those file URLs did not load and the editor fell back to Courier New.
+   */
+  private async loadScriptFont() {
+    try {
+      const faces = await bridge.call('scriptFontFaces');
+      for (const f of faces) {
+        const face = new FontFace('Courier Prime', new Uint8Array(f.data).buffer as ArrayBuffer, { weight: f.weight, style: f.style });
+        await face.load();
+        document.fonts.add(face);
+      }
+    } catch {
+      // The stylesheet's @font-face rules (or Courier) remain.
+    }
   }
 
   private lookFrame = 0;
