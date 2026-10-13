@@ -516,7 +516,8 @@ export class Backend extends EventEmitter {
         w.knownHash = hash;
         w.exists = true;
       }
-      this.writeLock(dir);
+      // Only an open project holds a lock: a last save while the window closes must not leave one behind.
+      if (this.watched.has(rel)) this.writeLock(dir);
       const snapshot = this.maybeSnapshot(dir, text, snapshotIntervalMin);
       return { ok: true, hash, snapshot };
     } catch (e: any) {
