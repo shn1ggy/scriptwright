@@ -2754,8 +2754,13 @@ export class App {
           return { id: c.id, label: c.title, accelerator: k ? toAccelerator(k) : undefined };
         }),
     }));
+    // Rebuilding the native menu is not free (macOS logs warnings): only when it changed.
+    const sig = JSON.stringify(model);
+    if (sig === this.menuSig) return;
+    this.menuSig = sig;
     bridge.setMenu(model).catch(() => {});
   }
+  private menuSig = '';
 
   // ---------------------------------------------------------------------------------
   // Global keyboard handling
