@@ -597,3 +597,8 @@ body.frameless:not(.platform-darwin) .export-head { padding-right: 144px; }
 .settings-block .form-row { margin-bottom: 4px; }
 .ws-switch svg { width: 14px; height: 14px; }
 .ws-switch > svg:last-child { width: 12px; height: 12px; color: var(--text-3); }
+/* The collapse chevron sits in the heading's left padding, so all pane headings start at the same edge. */
+.section-head button.collapser { position: relative; gap: 0; }
+.section-head button.collapser > span:first-child { position: absolute; left: -13px; top: 50%; transform: translateY(-50%); opacity: 0; color: var(--text-3); }
+.section-head button.collapser > span:first-child svg { width: 11px; height: 11px; }
+.section-head:hover button.collapser > span:first-child, .projects .list.hidden ~ * button.collapser > span:first-child { opacity: 1; }
