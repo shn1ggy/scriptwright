@@ -15,7 +15,7 @@
     "dev:browser": "node scripts/build.mjs && node dist/harness.js --port 5174",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node scripts/test.mjs",
-    "e2e": "node scripts/build.mjs && node e2e/editor.e2e.mjs && node e2e/scenes.e2e.mjs && node e2e/session.e2e.mjs",
+    "e2e": "node scripts/build.mjs && node e2e/run-all.mjs",
     "dist": "node scripts/build.mjs --prod && electron-builder",
     "dist:mac": "node scripts/build.mjs --prod && electron-builder --mac",
     "dist:win": "node scripts/build.mjs --prod && electron-builder --win",

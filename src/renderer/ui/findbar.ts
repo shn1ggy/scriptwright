@@ -27,6 +27,7 @@ export class FindBar {
 
   constructor(private app: App) {
     this.input = h('input', { class: 'field', placeholder: 'Search in screenplay', 'aria-label': 'Search in screenplay', spellcheck: 'false' });
+    this.input.dataset.esc = 'self';
     this.input.addEventListener('input', () => {
       this.compute();
       this.current = this.matches.length ? this.nearestIndex() : -1;
@@ -70,7 +71,7 @@ export class FindBar {
     if (selected && !selected.includes('\n') && selected.length < 80) this.input.value = selected;
     this.input.focus();
     this.input.select();
-    if (!this.popEsc) this.popEsc = pushEscape(() => this.close(true));
+    if (!this.popEsc) this.popEsc = pushEscape(() => this.close(true), false);
     this.compute();
     this.current = this.matches.length ? this.nearestIndex() : -1;
     this.show(false);

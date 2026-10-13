@@ -43,6 +43,7 @@ const PATHS: Record<string, string> = {
   folder: 'M3 6h5l1.5 1.5H17V15H3z',
   minimal: 'M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4',
   restore: 'M5 10a5 5 0 1 0 1.5-3.5M5 4v3h3',
+  cards: 'M3.5 4.5h5.5v4.5H3.5zM11 4.5h5.5v4.5H11zM3.5 11h5.5v4.5H3.5zM11 11h5.5v4.5H11z',
 };
 
 export function icon(name: keyof typeof PATHS | string, title?: string): SVGSVGElement {

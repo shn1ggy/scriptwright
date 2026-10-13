@@ -6,11 +6,15 @@ import { h, iconButton } from './dom';
 // Escape stack: the most recently opened overlay handles Escape first.
 
 const escapeStack: Array<() => void> = [];
-export function pushEscape(fn: () => void): () => void {
+const modalSet = new Set<() => void>();
+/** Registers an Escape handler. Modal overlays (dialogs, menus) also block global shortcuts. */
+export function pushEscape(fn: () => void, modal = true): () => void {
   escapeStack.push(fn);
+  if (modal) modalSet.add(fn);
   return () => {
     const i = escapeStack.lastIndexOf(fn);
     if (i >= 0) escapeStack.splice(i, 1);
+    modalSet.delete(fn);
   };
 }
 export function handleEscape(): boolean {
@@ -20,7 +24,7 @@ export function handleEscape(): boolean {
   return true;
 }
 export function overlayOpen(): boolean {
-  return escapeStack.length > 0;
+  return modalSet.size > 0;
 }
 
 // ------------------------------------------------------------------------------------

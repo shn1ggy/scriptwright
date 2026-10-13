@@ -29,6 +29,7 @@ export class OutlinePane {
 
   constructor(private app: App) {
     this.search = h('input', { class: 'field', placeholder: 'Search scenes', 'aria-label': 'Search scenes', spellcheck: 'false' });
+    this.search.dataset.esc = 'self';
     this.search.addEventListener('input', () => {
       this.lastSig = '';
       this.render();
@@ -60,7 +61,7 @@ export class OutlinePane {
     this.el = h(
       'div',
       { class: 'outline' },
-      h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, h('span', { class: 'spacer' }), iconButton('plus', 'New scene after current', () => this.app.run('scene.new'))),
+      h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, h('span', { class: 'spacer' }), iconButton('cards', 'Scene cards', () => this.app.run('scene.cards')), iconButton('plus', 'New scene after current', () => this.app.run('scene.new'))),
       h('div', { class: 'outline-search' }, this.search),
       this.list,
     );

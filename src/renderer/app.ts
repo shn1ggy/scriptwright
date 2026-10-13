@@ -20,6 +20,7 @@ import { openSettings } from './ui/settings';
 import { openExport } from './ui/export';
 import { openRename } from './ui/rename';
 import { compareDialog } from './ui/compare';
+import { SceneCards } from './ui/cards';
 
 export interface SceneItem {
   kind: 'scene' | 'title' | 'opening';
@@ -98,6 +99,7 @@ export class App {
   projectsPane!: ProjectsPane;
   rightPane!: RightPane;
   findbar!: FindBar;
+  cards!: SceneCards;
   private leftToggle!: HTMLButtonElement;
   private tooltipButtons: Array<[HTMLButtonElement, string, string]> = [];
 
@@ -219,7 +221,8 @@ export class App {
     this.rightPane = new RightPane(this);
     this.rightPaneEl.append(this.rightPane.el);
     this.findbar = new FindBar(this);
-    this.center.append(this.findbar.el);
+    this.cards = new SceneCards(this);
+    this.center.append(this.findbar.el, this.cards.el);
 
     this.makeResizer(this.leftResizer, 'left');
     this.makeResizer(this.rightResizer, 'right');
@@ -941,6 +944,7 @@ export class App {
   refreshDerived(force: boolean) {
     this.updateScenes();
     this.outline.render();
+    this.cards.render();
     if (this.view === 'dialogue' && force) this.applyDialogueFilter(false);
     this.updateViewControls();
     clearTimeout(this.derivedTimer);
@@ -1112,6 +1116,7 @@ export class App {
     this.markMetaDirty();
     this.updateScenes();
     this.outline.render();
+    this.cards.render();
   }
 
   /** Scene item containing a document line (title page and opening included). */
@@ -1822,6 +1827,7 @@ export class App {
       if (a) this.moveSceneBy(a, 1);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
     reg('dialogue.goToPassage', 'Go to Passage in Script', 'Scenes', ['Mod+Enter'], () => this.goToPassage(), { enabled: () => this.view !== 'script', menu: 'Scene' });
+    reg('scene.cards', 'Scene Cards', 'Scenes', ['Mod+Shift+O'], () => this.cards.toggle(), { inFields: true, enabled: hasProject, menu: 'Scene' });
     reg('scene.notes', 'Scene Notes', 'Scenes', [], () => this.showRightTab('scene'), { enabled: hasProject, menu: 'Scene' });
     reg('project.notes', 'Project Notes', 'Scenes', [], () => this.showRightTab('notes'), { enabled: hasProject, menu: 'Scene' });
     reg('project.history', 'History', 'Scenes', [], () => this.showRightTab('history'), { enabled: hasProject, menu: 'Scene' });
@@ -2010,6 +2016,9 @@ export class App {
     }
     if (e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Escape') {
+      // Fields that handle Escape themselves (search fields) get it first unless a modal is open.
+      const ae = document.activeElement as HTMLElement | null;
+      if (!overlayOpen() && ae?.dataset.esc === 'self') return;
       if (handleEscape()) {
         e.preventDefault();
         e.stopPropagation();
@@ -2033,6 +2042,8 @@ export class App {
     const editorFocused = this.editor.hasFocus();
     const active = document.activeElement as HTMLElement | null;
     const inField = !editorFocused && !!active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable);
+    // Keyboard-navigable lists (outline, cards) keep their own arrow keys.
+    if (!editorFocused && active?.getAttribute('role') === 'listbox' && isNavigationCombo(combo)) return;
     const inDialog = overlayOpen() || !!active?.closest('.dialog, .menu, .export');
     const matches = this.commands.lookup(combo);
     if (!matches.length) return;
