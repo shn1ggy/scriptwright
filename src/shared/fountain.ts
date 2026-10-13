@@ -117,10 +117,6 @@ export function escapeRegex(s: string): string {
 const TITLE_KEY_RE = /^([A-Za-z][A-Za-z0-9 _\-]*):(.*)$/;
 const SCENE_NUMBER_RE = /(\s*)#([\p{L}\p{N}.\-]+)#\s*$/u;
 
-export function isBlank(text: string): boolean {
-  return text.trim() === '';
-}
-
 /** Name part of a cue: removes forcing @, extensions in parentheses, dual caret. */
 export function cueName(text: string): string {
   let t = text.trim();

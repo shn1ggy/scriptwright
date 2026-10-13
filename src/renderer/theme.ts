@@ -81,11 +81,6 @@ function mix(a: string, b: string, t: number): string {
   return rgbToHex([0, 1, 2].map((i) => Math.round(x[i] * (1 - t) + y[i] * t)) as [number, number, number]);
 }
 
-export function currentBackgroundHex(a: AppearanceSettings): string {
-  const c = a.theme === 'dark' ? a.dark : a.light;
-  return rgbToHex(hsbToRgb(c.background));
-}
-
 /** Highlight colors from the settings, as CSS variables (--hl-yellow … and -dot variants). */
 export function applyHighlightColors(hl: Record<string, { color: string }>, light: boolean) {
   const root = document.documentElement;

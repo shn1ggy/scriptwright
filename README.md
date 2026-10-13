@@ -221,15 +221,11 @@ Distinguishing what was actually run from what was not:
 
 | Area | Status |
 | --- | --- |
-| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, storage backend | 101 unit tests, run on Linux (Node 22) |
-| Renderer (editor, views, outline, dialogs, export preview) | 8 end-to-end suites (80 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
+| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, scene numbers, Final Draft, story structure, storage backend | 131 unit tests, run on Linux (Node 22) |
+| Renderer (editor, views, panes, dialogs, export preview, history, cards and timeline) | 19 end-to-end suites (133 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
 | Typing latency | ≈4 ms per keystroke on a 6,200-line (≈130 page) script in Chromium |
-| Electron shell (window, menus, dialogs, IPC, close/quit, maximize, spellchecking) | **Written but not run** — Electron could not be installed in the build environment |
-| macOS, Windows | **Not tested** |
-| Packaging (electron-builder) | **Not run** |
-
-The Electron main process is a thin layer over the same backend the tests exercise, but
-please run `npm start` on each platform before relying on it.
+| Electron shell | Run by hand on macOS (Apple silicon) and Windows 11 |
+| Packaging (electron-builder) | Not run; Windows uses a portable launcher that fetches the official Electron runtime |
 
 ## Architecture
 
@@ -242,6 +238,19 @@ please run `npm start` on each platform before relying on it.
 - `dev/harness.ts` — serves the renderer to a browser with the real backend over HTTP (tests and
   development only; not shipped).
 
+## Story structure
+
+- **Acts and sequences** are Fountain sections (`# Act Two`, `## The heist`). Start one from a
+  card's or scene's context menu; in Cards they are dividers you can drag onto another card,
+  in the timeline their left edge drags to another scene.
+- **Timeline** (Cards → Timeline): every scene as wide as its pages, under the chosen story
+  model's typical parts and your own acts.
+- **Story models**: three acts, Freytag's pyramid, hero's journey, Save the Cat, eight
+  sequences, story circle, seven-point structure, kishōtenketsu, or your own beats. Put a beat
+  on a scene (card menu, or drag its marker in the timeline) to see how far it is from where
+  the model typically puts it. Beats with the same name (Midpoint, Climax …) carry over when
+  you switch models.
+
 ## Roadmap
 
 | Brief section | Status |
@@ -251,4 +260,5 @@ please run `npm start` on each platform before relying on it.
 | §15 Named drafts and draft/scene comparison | Done (stage 2); production revision marks are part of §24 |
 | §16 Comments, highlights, detached-annotation review | Done (stage 2) |
 | §21 Collaboration | Not started |
-| §24 Production tools (revision sets, locked numbering, reports, Final Draft) | Not started; written scene numbers can already be managed |
+| §24 Production tools (revision sets, locked numbering, reports, Final Draft) | Locked scene numbers and Final Draft import/export done; revision sets and reports not started |
+| Story structure (acts, sequences, story models, beats, timeline) | Done |

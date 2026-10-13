@@ -7,7 +7,7 @@ import { h, icon, iconButton, debounce, fmtNum, uid } from './ui/dom';
 import { alertDialog, choiceDialog, confirmDialog, handleEscape, openDialog, openMenu, overlayOpen, promptDialog, toast, MenuItem } from './ui/overlay';
 import { applyHighlightColors, applyTheme } from './theme';
 import { Line, Pos, Selection, Step, cursor, joinLines, makeLines, selEmpty, selFrom, selTo, newKey } from '../shared/doc';
-import { ParseResult, SceneInfo, characterLabel, characterList, cleanText, countWords, sceneIndexAt, titlePageTemplate } from '../shared/fountain';
+import { ParseResult, characterLabel, characterList, cleanText, countWords, sceneIndexAt, titlePageTemplate } from '../shared/fountain';
 import { AppState, ProjectMeta, ProjectSession, SceneRecord, Settings, ViewName, defaultAppState, defaultSettings } from '../shared/types';
 import { detach, fingerprint, hasInfo, reconcile } from '../shared/scenes';
 import type { ProjectEntry, ExternalEvent } from '../main/backend';
@@ -28,7 +28,7 @@ import { sceneNumberEdits } from '../shared/fountainout';
 import { isOmittedHeading, omittedHeading, sceneNumberList } from '../shared/scenenumbers';
 import { openRewrite, openRewriteFor, passageLabel } from './ui/rewrite';
 import { openCommentDialog, deleteComment } from './ui/review';
-import { renderShelf, toShelf } from './ui/shelf';
+import { toShelf } from './ui/shelf';
 import { saveDraft } from './ui/drafts';
 import { HistoryHandle, openHistory } from './ui/history';
 import { exportFinalDraft, openFountainExport, openSceneNumbers } from './ui/fountaintools';
@@ -222,11 +222,6 @@ export class App {
     this.subEl = h('span', { class: 'doc-sub' });
     this.leftToggle = iconButton('sidebarLeft', 'Toggle scene pane', () => this.run('view.leftPane'));
     this.rightToggle = iconButton('sidebarRight', 'Toggle notes pane', () => this.run('view.rightPane'));
-    const tb = (name: string, title: string, id: string) => {
-      const b = iconButton(name, title, () => this.run(id));
-      this.tooltipButtons.push([b, title, id]);
-      return b;
-    };
     this.tooltipButtons.push([this.leftToggle, 'Toggle scene pane', 'view.leftPane'], [this.rightToggle, 'Toggle notes pane', 'view.rightPane']);
     const titlebar = h(
       'div',
@@ -1330,13 +1325,14 @@ export class App {
 
   private fonts: FontEntry[] | null = null;
 
-  /** Page break markers in Script/Source view, from the project's export settings. */
-  updatePageMarkers = debounce(() => {
-    const on = !!this.project && this.settings.editor.showPageBreaks && this.isFullView();
-    if (!on) {
-      this.editor.setPageMarkers([]);
-      return;
-    }
+  private paginationCache: { key: string; value: ReturnType<typeof paginate> } | null = null;
+
+  /**
+   * The screenplay paginated with the project's export settings (cached per version). Page
+   * markers, card lengths and the timeline all use it, so they agree with the PDF. Null while
+   * the metrics of a system font are still loading.
+   */
+  pagination(): ReturnType<typeof paginate> | null {
     const s = projectExportSettings(this);
     let adv = 0.6;
     if (s.font !== 'Courier' && s.font !== 'Courier Prime') {
@@ -1344,13 +1340,27 @@ export class App {
         loadFonts().then((f) => {
           this.fonts = f;
           this.updatePageMarkers();
+          this.cards.structureChanged();
         });
-        return;
+        return null;
       }
       adv = this.fonts.find((f) => f.family === s.font)?.advance ?? 0.6;
     }
+    const key = `${this.editor.version}|${adv}|${JSON.stringify(s)}`;
+    if (this.paginationCache?.key !== key) this.paginationCache = { key, value: paginate(this.editor.lineTexts, this.editor.parsed, s, { kind: 'all' }, adv) };
+    return this.paginationCache.value;
+  }
+
+  /** Page break markers in Script/Source view, from the project's export settings. */
+  updatePageMarkers = debounce(() => {
+    const on = !!this.project && this.settings.editor.showPageBreaks && this.isFullView();
+    if (!on) {
+      this.editor.setPageMarkers([]);
+      return;
+    }
+    const r = this.pagination();
+    if (!r) return;
     const L = this.editor.lines;
-    const r = paginate(this.editor.lineTexts, this.editor.parsed, s, { kind: 'all' }, adv);
     const pages = r.pages.filter((p) => !p.title);
     const markers: Array<{ key: number; frac: number; label: string }> = [];
     for (let i = 1; i < pages.length; i++) {
@@ -1455,7 +1465,12 @@ export class App {
     const firstScene = parsed.scenes[0];
     const openingEnd = firstScene ? firstScene.line : lines.length;
     let openingHas = false;
-    for (let i = parsed.bodyStart; i < openingEnd; i++) if (lines[i].text.trim()) openingHas = true;
+    // Acts and sequences (sections) and their synopses before the first scene are structure,
+    // not an opening: only real text (FADE IN:, a prologue) makes one.
+    for (let i = parsed.bodyStart; i < openingEnd; i++) {
+      const t = parsed.lines[i].type;
+      if (lines[i].text.trim() && t !== 'section' && t !== 'synopsis') openingHas = true;
+    }
     if (openingHas) items.push({ kind: 'opening', id: 'opening', key: lines[parsed.bodyStart].key, line: parsed.bodyStart, end: openingEnd, heading: 'Opening', order: 0, number: '' });
     if (p) {
       let changed = false;
@@ -1552,6 +1567,8 @@ export class App {
   sceneAt(line: number): SceneItem | undefined {
     let best: SceneItem | undefined;
     for (const s of this.scenes) if (line >= s.line && line < Math.max(s.end, s.line + 1)) best = s;
+    // An act or sequence line between scenes belongs to the scene it opens.
+    if (!best) best = this.scenes.find((s) => s.kind === 'scene' && s.line > line) ?? [...this.scenes].reverse().find((s) => s.kind === 'scene');
     return best;
   }
 

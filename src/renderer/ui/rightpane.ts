@@ -19,7 +19,6 @@ export class RightPane {
   private tabBtns: Record<Tab, HTMLButtonElement>;
   private tab: Tab = 'notes';
   private sceneFor: string | null = null;
-  private historyStale = true;
 
   constructor(private app: App) {
     const mk = (t: Tab, label: string) => h('button', { class: 'tab', tabindex: '-1', onclick: () => this.switchTo(t) }, label);
@@ -80,7 +79,6 @@ export class RightPane {
   }
 
   historyChanged() {
-    this.historyStale = true;
     if (this.tab === 'history' && this.app.state.layout.rightVisible) this.render();
   }
 
@@ -230,7 +228,6 @@ export class RightPane {
     const fill = async () => {
       const kinds = shownKinds(this.app);
       const all = (await historyEntries(this.app)).filter((e) => kinds.has(e.kind as 'draft' | 'export' | 'snapshot'));
-      this.historyStale = false;
       list.textContent = '';
       if (!all.length) {
         list.append(h('div', { class: 'notice' }, 'No versions of this kind yet.'));

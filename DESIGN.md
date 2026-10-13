@@ -68,8 +68,9 @@ file first, then the code.
 - Export settings are grouped and fold open and closed; This version, Content and Mark changes
   start open. Change marks are red by default and run on across the spaces between words.
   Export presets belong to the workspace, so every project can use them.
-- Review groups (comments, alternatives, highlights) fold open and closed with the chevron
-  in the left padding; History has toggles for what it lists. Both are remembered.
+- Review groups (comments, alternatives, highlights) fold open and closed like the export
+  groups: the heading is the button and its chevron sits at the right end, so headings keep
+  the pane's left edge. History has toggles for what it lists. Both are remembered.
 - The project remembers its export preset. When the settings drift from it, the menu says
   "(changed)" so it is clear the preset could be saved again.
 
@@ -165,7 +166,10 @@ Help text sits directly under its field (4 px), and the next row follows after 1
   journey, Save the Cat, eight sequences, story circle, seven-point, kishōtenketsu, or an own
   model. A beat sits on a scene; its row shows the typical place (hollow) and the actual one
   (filled) with the distance in pages. Beats are neutral; colour stays with scenes.
-- Placing beats, starting and removing acts are undoable like any edit.
+- An act begins where it is dropped: drag its divider onto a card, or its left edge in the
+  timeline (snapping to scene boundaries, never past its neighbours).
+- Sections before the first scene are structure, not an "Opening".
+- Placing beats, starting, moving and removing acts are undoable like any edit.
 
 ## 8. The printed page
 

@@ -7,14 +7,13 @@ import { openMenu, pushEscape } from './overlay';
 import { SCENE_COLORS, STATUS_LABELS, sceneGroupMenu } from './outline';
 import { isMac } from '../bridge';
 import { SceneStatus } from '../../shared/types';
-import { paginate } from '../../shared/paginate';
 import { cleanText, countWords } from '../../shared/fountain';
-import { projectExportSettings } from './export';
-import { Timeline, beatsOn, sceneStructureMenu, sectionMenu, sections, positions } from './structure';
+import { Timeline, beatsOn, moveSection, sceneStructureMenu, sectionMenu, sectionRange, sections, positions } from './structure';
+import type { StorySection } from '../../shared/structure';
 
 /** Scene length in pages and eighths, e.g. "1 3/8". */
-export function eighths(rows: number, lpp: number): string {
-  const e = Math.max(1, Math.round((rows / lpp) * 8));
+function eighths(pages: number): string {
+  const e = Math.max(1, Math.round(pages * 8));
   const whole = Math.floor(e / 8);
   const rest = e % 8;
   const frac = rest ? `${rest}/8` : '';
@@ -29,6 +28,8 @@ export class SceneCards {
   private selected: string | null = null;
   private popEsc: (() => void) | null = null;
   private dragId: string | null = null;
+  /** An act or sequence divider being dragged to another card. */
+  private dragSec: StorySection | null = null;
   private lastSig = '';
   readonly timeline: Timeline;
   private modeSeg: HTMLElement;
@@ -188,7 +189,7 @@ export class SceneCards {
         const n = sec.endScene - sec.firstScene;
         const d = h(
           'div',
-          { class: `cards-divider lvl-${Math.min(3, sec.level)}`, title: 'Right-click to rename or remove' },
+          { class: `cards-divider lvl-${Math.min(3, sec.level)}`, title: 'Drag onto a card to begin here at another scene · right-click to rename or remove', draggable: true },
           h('span', { class: 'cd-title' }, sec.title),
           h('span', { class: 'cd-meta' }, `${n} scene${n === 1 ? '' : 's'}`),
         );
@@ -196,6 +197,17 @@ export class SceneCards {
         d.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           openMenu(sectionMenu(this.app, sec), { x: e.clientX, y: e.clientY });
+        });
+        d.addEventListener('dragstart', (e) => {
+          this.dragSec = sec;
+          d.classList.add('dragging');
+          e.dataTransfer!.effectAllowed = 'move';
+          e.dataTransfer!.setData('text/plain', sec.title);
+        });
+        d.addEventListener('dragend', () => {
+          this.dragSec = null;
+          d.classList.remove('dragging');
+          this.grid.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
         });
         this.grid.append(d);
       }
@@ -253,6 +265,14 @@ export class SceneCards {
         this.grid.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
       });
       card.addEventListener('dragover', (e) => {
+        if (this.dragSec) {
+          const [lo, hi] = sectionRange(this.app, this.dragSec);
+          if (k < lo || k > hi) return;
+          e.preventDefault();
+          this.grid.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+          card.classList.add('drop-before');
+          return;
+        }
         if (!this.dragId || this.dragId === it.id || (this.app.sceneSel.size > 1 && this.app.sceneSel.has(it.id) && this.app.sceneSel.has(this.dragId))) return;
         e.preventDefault();
         const r = card.getBoundingClientRect();
@@ -262,6 +282,12 @@ export class SceneCards {
       });
       card.addEventListener('drop', (e) => {
         e.preventDefault();
+        if (this.dragSec) {
+          const sec = this.dragSec;
+          this.dragSec = null;
+          moveSection(this.app, sec, k);
+          return;
+        }
         const r = card.getBoundingClientRect();
         const after = e.clientX > r.left + r.width / 2;
         const src = this.items().find((s) => s.id === this.dragId);
@@ -291,36 +317,8 @@ export class SceneCards {
     const ed = this.app.editor;
     const parsed = ed.parsed;
     const texts = ed.lineTexts;
-    const rowsByScene = new Map<number, number>();
-    let lpp = 54;
-    if (o.showLength) {
-      const s = projectExportSettings(this.app);
-      const r = paginate(texts, parsed, { ...s, titlePage: false }, { kind: 'all' });
-      lpp = r.capacity.linesPerPage;
-      const sceneStarts = parsed.scenes.map((sc) => sc.line);
-      const sceneOf = (line: number) => {
-        let lo = 0;
-        let hi = sceneStarts.length - 1;
-        let ans = -1;
-        while (lo <= hi) {
-          const m = (lo + hi) >> 1;
-          if (sceneStarts[m] <= line) {
-            ans = m;
-            lo = m + 1;
-          } else hi = m - 1;
-        }
-        return ans;
-      };
-      for (const page of r.pages) {
-        const seen = new Set<number>();
-        for (const l of page.lines) {
-          if (seen.has(l.row)) continue;
-          seen.add(l.row);
-          const sc = sceneOf(l.sourceLine);
-          if (sc >= 0) rowsByScene.set(sc, (rowsByScene.get(sc) ?? 0) + 1);
-        }
-      }
-    }
+    // Lengths come from the real pagination (shared with the timeline).
+    const pos = o.showLength ? positions(this.app).scenes : [];
     for (const it of this.items()) {
       const idx = parsed.scenes.findIndex((sc) => sc.line === it.line);
       const counts = new Map<string, number>();
@@ -331,9 +329,7 @@ export class SceneCards {
         if (t !== 'note' && t !== 'boneyard') words += countWords(cleanText(texts[i], parsed.lines[i].flags));
       }
       const characters = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
-      // Spacing lines count too, roughly one per element; the row count covers text lines.
-      const rows = (rowsByScene.get(idx) ?? 0) * 1.25;
-      out.set(it.id, { characters: characters.slice(0, 5).concat(characters.length > 5 ? [`+${characters.length - 5}`] : []), words, length: eighths(rows, lpp) });
+      out.set(it.id, { characters: characters.slice(0, 5).concat(characters.length > 5 ? [`+${characters.length - 5}`] : []), words, length: eighths(pos[idx]?.length ?? 0) });
     }
     return out;
   }

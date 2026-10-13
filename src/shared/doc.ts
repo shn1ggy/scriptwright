@@ -23,9 +23,6 @@ let nextKey = 1;
 export function newKey(): number {
   return nextKey++;
 }
-export function ensureKeyAbove(k: number) {
-  if (nextKey <= k) nextKey = k + 1;
-}
 
 export function makeLines(text: string): Line[] {
   return splitLines(text).map((t) => ({ key: newKey(), text: t }));

@@ -5,7 +5,6 @@ import type { App, SceneItem } from '../app';
 import { h, uid } from './dom';
 import { MenuItem, openMenu, promptDialog, toast } from './overlay';
 import { newKey } from '../../shared/doc';
-import { paginate } from '../../shared/paginate';
 import { StructureState } from '../../shared/types';
 import {
   CUSTOM_MODEL_ID,
@@ -20,7 +19,6 @@ import {
   scenePositions,
   sectionsOf,
 } from '../../shared/structure';
-import { projectExportSettings } from './export';
 
 // ------------------------------------------------------------------------------------
 // State
@@ -140,6 +138,56 @@ export function removeSection(app: App, sec: StorySection) {
   toast(`The ${levelName(sec.level)} “${sec.title}” was removed; its scenes stay.`, { actions: [{ label: 'Undo', run: () => app.undoRedo('undo') }] });
 }
 
+/** Scenes an act (or sequence) can start at without passing its neighbours of the same level. */
+export function sectionRange(app: App, sec: StorySection): [number, number] {
+  const same = sections(app).filter((s) => s.level === sec.level);
+  const k = same.findIndex((s) => s.line === sec.line);
+  const n = sceneItems(app).length;
+  const lo = k > 0 ? same[k - 1].firstScene + 1 : 0;
+  const hi = k + 1 < same.length ? same[k + 1].firstScene - 1 : n - 1;
+  return [lo, Math.max(lo, hi)];
+}
+
+/** Lets an act (or sequence) begin at another scene: its line moves before that heading. */
+export function moveSection(app: App, sec: StorySection, toScene: number) {
+  const items = sceneItems(app);
+  const [lo, hi] = sectionRange(app, sec);
+  const k = Math.max(lo, Math.min(hi, toScene));
+  if (k === sec.firstScene || !items[k]) return;
+  const ed = app.editor;
+  const key = ed.lines[sec.line].key;
+  const target = items[k].key;
+  const caret = ed.sel;
+  const ck = { a: ed.lines[caret.anchor.line].key, ac: caret.anchor.ch, h: ed.lines[caret.head.line].key, hc: caret.head.ch };
+  ed.history.seal();
+  ed.edit((tx) => {
+    const L = tx.lines;
+    const i = L.findIndex((l) => l.key === key);
+    if (i < 0) return;
+    // The section and its synopsis lines (with the blank lines between them) move together.
+    let j = i + 1;
+    while (j < L.length && (L[j].text.trim() === '' || /^\s*=(?!=)/.test(L[j].text))) j++;
+    while (j > i + 1 && L[j - 1].text.trim() === '') j--;
+    const block = tx.removeLines(i, j - i);
+    // Drop the blank line that followed it, unless the next text needs it.
+    if (i < L.length && L[i].text.trim() === '' && i > 0 && L[i - 1].text.trim() === '') tx.removeLines(i, 1);
+    let at = L.findIndex((l) => l.key === target);
+    if (at < 0) at = L.length;
+    const ins = [...block, { key: newKey(), text: '' }];
+    if (at > 0 && L[at - 1].text.trim() !== '') ins.unshift({ key: newKey(), text: '' });
+    tx.insertLines(at, ins);
+    const find = (kk: number, ch: number) => {
+      const li = L.findIndex((l) => l.key === kk);
+      return li >= 0 ? { line: li, ch } : { line: Math.min(L.length - 1, caret.head.line), ch: 0 };
+    };
+    return { anchor: find(ck.a, ck.ac), head: find(ck.h, ck.hc) };
+  });
+  ed.history.seal();
+  app.refreshDerived(true);
+  app.structureChanged();
+  toast(`“${sec.title}” now starts at scene ${items[k].number}.`, { actions: [{ label: 'Undo', run: () => app.undoRedo('undo') }] });
+}
+
 export function sectionMenu(app: App, sec: StorySection): MenuItem[] {
   const items = sceneItems(app);
   const first = items[sec.firstScene];
@@ -233,16 +281,17 @@ function deleteCustomBeat(app: App, id: string) {
 // ------------------------------------------------------------------------------------
 // Positions (from the real pagination)
 
-let posCache: { key: string; value: { scenes: ScenePosition[]; total: number } } | null = null;
+const EMPTY = { scenes: [] as ScenePosition[], total: 0 };
+let posCache: { of: unknown; value: { scenes: ScenePosition[]; total: number } } | null = null;
 
+/** Where each scene starts and how long it is, in pages (from the app's pagination). */
 export function positions(app: App): { scenes: ScenePosition[]; total: number } {
-  const ed = app.editor;
-  const key = `${ed.version}|${JSON.stringify(app.project?.meta.exportSettings ?? null)}`;
-  if (posCache?.key === key) return posCache.value;
-  const s = projectExportSettings(app);
-  const r = paginate(ed.lineTexts, ed.parsed, { ...s, titlePage: false }, { kind: 'all' });
-  const value = scenePositions(r.pages, r.capacity.linesPerPage, ed.parsed.scenes.map((sc) => sc.line));
-  posCache = { key, value };
+  const r = app.pagination();
+  if (!r) return EMPTY;
+  if (posCache?.of === r) return posCache.value;
+  const body = r.pages.filter((p) => !p.title);
+  const value = scenePositions(body, r.capacity.linesPerPage, app.editor.parsed.scenes.map((sc) => sc.line));
+  posCache = { of: r, value };
   return value;
 }
 
@@ -371,6 +420,10 @@ export class Timeline {
         const to = sec.endScene < pos.length ? pos[sec.endScene].start : total;
         const band = h('div', { class: `tl-band act${i % 2 ? ' alt' : ''}`, style: { left: `${x(from)}px`, width: `${Math.max(2, x(to - from))}px` }, title: `${sec.title} · pages ${pageNumberAt(from)}–${Math.max(pageNumberAt(from), Math.ceil(to))}` }, h('span', null, sec.title));
         band.addEventListener('click', () => app.setSceneSelection(items.slice(sec.firstScene, sec.endScene).map((s) => s.id), items[sec.firstScene]?.id ?? null));
+        // The left edge moves where the act begins (and where the one before it ends).
+        const grip = h('div', { class: 'tl-grip', title: `Drag to let “${sec.title}” begin at another scene` });
+        band.append(grip);
+        this.dragSection(grip, t, sec, pos, ppp);
         band.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           openMenu(sectionMenu(app, sec), { x: e.clientX, y: e.clientY });
@@ -456,13 +509,49 @@ export class Timeline {
       });
       lane(label, t, 'beat');
     }
-    if (!placed.length) lane(h('span', { class: 'dim' }, 'No beats'), h('div', null, h('div', { class: 'tl-empty' }, model.id === CUSTOM_MODEL_ID ? 'Add the beats of your own model with “Add beat…”.' : '')), 'beat');
+    if (!placed.length) lane(h('span', { class: 'dim' }, 'No beats'), h('div', null, h('div', { class: 'tl-empty' }, model.id === CUSTOM_MODEL_ID ? 'Add the beats of your own model with “Add beat…”.' : '')), 'beat empty');
 
     const canvas = h('div', { class: 'tl-canvas' }, ...lanes);
     canvas.style.setProperty('--gutter', `${GUTTER}px`);
     this.scroll.replaceChildren(canvas);
     this.scroll.scrollLeft = scrollLeft;
     this.scroll.scrollTop = scrollTop;
+  }
+
+  /** Drag the start of an act or sequence to another scene boundary. */
+  private dragSection(grip: HTMLElement, track: HTMLElement, sec: StorySection, pos: ScenePosition[], ppp: number) {
+    grip.addEventListener('click', (e) => e.stopPropagation());
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      grip.setPointerCapture(e.pointerId);
+      const [lo, hi] = sectionRange(this.app, sec);
+      const guide = h('div', { class: 'tl-guide' });
+      this.scroll.querySelector('.tl-canvas')?.append(guide);
+      const sceneAt = (clientX: number) => {
+        const r = track.getBoundingClientRect();
+        const p = (clientX - r.left) / ppp;
+        let best = lo;
+        for (let k = lo; k <= hi; k++) if (Math.abs(pos[k].start - p) < Math.abs(pos[best].start - p)) best = k;
+        return best;
+      };
+      const move = (ev: PointerEvent) => {
+        const k = sceneAt(ev.clientX);
+        const r = track.getBoundingClientRect();
+        const c = (this.scroll.querySelector('.tl-canvas') as HTMLElement).getBoundingClientRect();
+        guide.style.left = `${r.left - c.left + Math.round(pos[k].start * ppp)}px`;
+      };
+      move(e);
+      const up = (ev: PointerEvent) => {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        guide.remove();
+        moveSection(this.app, sec, sceneAt(ev.clientX));
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+    });
   }
 
   /** Drag a beat marker along its row; it lands on the scene under the pointer. */

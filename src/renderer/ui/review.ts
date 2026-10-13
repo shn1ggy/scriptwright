@@ -27,7 +27,8 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
   const folded = () => new Set<string>(app.state.layout.reviewFolded ?? []);
   const fold = (k: RK, sec: HTMLElement, ...title: Array<Node | string>) => {
     const isOpen = !folded().has(k);
-    const btn = h('button', { class: 'rv-fold', 'aria-expanded': String(isOpen), 'data-k': k }, h('span', { class: 'collapse-mark' }, icon(isOpen ? 'chevronDown' : 'chevronRight')), ...title);
+    // Like the export groups: the whole heading is the button, the chevron sits at its end.
+    const btn = h('button', { class: 'rv-fold', 'aria-expanded': String(isOpen), 'data-k': k }, ...title, h('span', { class: 'collapse-mark' }, icon(isOpen ? 'chevronDown' : 'chevronRight')));
     sec.classList.toggle('folded', !isOpen);
     btn.addEventListener('click', () => {
       const f = folded();
@@ -65,7 +66,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
   );
   const secComments = h('div', { class: 'rv-section' });
   body.append(secComments);
-  secComments.append(h('div', { class: 'rv-head' }, fold('comments', secComments, h('span', { class: 'rv-swatch comment' }), h('span', null, `Comments (${open.length})`)), h('span', { class: 'spacer' }), switcher));
+  secComments.append(h('div', { class: 'rv-head' }, fold('comments', secComments, h('span', { class: 'rv-swatch comment' }), h('span', null, `Comments (${open.length})`))), switcher);
   const comments = ann.showResolved ? resolved : open;
   if (!comments.length)
     secComments.append(

@@ -97,6 +97,38 @@ await check('the timeline shows the model, acts, scenes and beats; a marker drag
   if (shots) await page.screenshot({ path: path.join(shots, 'cards-acts.png') });
 });
 
+await check('an act begins at another scene by dragging its edge or its divider', async () => {
+  await page.locator('.cards-head .seg-btn[data-mode="timeline"]').click();
+  await sleep(400);
+  const firstOf = () => app(() => { const a = window.__app; const ed = a.editor; const i = ed.lineTexts.indexOf('# Act Two'); return a.scenes.filter((x) => x.kind === 'scene').findIndex((s) => s.line > i); });
+  assert((await firstOf()) === 2, 'start');
+  const grip = page.locator('.tl-band.act').nth(1).locator('.tl-grip');
+  const gb = await grip.boundingBox();
+  const s1 = await page.locator('.tl-scene').nth(1).boundingBox();
+  await page.mouse.move(gb.x + 2, gb.y + gb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(s1.x + 2, gb.y + gb.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await sleep(300);
+  assert((await firstOf()) === 1, 'timeline drag');
+  const scenes = await app(() => window.__app.scenes.filter((x) => x.kind === 'scene').length);
+  assert(scenes === 3, 'scenes changed');
+  await page.locator('.cards-head .seg-btn[data-mode="cards"]').click();
+  await sleep(300);
+  await page.locator('.cards-divider').nth(1).dragTo(page.locator('.cards-grid .card').nth(2));
+  await sleep(300);
+  assert((await firstOf()) === 2, 'cards drag');
+  const t = await text();
+  assert(!t.includes('\n\n\n'), 'double blank lines left behind');
+  assert(/\n\n# Act Two\n\n[A-Z]/.test(t), 'act line not set off by blank lines');
+  // Acts before the first scene are structure, not an opening.
+  const n = await app(() => window.__app.scenes.filter((x) => x.kind === 'opening').length);
+  await app(() => { const ed = window.__app.editor; const i = ed.lineTexts.findIndex((l) => l.startsWith('FADE IN')); ed.edit((tx) => { tx.removeLines(i, 2); return ed.sel; }); window.__app.refreshDerived(true); });
+  const m = await app(() => window.__app.scenes.filter((x) => x.kind === 'opening').length);
+  assert(n === 1 && m === 0, `${n} → ${m}`);
+  await app(() => { window.__app.editor.undo(); window.__app.refreshDerived(true); });
+});
+
 await check('removing an act keeps its scenes', async () => {
   const n0 = await app(() => window.__app.scenes.filter((x) => x.kind === 'scene').length);
   await page.locator('.cards-divider').nth(1).click({ button: 'right' });

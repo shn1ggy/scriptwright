@@ -226,10 +226,6 @@ export function listFontFamilies(cacheFile?: string, dirs = fontDirs()): FontFam
   return memo;
 }
 
-export function resetFontCache() {
-  memo = null;
-}
-
 /** Best face for a style: exact match first, closest weight to 400/700 otherwise. */
 export function pickFace(faces: FontFace[], bold: boolean, italic: boolean): FontFace {
   const target = bold ? 700 : 400;
