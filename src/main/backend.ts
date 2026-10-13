@@ -21,6 +21,15 @@ import {
 } from '../shared/types';
 import { RenderInfo, renderPdf, scriptFontAdvance } from './pdfexport';
 import { FontFamily, listFontFamilies } from './fonts';
+import { computeChanges } from '../shared/revisions';
+
+export interface ExportInfo {
+  title?: string;
+  author?: string;
+  extraPrefixes?: string[];
+  /** Mark changes against an earlier version. */
+  revision?: { text: string; sceneIds?: string[]; currentIds: Array<string | undefined>; label: string };
+}
 import { readZip, writeZip } from './zip';
 
 export const META_DIR = '.scriptwright';
@@ -762,25 +771,70 @@ export class Backend extends EventEmitter {
     return this.fontFamilies().map((f) => ({ family: f.family, mono: f.mono, advance: f.advance }));
   }
 
-  exportPdf(text: string, settings: ExportSettings, scope: ExportScope, info: { title?: string; author?: string; extraPrefixes?: string[] }) {
+  exportPdf(text: string, settings: ExportSettings, scope: ExportScope, info: ExportInfo) {
     const lines = text.replace(/\r\n?/g, '\n').split('\n');
     const p = parse(lines, { extraPrefixes: info.extraPrefixes });
     const ri = this.renderInfo({ title: info.title, author: info.author });
-    const result = paginate(lines, p, settings, scope, scriptFontAdvance(settings, ri));
+    const rev = this.revisionMarks(lines, p, settings, info);
+    if (rev) ri.revisionLabel = info.revision!.label;
+    const result = paginate(lines, p, settings, scope, scriptFontAdvance(settings, ri), rev?.marks);
     const out = renderPdf(result, settings, ri);
-    return { pdf: out.pdf, pages: result.bodyPageCount, warnings: out.warnings, fontUsed: out.fontUsed, capacity: result.capacity };
+    return {
+      pdf: out.pdf,
+      pages: result.bodyPageCount,
+      warnings: out.warnings,
+      fontUsed: out.fontUsed,
+      capacity: result.capacity,
+      revision: rev ? { ...rev.stats, changedPages: result.pages.filter((pg) => pg.changed).length } : null,
+    };
+  }
+
+  private revisionMarks(lines: string[], p: ReturnType<typeof parse>, s: ExportSettings, info: ExportInfo) {
+    const r = info.revision;
+    if (!r) return null;
+    const ch = computeChanges(
+      lines,
+      p,
+      r.currentIds,
+      r.text,
+      r.sceneIds,
+      { ignoreOrder: s.revIgnoreOrder, ignoreSceneNumbers: s.revIgnoreSceneNumbers, markDeletions: s.revMarkDeletions, markMoved: s.revMarkMoved },
+      info.extraPrefixes,
+    );
+    return { marks: { chars: ch.chars, marked: ch.marked, changedPagesOnly: s.revChangedPagesOnly }, stats: ch.stats };
+  }
+
+  // Copies of the screenplay saved with every export -----------------------------------
+
+  private exportCopyFile(rel: string, id: string) {
+    return path.join(this.resolve(rel), META_DIR, 'exports', `${id.replace(/[^\w-]/g, '')}.fountain`);
+  }
+
+  saveExportCopy(rel: string, id: string, text: string) {
+    atomicWrite(this.exportCopyFile(rel, id), text);
+  }
+
+  readExportCopy(rel: string, id: string): string {
+    return fs.readFileSync(this.exportCopyFile(rel, id), 'utf8');
+  }
+
+  deleteExportCopy(rel: string, id: string) {
+    const f = this.exportCopyFile(rel, id);
+    if (fs.existsSync(f)) fs.unlinkSync(f);
   }
 
   /** Separate PDFs for each scene into a folder. */
-  exportScenePdfs(text: string, settings: ExportSettings, folder: string, info: { title?: string; extraPrefixes?: string[] }) {
+  exportScenePdfs(text: string, settings: ExportSettings, folder: string, info: ExportInfo) {
     const lines = text.replace(/\r\n?/g, '\n').split('\n');
     const p = parse(lines, { extraPrefixes: info.extraPrefixes });
     fs.mkdirSync(folder, { recursive: true });
     const ri = this.renderInfo({ title: info.title });
     const adv = scriptFontAdvance(settings, ri);
+    const rev = this.revisionMarks(lines, p, settings, info);
+    if (rev) ri.revisionLabel = info.revision!.label;
     const written: string[] = [];
     p.scenes.forEach((sc, idx) => {
-      const r = paginate(lines, p, { ...settings, titlePage: false }, { kind: 'scenes', sceneLines: [sc.line] }, adv);
+      const r = paginate(lines, p, { ...settings, titlePage: false }, { kind: 'scenes', sceneLines: [sc.line] }, adv, rev ? { ...rev.marks, changedPagesOnly: false } : undefined);
       const out = renderPdf(r, settings, ri);
       const name = `${String(idx + 1).padStart(3, '0')} ${safeName(sc.heading).slice(0, 60)}.pdf`;
       atomicWrite(path.join(folder, name), out.pdf);

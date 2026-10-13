@@ -140,6 +140,20 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 - **Export Fountain file** (Mod+Shift+E) for other apps: write, keep or remove scene numbers,
   optionally drop notes and omitted text. The screenplay itself is not changed.
 
+**Export versions and revision marks**
+- Every PDF export keeps a copy of the screenplay as an *exported version* with a name, the
+  date and time, the page count, what was exported and an optional note (only shown in the
+  app). They are listed under History, where you can rename them, edit notes, compare them with
+  the current screenplay, or delete the stored copy.
+- **Mark changes since** any earlier export or named draft: changed words are shown in a color
+  of your choice (colored text, highlight, underline and/or bold) with a margin mark (`*` by
+  default) on every changed line and where text was removed.
+- **Ignore scene order** (on by default): scenes are matched by identity and content, so moved
+  scenes, and the renumbering caused by deleting or inserting scenes, mark nothing that did not
+  actually change. Changes to written scene numbers can be ignored too. Optionally mark the
+  headings of moved scenes, export only pages with changes, and print "Changes since …" in the
+  header.
+
 ## Default shortcuts
 
 `Mod` is ⌘ on macOS and Ctrl on Windows/Linux. All can be changed in the command window.
@@ -192,8 +206,8 @@ Distinguishing what was actually run from what was not:
 
 | Area | Status |
 | --- | --- |
-| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, storage backend | 95 unit tests, run on Linux (Node 22) |
-| Renderer (editor, views, outline, dialogs, export preview) | 7 end-to-end suites (76 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
+| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, storage backend | 101 unit tests, run on Linux (Node 22) |
+| Renderer (editor, views, outline, dialogs, export preview) | 8 end-to-end suites (80 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
 | Typing latency | ≈4 ms per keystroke on a 6,200-line (≈130 page) script in Chromium |
 | Electron shell (window, menus, dialogs, IPC, close/quit, maximize, spellchecking) | **Written but not run** — Electron could not be installed in the build environment |
 | macOS, Windows | **Not tested** |

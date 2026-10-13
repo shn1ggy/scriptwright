@@ -167,6 +167,25 @@ export interface ProjectMeta {
   passages: PassageRecord[];
   shelf: ShelfItem[];
   drafts: DraftInfo[];
+  exports: ExportRecord[];
+  /** Version last used for "Mark changes since" in the export. */
+  lastBaseline?: string;
+}
+
+/** A copy of the screenplay saved with every PDF export, to compare later versions against. */
+export interface ExportRecord {
+  id: string;
+  name: string;
+  note: string;
+  created: string;
+  pages: number;
+  /** What was exported, e.g. "Complete screenplay". */
+  scope: string;
+  /** Where the PDF was written (for reference only). */
+  file?: string;
+  sceneIds: string[];
+  /** The version this export marked changes against. */
+  comparedWith?: string;
 }
 
 /** Text position stored as quoted text with context (see shared/anchors.ts). */
@@ -258,6 +277,7 @@ export function emptyMeta(id: string): ProjectMeta {
     passages: [],
     shelf: [],
     drafts: [],
+    exports: [],
   };
 }
 
@@ -338,6 +358,20 @@ export interface ExportSettings {
   draftDate: string;
   label: string;
   watermark: string;
+  // Revision marks (changes since an earlier version) -----------------------------------
+  revColor: string;
+  revColorText: boolean;
+  revHighlight: boolean;
+  revUnderline: boolean;
+  revBold: boolean;
+  revMargin: boolean;
+  revMarkChar: string;
+  revIgnoreOrder: boolean;
+  revIgnoreSceneNumbers: boolean;
+  revMarkDeletions: boolean;
+  revMarkMoved: boolean;
+  revChangedPagesOnly: boolean;
+  revHeaderNote: boolean;
   // Content -----------------------------------------------------------------------------
   includeNotes: boolean;
   includeSections: boolean;
@@ -403,6 +437,19 @@ export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettin
     draftDate: '',
     label: '',
     watermark: '',
+    revColor: '#1E63C8',
+    revColorText: true,
+    revHighlight: false,
+    revUnderline: false,
+    revBold: false,
+    revMargin: true,
+    revMarkChar: '*',
+    revIgnoreOrder: true,
+    revIgnoreSceneNumbers: true,
+    revMarkDeletions: true,
+    revMarkMoved: false,
+    revChangedPagesOnly: false,
+    revHeaderNote: true,
     includeNotes: false,
     includeSections: false,
     includeSynopses: false,

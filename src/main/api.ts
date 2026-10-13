@@ -1,7 +1,7 @@
 // The set of backend operations exposed to the renderer. Shared by Electron IPC and the
 // development harness so both run exactly the same code.
 
-import { Backend } from './backend';
+import { Backend, ExportInfo } from './backend';
 import { AppState, ExportScope, ExportSettings, ProjectMeta, Settings } from '../shared/types';
 
 export function createApi(b: Backend) {
@@ -35,10 +35,11 @@ export function createApi(b: Backend) {
     backupProject: (rel: string, dest: string) => b.backupProject(rel, dest),
     importBackup: (zip: string) => b.importBackup(zip),
     importFountain: (file: string) => b.importFountain(file),
-    exportPdf: (text: string, s: ExportSettings, scope: ExportScope, info: { title?: string; author?: string; extraPrefixes?: string[] }) =>
-      b.exportPdf(text, s, scope, info),
-    exportScenePdfs: (text: string, s: ExportSettings, folder: string, info: { title?: string; extraPrefixes?: string[] }) =>
-      b.exportScenePdfs(text, s, folder, info),
+    exportPdf: (text: string, s: ExportSettings, scope: ExportScope, info: ExportInfo) => b.exportPdf(text, s, scope, info),
+    exportScenePdfs: (text: string, s: ExportSettings, folder: string, info: ExportInfo) => b.exportScenePdfs(text, s, folder, info),
+    saveExportCopy: (rel: string, id: string, text: string) => b.saveExportCopy(rel, id, text),
+    readExportCopy: (rel: string, id: string) => b.readExportCopy(rel, id),
+    deleteExportCopy: (rel: string, id: string) => b.deleteExportCopy(rel, id),
     writeFile: (file: string, data: Uint8Array | string) => b.writeFile(file, typeof data === 'string' ? data : Buffer.from(data)),
     fontsAvailable: () => b.fontsAvailable(),
     listFonts: () => b.listFonts(),

@@ -122,7 +122,7 @@ await check('export: dialogue only for one character, lines/characters settings,
   await sleep(1500);
   const info = await page.locator('.export-side .foot .muted').textContent();
   assert(/1 page/.test(info), info);
-  const units = await page.locator('.export-side .ex-section >> nth=2').textContent();
+  const units = await page.locator('.export-side .ex-section:has(h3:text-is("Page layout"))').textContent();
   assert(units.includes('lines') && units.includes('characters'), units);
   const opts = await page.locator('select[aria-label="Title font"] optgroup').evaluateAll((g) => g.map((x) => x.label));
   assert(opts[0] === 'Courier' && opts[1] === 'System fonts', JSON.stringify(opts));

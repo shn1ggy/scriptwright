@@ -202,3 +202,73 @@ export function openComparison(app: App, v: { title: string; text: string; scene
     ],
   });
 }
+
+/** Exported versions: a copy of the screenplay was kept with every PDF export. */
+export function renderExports(app: App, body: HTMLElement, rerender: () => void) {
+  const p = app.project!;
+  const list = p.meta.exports;
+  body.append(h('div', { class: 'rv-head' }, h('span', null, `Exported versions (${list.length})`)));
+  if (!list.length) {
+    body.append(h('div', { class: 'notice' }, 'Every PDF export keeps a copy of the screenplay here, so a later export can mark what changed since then.'));
+    return;
+  }
+  for (const e of list) {
+    const note = h('textarea', { class: 'field', rows: 2, placeholder: 'Note (only shown in the app)', 'aria-label': 'Note' });
+    note.value = e.note;
+    note.addEventListener('change', () => {
+      e.note = note.value.trim();
+      app.markMetaDirty();
+    });
+    body.append(
+      h(
+        'div',
+        { class: 'rv-item' },
+        h('div', { class: 'rv-label' }, e.name),
+        h(
+          'div',
+          { class: 'rv-meta' },
+          `${new Date(e.created).toLocaleString()} · ${e.pages} page${e.pages === 1 ? '' : 's'} · ${e.scope}${e.comparedWith ? ` · marked changes since ${e.comparedWith}` : ''}`,
+        ),
+        note,
+        h(
+          'div',
+          { class: 'rv-actions' },
+          h('button', {
+            class: 'btn sm',
+            onclick: async () => {
+              let text: string;
+              try {
+                text = await bridge.call('readExportCopy', p.rel, e.id);
+              } catch (err: any) {
+                toast(`The copy could not be read: ${err.message}`, { warn: true });
+                return;
+              }
+              openComparison(app, { title: `Exported version “${e.name}”`, text, sceneIds: e.sceneIds, label: e.name });
+            },
+          }, 'Compare…'),
+          h('button', {
+            class: 'btn sm',
+            onclick: async () => {
+              const n = await promptDialog('Rename exported version', 'Name', e.name, { okLabel: 'Rename' });
+              if (!n) return;
+              e.name = n;
+              app.markMetaDirty();
+              rerender();
+            },
+          }, 'Rename'),
+          h('button', {
+            class: 'btn sm',
+            onclick: async () => {
+              if (!(await confirmDialog('Delete exported version', `Delete the saved copy of “${e.name}”? The PDF file itself is not affected, but you can no longer mark changes since this version.`, 'Delete', { danger: true }))) return;
+              await bridge.call('deleteExportCopy', p.rel, e.id);
+              p.meta.exports = p.meta.exports.filter((x) => x.id !== e.id);
+              if (p.meta.lastBaseline === `export:${e.id}`) p.meta.lastBaseline = undefined;
+              app.markMetaDirty();
+              rerender();
+            },
+          }, 'Delete'),
+        ),
+      ),
+    );
+  }
+}

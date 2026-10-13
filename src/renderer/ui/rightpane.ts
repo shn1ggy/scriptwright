@@ -8,7 +8,7 @@ import { SCENE_COLORS, STATUS_LABELS } from './outline';
 import { SceneStatus } from '../../shared/types';
 import { renderReview } from './review';
 import { renderShelf } from './shelf';
-import { openComparison, renderDrafts } from './drafts';
+import { openComparison, renderDrafts, renderExports } from './drafts';
 
 type Tab = 'notes' | 'scene' | 'comments' | 'shelf' | 'history';
 
@@ -109,6 +109,7 @@ export class RightPane {
     else if (this.tab === 'shelf') renderShelf(this.app, this.body, rerender);
     else {
       renderDrafts(this.app, this.body, rerender);
+      renderExports(this.app, this.body, rerender);
       this.renderHistory();
     }
   }

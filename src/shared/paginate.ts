@@ -17,6 +17,8 @@ import { ExportScope, ExportSettings, paperDims } from './types';
 export const S_BOLD = 1;
 export const S_ITALIC = 2;
 export const S_UNDERLINE = 4;
+/** Changed since the compared version (revision marks). */
+export const S_CHANGED = 8;
 
 export interface Run {
   text: string;
@@ -46,6 +48,8 @@ export interface PageLine {
   kind: LineKind;
   sceneNumber?: string;
   sourceLine: number;
+  /** Revision mark in the margin. */
+  mark?: boolean;
 }
 
 export interface TitleItem {
@@ -63,6 +67,8 @@ export interface Page {
   title?: TitleItem[];
   /** Index of scenes (heading lines) that start on this page. */
   sceneLines: number[];
+  /** Contains revision marks. */
+  changed?: boolean;
 }
 
 export interface Capacity {
@@ -148,7 +154,7 @@ function flagsToStyle(f: number): number {
 }
 
 /** Visible characters and their styles for export (operators, notes and boneyard removed). */
-export function styledText(text: string, flags: Uint8Array | null, keepNotes = false): { text: string; styles: number[] } {
+export function styledText(text: string, flags: Uint8Array | null, keepNotes = false, changed?: Uint8Array): { text: string; styles: number[] } {
   let out = '';
   const styles: number[] = [];
   for (let k = 0; k < text.length; k++) {
@@ -157,7 +163,7 @@ export function styledText(text: string, flags: Uint8Array | null, keepNotes = f
     if (f & F_BONEYARD) continue;
     if (f & F_NOTE && !keepNotes) continue;
     out += text[k];
-    styles.push(flagsToStyle(f));
+    styles.push(flagsToStyle(f) | (changed && changed[k] ? S_CHANGED : 0));
   }
   return { text: out, styles };
 }
@@ -304,8 +310,23 @@ export function capacity(s: ExportSettings, advanceEm = 0.6): { cap: Capacity; w
   return { cap, warnings };
 }
 
-export function paginate(lines: string[], parse: ParseResult, s: ExportSettings, scope: ExportScope = { kind: 'all' }, advanceEm = 0.6): PaginationResult {
+export interface RevisionMarks {
+  chars: Map<number, Uint8Array>;
+  marked: Set<number>;
+  /** Keep only pages that contain a change. */
+  changedPagesOnly?: boolean;
+}
+
+export function paginate(
+  lines: string[],
+  parse: ParseResult,
+  s: ExportSettings,
+  scope: ExportScope = { kind: 'all' },
+  advanceEm = 0.6,
+  revisions?: RevisionMarks,
+): PaginationResult {
   const { cap, warnings } = capacity(s, advanceEm);
+  const sty = (i: number, keepNotes = false) => styledText(lines[i], parse.lines[i].flags, keepNotes, revisions?.chars.get(i));
   const dialCol = cap.dialogueCol;
   const parCol = cap.parentheticalCol;
   const units: Unit[] = [];
@@ -402,14 +423,14 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
     }
     if (t === 'section' || t === 'synopsis') {
       if (t === 'section' ? s.includeSections : s.includeSynopses) {
-        const raw = trimRaw(styledText(lines[i], pl.flags), i);
+        const raw = trimRaw(sty(i), i);
         pushUnit(unit('other', [para(t, [raw], cap.actionChars, 0, { extra: t === 'section' ? S_BOLD : S_ITALIC })], scene, i, { keepNext: 1 }));
       }
       i++;
       continue;
     }
     if (t === 'heading') {
-      const st = styledText(lines[i], pl.flags);
+      const st = sty(i);
       const raw = trimRaw({ text: st.text.toUpperCase(), styles: st.styles }, i);
       const extra = (s.boldHeadings ? S_BOLD : 0) | (s.underlineHeadings ? S_UNDERLINE : 0);
       pushUnit(
@@ -446,7 +467,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
       continue;
     }
     if (t === 'transition') {
-      const raw = trimRaw(styledText(lines[i], pl.flags), i);
+      const raw = trimRaw(sty(i), i);
       raw.text = raw.text.toUpperCase();
       const tp =
         s.transitionAlign === 'left'
@@ -460,7 +481,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
       const raws: Raw[] = [];
       let j = i;
       while (j < lines.length && parse.lines[j].type === 'centered') {
-        raws.push(trimRaw(styledText(lines[j], parse.lines[j].flags), j));
+        raws.push(trimRaw(sty(j), j));
         j++;
       }
       pushUnit(unit('other', [para('centered', raws, cap.actionChars, 0, { align: 'center', alignWidth: cap.actionChars })], scene, i));
@@ -471,7 +492,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
       const raws: Raw[] = [];
       let j = i;
       while (j < lines.length && parse.lines[j].type === 'lyric' && !parse.lines[j].inDialogue) {
-        raws.push({ ...styledText(lines[j], parse.lines[j].flags), source: j });
+        raws.push({ ...sty(j), source: j });
         j++;
       }
       pushUnit(unit('action', [para('lyric', raws, cap.actionChars, 0, { extra: S_ITALIC, splittable: true })], scene, i, { splittable: s.splitAction }));
@@ -479,7 +500,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
       continue;
     }
     if (t === 'note') {
-      const raw = { ...styledText(lines[i], pl.flags, true), source: i };
+      const raw = { ...sty(i, true), source: i };
       pushUnit(unit('other', [para('note', [raw], cap.actionChars, 0, { extra: S_ITALIC, splittable: true })], scene, i, { splittable: true }));
       i++;
       continue;
@@ -489,7 +510,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
     let j = i;
     while (j < lines.length && includeLine(j) && (parse.lines[j].type === 'action' || (parse.lines[j].type === 'note' && !s.includeNotes))) {
       if (parse.lines[j].type === 'action') {
-        const st = styledText(lines[j], parse.lines[j].flags, s.includeNotes);
+        const st = sty(j, s.includeNotes);
         const text = st.text.replace(/\t/g, '    ');
         const styles = st.text.includes('\t') ? expandTabStyles(st.text, st.styles) : st.styles;
         const trimmedEnd = text.trimEnd();
@@ -506,14 +527,16 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
 
   function buildDialogue(cueLine: number, end: number, scene: number): Para[] {
     const pl = parse.lines[cueLine];
-    const st = styledText(lines[cueLine], pl.flags);
+    const st = sty(cueLine);
+    const cueStart = st.text.length - st.text.trimStart().length;
     let cueText = st.text.trim().replace(/\s*\^$/, '').toUpperCase();
+    const cueStyles = st.styles.slice(cueStart, cueStart + cueText.length).map((x) => x & S_CHANGED);
     if (s.contdAfterAction && lastCue && lastCue.scene === scene && lastCue.cue === pl.cue && lastCue.sawAction && !/CONT/i.test(cueText)) {
       cueText += ' ' + s.contdLabel;
     }
     lastCue = { cue: pl.cue ?? '', scene, sawAction: false };
     const out: Para[] = [
-      para('character', [{ text: cueText, styles: new Array(cueText.length).fill(0), source: cueLine }], cap.actionChars - cap.characterCol, cap.characterCol, { extra: s.boldCues ? S_BOLD : 0 }),
+      para('character', [{ text: cueText, styles: cueStyles.concat(new Array(Math.max(0, cueText.length - cueStyles.length)).fill(0)), source: cueLine }], cap.actionChars - cap.characterCol, cap.characterCol, { extra: s.boldCues ? S_BOLD : 0 }),
     ];
     let k = cueLine + 1;
     while (k < end) {
@@ -523,14 +546,14 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
         continue;
       }
       if (p.type === 'parenthetical') {
-        out.push(para('parenthetical', [trimRaw(styledText(lines[k], p.flags), k)], cap.parentheticalChars, parCol));
+        out.push(para('parenthetical', [trimRaw(sty(k), k)], cap.parentheticalChars, parCol));
         k++;
         continue;
       }
       const lyric = p.type === 'lyric';
       const raws: Raw[] = [];
       while (k < end && (parse.lines[k].type === 'dialogue' || parse.lines[k].type === 'lyric') && (parse.lines[k].type === 'lyric') === lyric) {
-        raws.push(trimRaw(styledText(lines[k], parse.lines[k].flags), k));
+        raws.push(trimRaw(sty(k), k));
         k++;
       }
       if (!raws.length) {
@@ -583,9 +606,25 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
     pages.push(cur);
     used = 0;
   };
+  // Margin marks: rows with changed text, plus the first row of lines marked for removed text.
+  const markedRowDone = new Set<number>();
+  const rowMark = (ol: OutLine): boolean => {
+    if (!revisions) return false;
+    if (ol.runs.some((r) => r.style & S_CHANGED)) {
+      markedRowDone.add(ol.sourceLine);
+      return true;
+    }
+    if (revisions.marked.has(ol.sourceLine) && !markedRowDone.has(ol.sourceLine) && ol.kind !== 'more') {
+      markedRowDone.add(ol.sourceLine);
+      return true;
+    }
+    return false;
+  };
   const place = (ol: OutLine) => {
-    cur.lines.push({ row: used, col: ol.col, runs: ol.runs, kind: ol.kind, sceneNumber: ol.sceneNumber, sourceLine: ol.sourceLine });
+    const mark = rowMark(ol) || (ol.dual ? rowMark(ol.dual) : false);
+    cur.lines.push({ row: used, col: ol.col, runs: ol.runs, kind: ol.kind, sceneNumber: ol.sceneNumber, sourceLine: ol.sourceLine, mark: mark || undefined });
     if (ol.dual) cur.lines.push({ row: used, col: ol.dual.col, runs: ol.dual.runs, kind: ol.dual.kind, sourceLine: ol.dual.sourceLine });
+    if (mark) cur.changed = true;
     used++;
   };
   const unitLines = (u: Unit) => u.fixed ?? layoutParas(u.paras);
@@ -761,9 +800,10 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
     const wanted = parsePageRanges(scope.pages, pages.length);
     result = pages.filter((p) => wanted.has(p.number));
   }
+  if (revisions?.changedPagesOnly) result = result.filter((p) => p.changed);
 
   const out: Page[] = [];
-  if (s.titlePage && parse.titleEnd > 0 && scope.kind !== 'pages') out.push(buildTitlePage(lines, parse, s, cap));
+  if (s.titlePage && parse.titleEnd > 0 && scope.kind !== 'pages' && !revisions?.changedPagesOnly) out.push(buildTitlePage(lines, parse, s, cap));
   out.push(...result);
   return { pages: out, capacity: cap, warnings, bodyPageCount: result.length };
 }

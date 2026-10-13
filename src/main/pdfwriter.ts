@@ -213,16 +213,24 @@ export class PdfDocument {
   }
 
   /** Draws text with its baseline at (x, y) measured from the top-left of the page. */
-  text(x: number, y: number, text: string, font: string, size: number, gray = 0) {
+  text(x: number, y: number, text: string, font: string, size: number, gray = 0, rgb?: [number, number, number]) {
     const p = this.current!;
     p.fonts.add(font);
     const py = p.height - y;
-    p.ops.push(`BT ${gray ? `${gray.toFixed(3)} g ` : ''}/${font} ${fmt(size)} Tf ${fmt(x)} ${fmt(py)} Td (${this.encode(text)}) Tj ET${gray ? ' 0 g' : ''}`);
+    const fill = rgb ? `${rgb.map((c) => c.toFixed(3)).join(' ')} rg ` : gray ? `${gray.toFixed(3)} g ` : '';
+    p.ops.push(`BT ${fill}/${font} ${fmt(size)} Tf ${fmt(x)} ${fmt(py)} Td (${this.encode(text)}) Tj ET${fill ? ' 0 g' : ''}`);
   }
 
-  line(x1: number, y1: number, x2: number, y2: number, width = 0.6) {
+  line(x1: number, y1: number, x2: number, y2: number, width = 0.6, rgb?: [number, number, number]) {
     const p = this.current!;
-    p.ops.push(`${fmt(width)} w ${fmt(x1)} ${fmt(p.height - y1)} m ${fmt(x2)} ${fmt(p.height - y2)} l S`);
+    const stroke = rgb ? `${rgb.map((c) => c.toFixed(3)).join(' ')} RG ` : '';
+    p.ops.push(`${stroke}${fmt(width)} w ${fmt(x1)} ${fmt(p.height - y1)} m ${fmt(x2)} ${fmt(p.height - y2)} l S${stroke ? ' 0 G' : ''}`);
+  }
+
+  /** Filled rectangle; (x, y) is the top-left corner measured from the top of the page. */
+  rect(x: number, y: number, w: number, h: number, rgb: [number, number, number]) {
+    const p = this.current!;
+    p.ops.push(`${rgb.map((c) => c.toFixed(3)).join(' ')} rg ${fmt(x)} ${fmt(p.height - y - h)} ${fmt(w)} ${fmt(h)} re f 0 g`);
   }
 
   /** Large rotated text centred on the page (drawn first so it sits under the script). */

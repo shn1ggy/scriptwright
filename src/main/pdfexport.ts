@@ -3,7 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 import { PdfDocument, TtfInfo, parseTtf } from './pdfwriter';
-import { PaginationResult, S_BOLD, S_ITALIC, S_UNDERLINE } from '../shared/paginate';
+import { PaginationResult, S_BOLD, S_CHANGED, S_ITALIC, S_UNDERLINE } from '../shared/paginate';
 import { ExportSettings } from '../shared/types';
 import { FontFamily, loadFontData, pickFace } from './fonts';
 
@@ -13,6 +13,14 @@ export interface RenderInfo {
   fontsDir?: string;
   /** System font families, for fonts other than Courier and Courier Prime. */
   families?: () => FontFamily[];
+  /** "Changes since …" when revision marks are shown. */
+  revisionLabel?: string;
+}
+
+function hexRgb(hex: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  const n = m ? parseInt(m[1], 16) : 0x1e63c8;
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
 export interface RenderOutput {
@@ -123,6 +131,11 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
   const headerY = Math.max(lineH, top - 2 * lineH) + baseline;
   const footerY = Math.min(H - lineH, cap.textBottom + 2 * lineH) + baseline;
 
+  const revRgb = hexRgb(s.revColor);
+  // Light tint of the revision color for highlighting.
+  const revTint: [number, number, number] = revRgb.map((c) => 1 - (1 - c) * 0.22) as [number, number, number];
+  const markX = Math.min(W - 3 * charW, actionRight + (s.sceneNumbers === 'right' || s.sceneNumbers === 'both' ? 9 : 4) * charW);
+
   for (const page of result.pages) {
     doc.addPage(W, H);
     if (s.watermark.trim()) {
@@ -154,7 +167,9 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
       else if (s.pageNumberPosition === 'bottom-right') doc.text(actionRight - wOf(label), footerY, label, 'F0', s.fontSize);
       else doc.text((W - wOf(label)) / 2, footerY, label, 'F0', s.fontSize);
     }
-    if (s.header.trim()) doc.text(left, headerY, fillTemplate(s.header, vars(page.number)), 'F0', s.fontSize);
+    const revNote = info.revisionLabel && s.revHeaderNote ? info.revisionLabel : '';
+    const headerText = [s.header.trim() ? fillTemplate(s.header, vars(page.number)) : '', revNote].filter(Boolean).join(' · ');
+    if (headerText) doc.text(left, headerY, headerText, 'F0', s.fontSize, 0, revNote && !s.header.trim() ? revRgb : undefined);
     if (s.label.trim()) {
       const l = fillTemplate(s.label, vars(page.number));
       doc.text((W - wOf(l)) / 2, headerY, l, 'F0', s.fontSize);
@@ -174,12 +189,17 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
       let x = left + line.col * charW;
       for (const run of line.runs) {
         if (!run.text) continue;
-        const font = `F${styleIndex(run.style)}`;
-        doc.text(x, y, run.text, font, s.fontSize);
+        const changed = !!(run.style & S_CHANGED);
+        const style = changed && s.revBold ? run.style | S_BOLD : run.style;
+        const font = `F${styleIndex(style)}`;
         const w = run.text.length * charW;
-        if (run.style & S_UNDERLINE) doc.line(x, y + s.fontSize * 0.14, x + w, y + s.fontSize * 0.14, Math.max(0.5, s.fontSize / 20));
+        if (changed && s.revHighlight && run.text.trim()) doc.rect(x - 0.5, y - s.fontSize * 0.8, w + 1, lineH * 0.98, revTint);
+        doc.text(x, y, run.text, font, s.fontSize, 0, changed && s.revColorText ? revRgb : undefined);
+        if (run.style & S_UNDERLINE) doc.line(x, y + s.fontSize * 0.14, x + w, y + s.fontSize * 0.14, Math.max(0.5, s.fontSize / 20), changed && s.revColorText ? revRgb : undefined);
+        if (changed && s.revUnderline && run.text.trim()) doc.line(x, y + s.fontSize * 0.2, x + w, y + s.fontSize * 0.2, Math.max(0.6, s.fontSize / 16), revRgb);
         x += w;
       }
+      if (line.mark && s.revMargin && s.revMarkChar.trim()) doc.text(markX, y, s.revMarkChar.trim().slice(0, 3), 'F1', s.fontSize, 0, s.revColorText || s.revHighlight || s.revUnderline ? revRgb : undefined);
       if (line.sceneNumber && s.sceneNumbers !== 'off') {
         const num = line.sceneNumber;
         if (s.sceneNumbers === 'left' || s.sceneNumbers === 'both') doc.text(Math.max(18, left - (num.length + 4) * charW), y, num, 'F0', s.fontSize);
