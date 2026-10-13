@@ -2,7 +2,7 @@
 
 import type { App } from '../app';
 import { Command, comboFromEvent, formatCombo } from '../commands';
-import { h, icon } from './dom';
+import { h, icon, withClear } from './dom';
 import { openDialog } from './overlay';
 import { isMac } from '../bridge';
 
@@ -36,7 +36,7 @@ export class CommandList {
       h('span', null, `${mod}${isMac ? '⌫' : 'Backspace'} Clear`),
       h('span', null, `${mod}${isMac ? '⇧' : 'Shift+'}R Restore default`),
     );
-    this.el = h('div', { class: 'palette', style: { display: 'flex', flexDirection: 'column', minHeight: '0', flex: '1' } }, h('div', { class: 'search' }, this.search), this.list, this.msg, foot);
+    this.el = h('div', { class: 'palette', style: { display: 'flex', flexDirection: 'column', minHeight: '0', flex: '1' } }, h('div', { class: 'search' }, withClear(this.search)), this.list, this.msg, foot);
     this.render();
   }
 

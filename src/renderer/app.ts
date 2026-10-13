@@ -244,7 +244,7 @@ export class App {
     // Options of the Scene and Dialogue views live in the view itself, never in the tab bar.
     this.viewControls = h('div', { class: 'view-head hidden' });
     const t = this.tabs;
-    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters, t.source), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, t.export));
+    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, t.source, t.export));
 
     this.leftPane = h('div', { class: 'pane pane-left' });
     this.rightPaneEl = h('div', { class: 'pane pane-right' });
@@ -1509,7 +1509,7 @@ export class App {
     this.saveStateSoon();
   }
 
-  /** Focuses one scene in Scene view, keeping per-scene caret and scroll context. */
+  /** Focuses one scene in Scene view, keeping per-scene caret and scroll context (the find bar follows). */
   enterScene(item: SceneItem, opts: { restoreContext?: boolean; caret?: Pos; screenOffset?: number | null } = {}) {
     const p = this.project;
     if (!p) return;
@@ -1561,6 +1561,8 @@ export class App {
     this.updateChrome();
     this.outline.updateActive();
     this.rightPane.onActiveSceneChange();
+    // In Scene view the find bar searches only the scene shown.
+    this.findbar.onDocChange();
   }
 
   private storeSceneContext() {

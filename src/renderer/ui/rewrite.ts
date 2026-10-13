@@ -58,6 +58,11 @@ export function openRewriteFor(app: App, passageId: string, isNew = false) {
   });
   const list = h('div', { class: 'rw-list', role: 'listbox' });
   const editor = h('textarea', { class: 'field rw-text', spellcheck: 'true', 'aria-label': 'Version text' });
+  // Versions read like the screenplay: the editor's font, size and line height.
+  const es = app.settings.editor;
+  editor.style.fontFamily = `'${es.fontFamily}', 'Courier Prime', 'Courier New', monospace`;
+  editor.style.fontSize = `${es.fontSize}px`;
+  editor.style.lineHeight = `${es.lineHeight}px`;
   const info = h('div', { class: 'notice' });
   const buttons = h('div', { class: 'rw-buttons' });
 

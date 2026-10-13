@@ -1,7 +1,7 @@
 // Characters: who speaks how much, where in the story, and with whom.
 
 import type { App, SceneItem } from '../app';
-import { h } from './dom';
+import { h, withClear } from './dom';
 import { pushEscape } from './overlay';
 import { analyzeCharacters, CharacterStats } from '../../shared/characters';
 import { openRename } from './rename';
@@ -97,7 +97,7 @@ export class CharactersPanel {
         this.countEl,
         h('span', { class: 'spacer' }),
         this.sortSel,
-        this.search,
+        withClear(this.search),
       ),
       (this.body = h('div', { class: 'ch-body' }, this.list, this.detailResizer, this.detail)),
     );

@@ -27,6 +27,9 @@ export class FindBar {
   private popEsc: (() => void) | null = null;
   private recomputeTimer: any = null;
   private dirty = false;
+  /** The result list is folded away unless asked for. */
+  private showList = false;
+  private listBtn!: HTMLButtonElement;
 
   constructor(private app: App) {
     this.input = h('input', { class: 'field', placeholder: 'Find', 'aria-label': 'Find in screenplay', spellcheck: 'false' });
@@ -80,6 +83,7 @@ export class FindBar {
             this.optBtns.caseSensitive,
             this.optBtns.wholeWord,
             this.optBtns.regex,
+            (this.listBtn = iconButton('list', 'Show all results', () => this.toggleList())),
             iconButton('up', 'Previous result (Shift+Enter)', () => this.step(-1)),
             iconButton('down', 'Next result (Enter)', () => this.step(1)),
             iconButton('close', 'Close (Esc)', () => this.close(true)),
@@ -153,9 +157,9 @@ export class FindBar {
     }, 150);
   }
 
-  /** Lines a search may touch: in Dialogue view only the lines on screen. */
+  /** Lines a search may touch: in Scene and Dialogue view only the lines on screen. */
   private includeFn(): ((i: number) => boolean) | undefined {
-    if (this.app.view !== 'dialogue') return undefined;
+    if (this.app.view !== 'dialogue' && this.app.view !== 'scene') return undefined;
     const visible = new Set(this.app.editor.displayedLines);
     return (i) => visible.has(i);
   }
@@ -281,9 +285,17 @@ export class FindBar {
     this.app.editor.setHighlights(this.matches, this.current);
   }
 
+  private toggleList() {
+    this.showList = !this.showList;
+    this.listBtn.classList.toggle('on', this.showList);
+    this.listBtn.title = this.showList ? 'Hide the results' : 'Show all results';
+    this.renderResults();
+    this.input.focus();
+  }
+
   private renderResults() {
     this.results.textContent = '';
-    if (!this.input.value || !this.matches.length) {
+    if (!this.showList || !this.input.value || !this.matches.length) {
       this.results.classList.add('hidden');
       return;
     }

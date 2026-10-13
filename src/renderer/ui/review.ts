@@ -212,7 +212,10 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
       }, c.resolved ? 'Reopen' : 'Resolve'),
       h('button', {
         class: 'btn sm',
-        onclick: () => deleteComment(app, c.id),
+        onclick: () => {
+          deleteComment(app, c.id);
+          rerender();
+        },
       }, 'Delete'),
     ),
   );

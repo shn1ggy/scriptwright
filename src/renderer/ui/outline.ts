@@ -2,7 +2,7 @@
 // navigation, drag-and-drop and keyboard reordering.
 
 import type { App, SceneItem } from '../app';
-import { h, iconButton } from './dom';
+import { h, iconButton, withClear } from './dom';
 import { MenuItem, openMenu } from './overlay';
 import { SceneStatus } from '../../shared/types';
 import { isMac } from '../bridge';
@@ -40,8 +40,7 @@ export class OutlinePane {
         e.preventDefault();
         e.stopPropagation();
         this.search.value = '';
-        this.lastSig = '';
-        this.render();
+        this.search.dispatchEvent(new Event('input'));
         this.app.editor.focus();
       } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
         e.preventDefault();
@@ -63,7 +62,7 @@ export class OutlinePane {
       'div',
       { class: 'outline' },
       h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, h('span', { class: 'spacer' }), iconButton('plus', 'New scene after current', () => this.app.run('scene.new')), iconButton('more', 'Scene actions', (e) => this.moreMenu(e.currentTarget as HTMLElement))),
-      h('div', { class: 'outline-search' }, this.search),
+      h('div', { class: 'outline-search' }, withClear(this.search)),
       this.list,
     );
   }

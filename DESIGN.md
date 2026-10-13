@@ -19,7 +19,7 @@ file first, then the code.
 
 ```
 ┌ title bar 38 ─ ● ● ●  ▣  Project  file.fountain ························ ▣ ┐
-├ tab bar 40 ── Script  Scene  Cards  Dialogue  Characters  Source ··· Export ┤
+├ tab bar 40 ── Script  Scene  Cards  Dialogue  Characters ····· Source  Export ┤
 │ scene pane 280 │ view header 40 (Dialogue, Cards, Characters)  │ notes 320 │
 │ Projects  + …  │                                               │ tabs 40   │
 │  project       │            the page (Courier, centred)        │           │
@@ -94,6 +94,13 @@ Help text sits directly under its field (4 px), and the next row follows after 1
   page: menus, dialogs, the find bar, toasts.
 - Cards and boxes only where something is a separate object (a comment, a scene card). Plain
   lists stay plain.
+- **Hover:** every button, icon button and list row shows a subtle hover (text colour at 7–8 %
+  over whatever is behind it), so it works on panels, cards and dialogs alike.
+- **Destructive buttons** (Delete, Remove) are red-tinted with normal text, never red text on the
+  accent colour.
+- **Search and filter fields** have a clear button (×) while they contain text.
+- **Settings** are denser than the rest (30 px navigation rows, 10 px between rows): it is a
+  long list read top to bottom.
 - **Checkboxes** are drawn by the app: 16 px, radius 4, accent fill with a check when on.
 - **Two-way choices** in a pane (Open / Resolved) are a segmented switch, not a checkbox.
 - A scene's colour shows as the colour of its number in the scene list (nothing that shifts the

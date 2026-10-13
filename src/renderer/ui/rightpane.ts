@@ -56,7 +56,10 @@ export class RightPane {
   annotationsChanged() {
     this.updateBadges();
     if (this.tab !== 'comments' || !this.app.state.layout.rightVisible) return;
-    if (this.body.contains(document.activeElement) && document.activeElement !== document.body) return;
+    // Only typing in the pane (a reply, an edited comment) holds the re-render back; a click
+    // on a button (Delete, Resolve) shows its result at once.
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && this.body.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
     clearTimeout(this.reviewTimer);
     this.reviewTimer = setTimeout(() => this.render(), 150);
   }
