@@ -58,8 +58,8 @@ await check('changes since that export are marked; moved scenes are not', async 
   await page.click('.export-side .btn.primary');
   await sleep(1200);
   const pdf = await pdfText(path.join(h.tmp, 'v2.pdf'));
-  const all = pdf.text.join('\n');
-  assert(all.includes('Changes since “Producer draft”'), 'header note missing');
+  const all = pdf.text.join('\n').replace(/[ \t]+/g, ' ');
+  assert(all.includes('Changes since “Producer draft”'), 'header note missing: ' + pdf.text.slice(0, 3).join(' | ').slice(0, 400));
   assert(/\*/.test(all), 'margin mark missing');
   const m = await meta();
   assert(m.exports.length === 2 && m.exports[0].comparedWith === '“Producer draft”', JSON.stringify(m.exports.map((e) => e.comparedWith)));

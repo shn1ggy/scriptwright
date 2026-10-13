@@ -41,6 +41,7 @@ file first, then the code.
 - View headers (Dialogue, Cards, Characters, Export) are 40 px: title, a short info, then the
   view's controls; all controls in them are 30 px. Scene view has no header: previous/next
   scene sit in the status bar.
+- The notes pane's tabs are right-aligned, so the last one ends 14 px from the window edge.
 - **Scene pane:** minimum 220 px, default 280 px. **Notes pane:** minimum 310 px, default 320 px.
 - Text in the interface is not selectable; text a person writes is.
 
@@ -108,8 +109,12 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 
 ## 7. Behaviour
 
-- Every change to the screenplay is undoable; destructive actions on files ask first and say
-  where things go (Trash, Archive).
+- Every change to the screenplay is undoable, and so is every change around it: comments,
+  replies, resolving, highlights, alternative passages and their versions, the shelf and scene
+  details share one history with the text (Mod+Z / Mod+Shift+Z). Destructive actions on files
+  ask first and say where things go (Trash, Archive).
+- A key a field or dialog handles (Enter, Mod+Enter) is consumed there and never also runs a
+  menu command.
 - Switching views never moves the caret on screen.
 - One instance of each window (pressing a shortcut again focuses it). Esc closes the topmost
   thing and returns to writing.
@@ -117,14 +122,36 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 - Feedback after an action is a short toast naming the result ("Moved to the archive."), with
   Undo when possible.
 
-## 8. Words
+## 8. The printed page
+
+Export defaults are taken from a finished screenplay (DRUCK, 2026) and should stay that way
+unless a writer changes them:
+
+- Courier Prime 12 pt, line pitch **11.232 pt** (6.41 lines per inch): **63 lines** on A4,
+  58 on Letter. Top margin **72 pt** to the top of the letters (first baseline at 80 pt).
+- Action starts **12.5 characters (90 pt)** from the left edge and is **60** characters wide.
+  Cue at +22.5, dialogue at +12.5 (36 wide), parentheticals at +17.5 (25 wide).
+- Scene headings bold, two blank lines before and one after. Scene numbers on **both sides**,
+  bold like the heading: left ending four characters before the text, right one character
+  after the action column.
+- Page numbers "2." top right, aligned to the end of the action column, halfway into the top
+  margin; none on the first page.
+- Dialogue breaks at any line with (MEHR)/(MORE) at the parenthetical indent; German scripts
+  repeat the cue without (CONT'D). Centred text is centred on the paper.
+- Title page: title centred with its baseline at 287 pt; credit ("von", "written by") five
+  lines below, author a blank line below that, all centred. Notes, then two blank lines, then
+  contact sit in the bottom-left corner; the date closes the bottom-right corner on the last
+  contact line. Both corners keep the **same 70 pt** from the side and bottom edges. Details
+  use 5 % letter spacing.
+
+## 9. Words
 
 - Name things by what writers know: scene, speech, character, draft, version, shelf.
 - Buttons say what happens: "Move to Archive", "Put back", "Export PDF…" (… when a dialog follows).
 - Sentence case everywhere. No exclamation marks, no apologies in errors; say what happened and
   what to do.
 
-## 9. Checklist for a new feature
+## 10. Checklist for a new feature
 
 1. Does it need a new place, or does it fit an existing pane, menu or view header?
 2. Use the sizes from section 3 and the radius from section 6; no new values without adding

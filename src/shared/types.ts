@@ -319,11 +319,11 @@ export interface ExportSettings {
   /** Line height in points (12 = classic single spacing for 12 pt Courier). */
   lineHeight: number;
   // Page layout ------------------------------------------------------------------
-  /** Blank lines above the first text line. */
-  topMargin: number;
+  /** Points from the top of the paper to the top of the first line's letters. */
+  topMarginPt: number;
   /** Text lines per page. */
   linesPerPage: number;
-  /** Characters from the page edge to the action column. */
+  /** Characters from the page edge to the action column (halves allowed). */
   leftMargin: number;
   // Elements (characters from the action column) ---------------------------------
   actionWidth: number;
@@ -357,6 +357,8 @@ export interface ExportSettings {
   minLinesAfterBreak: number;
   splitDialogue: boolean;
   splitAction: boolean;
+  /** Break dialogue only at the end of a sentence (otherwise at any line). */
+  dialogueSentenceBreaks: boolean;
   useMoreContd: boolean;
   moreLabel: string;
   contdLabel: string;
@@ -370,8 +372,12 @@ export interface ExportSettings {
   titleBold: boolean;
   titleUnderline: boolean;
   titleUppercase: boolean;
-  /** Line (from the top of the page) where the title starts. */
-  titleLine: number;
+  /** Points from the top of the paper to the baseline of the title. */
+  titleBaseline: number;
+  /** Distance of the bottom details from the left, right and bottom edges of the paper, in points. */
+  titleInset: number;
+  /** Extra space between the letters of credit, author and details, in percent of 12 pt. */
+  titleDetailsTracking: number;
   contactPosition: 'bottom-left' | 'bottom-right';
   // Page furniture ------------------------------------------------------------------
   pageNumbers: boolean;
@@ -403,25 +409,31 @@ export interface ExportSettings {
   includeSynopses: boolean;
 }
 
-/** Lines per page that fill the paper with equal top and bottom margins. */
+/** Default line height: 12 pt Courier set slightly tighter than single spacing (6.41 lines per inch). */
+export const DEFAULT_LINE_HEIGHT = 11.232;
+
+/** Lines per page that fill the paper at the default line height (1 in top, about 0.85 in bottom). */
 export function paperLines(paper: PaperSize): number {
-  return paper === 'A4' ? 57 : 54;
+  return paper === 'A4' ? 63 : 58;
 }
 
-export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettings {
+/** Script language used for defaults such as the (MORE) label. */
+export type ScriptLanguage = 'en' | 'de';
+
+export function defaultExportSettings(paper: PaperSize = 'Letter', lang: ScriptLanguage = 'en'): ExportSettings {
   return {
     paper,
     font: 'Courier Prime',
     fontSize: 12,
-    lineHeight: 12,
-    topMargin: 6,
+    lineHeight: DEFAULT_LINE_HEIGHT,
+    topMarginPt: 72,
     linesPerPage: paperLines(paper),
-    leftMargin: 15,
+    leftMargin: 12.5,
     actionWidth: 60,
-    characterIndent: 22,
-    dialogueIndent: 10,
-    dialogueWidth: 35,
-    parentheticalIndent: 16,
+    characterIndent: 22.5,
+    dialogueIndent: 12.5,
+    dialogueWidth: 36,
+    parentheticalIndent: 17.5,
     parentheticalWidth: 25,
     transitionAlign: 'right',
     transitionIndent: 45,
@@ -434,7 +446,7 @@ export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettin
     boldHeadings: true,
     underlineHeadings: false,
     sceneStartsNewPage: false,
-    sceneNumbers: 'off',
+    sceneNumbers: 'both',
     autoSceneNumbers: true,
     sceneNumberFormat: '{n}',
     sceneNumberLeftGap: 4,
@@ -443,18 +455,21 @@ export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettin
     minLinesAfterBreak: 2,
     splitDialogue: true,
     splitAction: true,
+    dialogueSentenceBreaks: false,
     useMoreContd: true,
-    moreLabel: '(MORE)',
-    contdLabel: "(CONT'D)",
+    moreLabel: lang === 'de' ? '(MEHR)' : '(MORE)',
+    contdLabel: lang === 'de' ? '' : "(CONT'D)",
     contdAfterAction: false,
     titlePage: true,
     titleFont: 'Courier Prime',
-    titleSize: 12,
+    titleSize: 48,
     titleTracking: 0,
-    titleBold: false,
-    titleUnderline: true,
+    titleBold: true,
+    titleUnderline: false,
     titleUppercase: true,
-    titleLine: 22,
+    titleBaseline: 287,
+    titleInset: 70,
+    titleDetailsTracking: 5,
     contactPosition: 'bottom-left',
     pageNumbers: true,
     pageNumberFirstPage: false,
@@ -486,7 +501,7 @@ export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettin
 
 /** Settings saved before page geometry moved to lines and characters (measured in inches). */
 function isInchGeometry(stored: any): boolean {
-  return 'marginLeft' in stored || 'linesPerInch' in stored || 'titlePosition' in stored || !('topMargin' in stored);
+  return 'marginLeft' in stored || 'linesPerInch' in stored || 'titlePosition' in stored || (!('topMargin' in stored) && !('topMarginPt' in stored));
 }
 
 /** Converts inch-based settings (first version) to lines and characters. */
@@ -507,16 +522,51 @@ function convertInchGeometry(stored: any, paper: PaperSize): any {
   out.topMargin = Math.round(top * lpi);
   out.linesPerPage = Math.floor((hIn - top - bottom) * lpi + 1e-6);
   if (typeof stored.titlePosition === 'number') out.titleLine = Math.round(stored.titlePosition * hIn * lpi);
+  out.paper = paper;
   for (const k of ['marginLeft', 'marginRight', 'marginTop', 'marginBottom', 'linesPerInch', 'titlePosition']) delete out[k];
   return out;
 }
 
-/** Stored settings over defaults. Settings from the first (inch-based) version are converted. */
-export function normalizeExportSettings(stored: Partial<ExportSettings> | undefined, paper: PaperSize): ExportSettings {
+/**
+ * Defaults before the layout was modelled on a finished German screenplay (round 11). Stored
+ * settings that still hold one of these values were never changed by the writer, so they
+ * move to the new default.
+ */
+const OLD_DEFAULTS: Record<string, unknown> = {
+  lineHeight: 12,
+  leftMargin: 15,
+  characterIndent: 22,
+  dialogueIndent: 10,
+  dialogueWidth: 35,
+  parentheticalIndent: 16,
+  sceneNumbers: 'off',
+  titleSize: 12,
+  titleBold: false,
+  titleUnderline: true,
+  moreLabel: '(MORE)',
+  contdLabel: "(CONT'D)",
+};
+
+/** Moves settings saved before round 11 (top margin and title in lines) to the current model. */
+function upgradeLineGeometry(stored: any, d: ExportSettings): any {
+  const out: any = { ...stored };
+  const lh = typeof stored.lineHeight === 'number' ? stored.lineHeight : 12;
+  for (const [k, v] of Object.entries(OLD_DEFAULTS)) if (out[k] === v) out[k] = (d as any)[k];
+  if (out.linesPerPage === (d.paper === 'A4' ? 57 : 54)) out.linesPerPage = d.linesPerPage;
+  if (typeof stored.topMargin === 'number' && stored.topMargin !== 6) out.topMarginPt = Math.round(stored.topMargin * lh);
+  if (typeof stored.titleLine === 'number' && stored.titleLine !== 22) out.titleBaseline = Math.round(stored.titleLine * lh);
+  delete out.topMargin;
+  delete out.titleLine;
+  return out;
+}
+
+/** Stored settings over defaults. Settings from earlier versions are converted. */
+export function normalizeExportSettings(stored: Partial<ExportSettings> | undefined, paper: PaperSize, lang: ScriptLanguage = 'en'): ExportSettings {
   const p = ((stored?.paper as PaperSize) ?? paper) === 'A4' ? 'A4' : 'Letter';
-  const d = defaultExportSettings(p);
+  const d = defaultExportSettings(p, lang);
   if (!stored || typeof stored !== 'object') return d;
-  const src = isInchGeometry(stored) ? convertInchGeometry(stored, p) : stored;
+  let src: any = isInchGeometry(stored) ? convertInchGeometry(stored, p) : stored;
+  if (!('topMarginPt' in src)) src = upgradeLineGeometry(src, d);
   const out: any = { ...d };
   for (const k of Object.keys(d) as Array<keyof ExportSettings>) {
     const v = (src as any)[k];
@@ -525,7 +575,7 @@ export function normalizeExportSettings(stored: Partial<ExportSettings> | undefi
   if (out.titleFont === 'Helvetica' || out.titleFont === 'Times') out.titleFont = 'Courier Prime';
   // Guard against impossible values from damaged settings: fall back to defaults.
   if (out.actionWidth < 20 || out.dialogueWidth < 8 || out.linesPerPage < 10) {
-    for (const k of ['actionWidth', 'characterIndent', 'dialogueIndent', 'dialogueWidth', 'parentheticalIndent', 'parentheticalWidth', 'linesPerPage', 'topMargin', 'leftMargin', 'lineHeight'] as const) (out as any)[k] = (d as any)[k];
+    for (const k of ['actionWidth', 'characterIndent', 'dialogueIndent', 'dialogueWidth', 'parentheticalIndent', 'parentheticalWidth', 'linesPerPage', 'topMarginPt', 'leftMargin', 'lineHeight'] as const) (out as any)[k] = (d as any)[k];
   }
   return out as ExportSettings;
 }

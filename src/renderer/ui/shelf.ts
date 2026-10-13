@@ -89,8 +89,10 @@ export function putBack(app: App, item: ShelfItem, rerender: () => void) {
       {
         label: 'Remove from shelf',
         run: () => {
-          app.project!.meta.shelf = app.project!.meta.shelf.filter((x) => x.id !== item.id);
-          app.markMetaDirty();
+          app.undoable(() => {
+            app.project!.meta.shelf = app.project!.meta.shelf.filter((x) => x.id !== item.id);
+            app.markMetaDirty();
+          }, 'Remove from Shelf');
           rerender();
         },
       },
@@ -167,9 +169,11 @@ export function renderShelf(app: App, body: HTMLElement, rerender: () => void) {
           h('button', {
             class: 'btn sm',
             onclick: async () => {
-              if (!(await confirmDialog('Delete from shelf', 'Delete this material from the shelf permanently?', 'Delete', { danger: true }))) return;
-              app.project!.meta.shelf = app.project!.meta.shelf.filter((x) => x.id !== it.id);
-              app.markMetaDirty();
+              if (!(await confirmDialog('Delete from shelf', 'Delete this material from the shelf? Undo brings it back.', 'Delete', { danger: true }))) return;
+              app.undoable(() => {
+                app.project!.meta.shelf = app.project!.meta.shelf.filter((x) => x.id !== it.id);
+                app.markMetaDirty();
+              }, 'Delete from Shelf');
               rerender();
             },
           }, 'Delete'),

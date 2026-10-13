@@ -45,6 +45,7 @@ export function createApi(b: Backend) {
     readExportCopy: (rel: string, id: string) => b.readExportCopy(rel, id),
     deleteExportCopy: (rel: string, id: string) => b.deleteExportCopy(rel, id),
     writeFile: (file: string, data: Uint8Array | string) => b.writeFile(file, typeof data === 'string' ? data : Buffer.from(data)),
+    readTextFile: (file: string) => b.readTextFile(file),
     fontsAvailable: () => b.fontsAvailable(),
     listFonts: () => b.listFonts(),
     saveDraft: (rel: string, id: string, text: string) => b.saveDraft(rel, id, text),

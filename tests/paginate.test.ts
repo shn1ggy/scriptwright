@@ -5,7 +5,21 @@ import { paginate, wrap, parsePageRanges } from '../src/shared/paginate';
 import { defaultExportSettings } from '../src/shared/types';
 import { renderPdf } from '../src/main/pdfexport';
 
-const S = () => ({ ...defaultExportSettings('Letter'), font: 'Courier', titleFont: 'Courier' });
+// Classic US layout (12 pt spacing, 1.5 in left margin); the template defaults are tested separately.
+const S = () => ({
+  ...defaultExportSettings('Letter'),
+  font: 'Courier',
+  titleFont: 'Courier',
+  lineHeight: 12,
+  linesPerPage: 54,
+  leftMargin: 15,
+  characterIndent: 22,
+  dialogueIndent: 10,
+  dialogueWidth: 35,
+  parentheticalIndent: 16,
+  dialogueSentenceBreaks: true,
+  sceneNumbers: 'off' as const,
+});
 const pag = (src: string, over = {}, scope?: any) => {
   const lines = src.split('\n');
   return paginate(lines, parse(lines), { ...S(), ...over }, scope);
@@ -197,8 +211,8 @@ test('geometry in lines and characters, with warnings', () => {
   assert.ok(r.capacity.linesPerPage < 70);
   assert.ok(r.warnings.length);
   const a4 = paginate(['x'], parse(['x']), defaultExportSettings('A4'));
-  assert.equal(a4.capacity.linesPerPage, 57);
-  assert.ok(a4.capacity.bottomMarginLines >= 6);
+  assert.equal(a4.capacity.linesPerPage, 63);
+  assert.ok(a4.capacity.bottomMarginPt > 60);
   assert.deepEqual(a4.warnings, []);
 });
 
@@ -229,17 +243,36 @@ test('system fonts are found and a title in a proportional font is centered', as
   assert.ok(Math.abs(center - 306) < 2, `title center ${center}`);
 });
 
+test('settings saved before round 11 keep changes and move untouched values to the new defaults', async () => {
+  const { normalizeExportSettings } = await import('../src/shared/types');
+  const old = { ...defaultExportSettings('A4'), lineHeight: 12, topMargin: 8, linesPerPage: 57, leftMargin: 15, characterIndent: 20, dialogueIndent: 10, dialogueWidth: 35, sceneNumbers: 'left', titleLine: 22, moreLabel: '(MORE)', contdLabel: "(CONT'D)" } as any;
+  delete old.topMarginPt;
+  delete old.titleBaseline;
+  const s = normalizeExportSettings(old, 'A4', 'de');
+  assert.equal(s.lineHeight, 11.232);
+  assert.equal(s.topMarginPt, 96);
+  assert.equal(s.linesPerPage, 63);
+  assert.equal(s.leftMargin, 12.5);
+  assert.equal(s.characterIndent, 20);
+  assert.equal(s.dialogueIndent, 12.5);
+  assert.equal(s.sceneNumbers, 'left');
+  assert.equal(s.titleBaseline, 287);
+  assert.equal(s.moreLabel, '(MEHR)');
+  assert.equal(s.contdLabel, '');
+  assert.ok(!('topMargin' in s) && !('titleLine' in s));
+});
+
 test('settings saved by the first version (inches) are converted, not misread as characters', async () => {
   const { normalizeExportSettings } = await import('../src/shared/types');
   const old = { paper: 'Letter', marginTop: 1, marginBottom: 1, marginLeft: 1.5, marginRight: 1, font: 'Courier Prime', fontSize: 12, linesPerInch: 6, actionWidth: 6, characterIndent: 2.2, dialogueIndent: 1, dialogueWidth: 3.5, parentheticalIndent: 1.6, parentheticalWidth: 2.5, titlePosition: 0.36, boldHeadings: false };
   const s = normalizeExportSettings(old as any, 'Letter');
+  // Converted values that equal the old defaults move on to the current defaults.
   assert.equal(s.actionWidth, 60);
-  assert.equal(s.dialogueWidth, 35);
-  assert.equal(s.characterIndent, 22);
-  assert.equal(s.leftMargin, 15);
-  assert.equal(s.topMargin, 6);
-  assert.equal(s.linesPerPage, 54);
-  assert.equal(s.lineHeight, 12);
+  assert.equal(s.dialogueWidth, 36);
+  assert.equal(s.characterIndent, 22.5);
+  assert.equal(s.leftMargin, 12.5);
+  assert.equal(s.topMarginPt, 72);
+  assert.equal(s.linesPerPage, 58);
   assert.equal(s.boldHeadings, false);
   const r = paginate(['INT. A - DAY', '', 'word '.repeat(40)], parse(['INT. A - DAY', '', 'word '.repeat(40)]), s);
   assert.ok(r.pages[0].lines[1].runs[0].text.length > 50);

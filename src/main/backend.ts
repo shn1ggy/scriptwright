@@ -942,6 +942,13 @@ export class Backend extends EventEmitter {
     atomicWrite(file, data);
   }
 
+  /** Reads a small text file the user chose (e.g. exported shortcuts). */
+  readTextFile(file: string): string {
+    const st = fs.statSync(file);
+    if (st.size > 2 * 1024 * 1024) throw new Error('The file is too large.');
+    return fs.readFileSync(file, 'utf8');
+  }
+
   fontsAvailable(): boolean {
     return ['CourierPrime-Regular.ttf', 'CourierPrime-Bold.ttf', 'CourierPrime-Italic.ttf', 'CourierPrime-BoldItalic.ttf'].every((f) =>
       fs.existsSync(path.join(this.fontsDir, f)),

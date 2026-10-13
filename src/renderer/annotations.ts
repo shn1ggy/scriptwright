@@ -100,6 +100,14 @@ export class Annotations {
     for (const { rec } of this.records()) if (s.detached.has(rec.id)) rec.detached = s.detached.get(rec.id);
   }
 
+  /** Puts live anchors back after an undo of a change outside the text. */
+  restoreLive(anchors: Map<string, LiveAnchor>) {
+    this.live.clear();
+    for (const [id, an] of anchors) this.live.set(id, cloneAnchor(an));
+    this.current = this.snapshot();
+    this.refresh();
+  }
+
   /** Called for every editor change. */
   onChange(origin: string, steps: Step[]) {
     if (!this.app.project) return;
@@ -220,6 +228,10 @@ export class Annotations {
   highlight(color: HighlightColor | null): boolean {
     const an = this.selectionAnchor();
     if (!an) return false;
+    return this.app.undoable(() => this.highlightAt(an, color), color ? 'Highlight' : 'Remove Highlight');
+  }
+
+  private highlightAt(an: LiveAnchor, color: HighlightColor | null): boolean {
     // Remove highlights that overlap the selection, then add the new one.
     const removed = this.overlapping(an, 'highlight');
     for (const r of removed) this.removeRecord(r.rec.id, false);
@@ -235,6 +247,10 @@ export class Annotations {
   }
 
   addComment(text: string, an: LiveAnchor): CommentRecord {
+    return this.app.undoable(() => this.addCommentNow(text, an), 'Comment');
+  }
+
+  private addCommentNow(text: string, an: LiveAnchor): CommentRecord {
     const rec: CommentRecord = { id: uid(), text, created: new Date().toISOString(), resolved: false, replies: [], anchor: this.storedFor(an), sceneHeading: this.sceneHeadingAt(an) };
     this.meta.comments.push(rec);
     this.live.set(rec.id, cloneAnchor(an));
@@ -245,6 +261,10 @@ export class Annotations {
   }
 
   addPassage(an: LiveAnchor, name: string): PassageRecord {
+    return this.app.undoable(() => this.addPassageNow(an, name), 'Alternative Passage');
+  }
+
+  private addPassageNow(an: LiveAnchor, name: string): PassageRecord {
     const text = anchorText(an, this.app.editor.lines, keyIndex(this.app.editor.lines));
     const first = { id: uid(), name: 'Original', text, created: new Date().toISOString() };
     const rec: PassageRecord = { id: uid(), name, anchor: this.storedFor(an), activeId: first.id, alternatives: [first], sceneHeading: this.sceneHeadingAt(an) };
@@ -261,6 +281,10 @@ export class Annotations {
     const an = this.selectionAnchor();
     const r = this.record(id);
     if (!an || !r) return false;
+    return this.app.undoable(() => this.reattachNow(id, an, r), 'Attach');
+  }
+
+  private reattachNow(id: string, an: LiveAnchor, r: { rec: AnyRecord }): boolean {
     r.rec.detached = undefined;
     r.rec.anchor = this.storedFor(an);
     this.live.set(id, cloneAnchor(an));
@@ -271,6 +295,11 @@ export class Annotations {
   }
 
   removeRecord(id: string, refresh = true) {
+    if (refresh) this.app.undoable(() => this.removeNow(id, true), 'Delete');
+    else this.removeNow(id, false);
+  }
+
+  private removeNow(id: string, refresh: boolean) {
     const m = this.meta;
     m.highlights = m.highlights.filter((x) => x.id !== id);
     m.comments = m.comments.filter((x) => x.id !== id);
@@ -285,6 +314,11 @@ export class Annotations {
 
   /** Restores a removed record (used by "Undo" in toasts). */
   restoreRecord(kind: AnnKind, rec: AnyRecord, an: LiveAnchor | null) {
+    this.app.undoable(() => this.restoreNow(kind, rec, an), 'Restore');
+  }
+
+  private restoreNow(kind: AnnKind, rec: AnyRecord, an: LiveAnchor | null) {
+    if (this.record(rec.id)) return;
     const list = kind === 'highlight' ? this.meta.highlights : kind === 'comment' ? this.meta.comments : this.meta.passages;
     (list as AnyRecord[]).push(rec);
     if (an) this.live.set(rec.id, cloneAnchor(an));

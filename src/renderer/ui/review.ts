@@ -160,13 +160,20 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
     text.replaceWith(ta);
     ta.focus();
     const done = () => {
-      c.text = ta.value.trim() || c.text;
-      app.markMetaDirty();
+      const v = ta.value.trim();
+      if (v && v !== c.text)
+        app.undoable(() => {
+          c.text = v;
+          app.markMetaDirty();
+        }, 'Edit Comment');
       rerender();
     };
     ta.addEventListener('blur', done);
     ta.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ta.blur();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        ta.blur();
+      }
       if (e.key === 'Escape') {
         e.stopPropagation();
         ta.value = c.text;
@@ -177,8 +184,11 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
   const reply = h('input', { class: 'field', placeholder: 'Reply', 'aria-label': 'Reply' });
   reply.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && reply.value.trim()) {
-      c.replies.push({ id: uid(), text: reply.value.trim(), created: new Date().toISOString() });
-      app.markMetaDirty();
+      const text = reply.value.trim();
+      app.undoable(() => {
+        c.replies.push({ id: uid(), text, created: new Date().toISOString() });
+        app.markMetaDirty();
+      }, 'Reply');
       rerender();
     }
   });
@@ -196,8 +206,10 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
       h('button', {
         class: 'btn sm',
         onclick: () => {
-          c.resolved = !c.resolved;
-          app.markMetaDirty();
+          app.undoable(() => {
+            c.resolved = !c.resolved;
+            app.markMetaDirty();
+          }, c.resolved ? 'Reopen Comment' : 'Resolve Comment');
           ann.refresh();
           rerender();
           if (c.resolved)
@@ -261,6 +273,7 @@ export function openCommentDialog(app: App, id: string) {
       app.rightPane.annotationsChanged();
     }
   };
+  const saveUndoable = () => app.undoable(save, 'Edit Comment');
   const d = openDialog({
     title: c.resolved ? 'Comment (resolved)' : 'Comment',
     cls: 'comment-dialog',
@@ -276,14 +289,16 @@ export function openCommentDialog(app: App, id: string) {
       {
         label: c.resolved ? 'Reopen' : 'Resolve',
         run: () => {
-          save();
-          c.resolved = !c.resolved;
-          app.markMetaDirty();
+          app.undoable(() => {
+            save();
+            c.resolved = !c.resolved;
+            app.markMetaDirty();
+          }, 'Resolve Comment');
           ann.refresh();
           app.rightPane.annotationsChanged();
         },
       },
-      { label: 'Save', primary: true, run: () => save() },
+      { label: 'Save', primary: true, run: () => saveUndoable() },
     ],
     initialFocus: ta,
     onClose: () => app.editor.focus(),
@@ -291,7 +306,8 @@ export function openCommentDialog(app: App, id: string) {
   const submitOnModEnter = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      save();
+      e.stopPropagation();
+      saveUndoable();
       d.close();
     }
   };

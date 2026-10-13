@@ -10,6 +10,8 @@ export interface HistoryEntry {
   time: number;
   /** Extra data restored on undo/redo (e.g. scene filter changes). */
   label?: string;
+  /** A change outside the text (comments, highlights, shelf …) undone and redone by callbacks. */
+  custom?: { undo(): void; redo(): void };
 }
 
 const GROUP_MS = 1200;

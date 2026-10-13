@@ -175,7 +175,7 @@ await check('export settings saved in inches by the first version are converted'
   await page.keyboard.press('Control+E');
   await page.waitForSelector('.export-preview canvas', { timeout: 15000 });
   const cap = await page.locator('.export-side .foot .capacity').first().textContent();
-  assert(cap.includes('action 60') && cap.includes('dialogue 35'), cap);
+  assert(cap.includes('action 60') && cap.includes('dialogue 36'), cap);
   await page.keyboard.press('Escape');
 });
 

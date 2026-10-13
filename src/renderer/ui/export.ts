@@ -5,7 +5,7 @@ import { bridge } from '../bridge';
 import { formatCombo } from '../commands';
 import { h, debounce, uid } from './dom';
 import { alertDialog, confirmDialog, promptDialog, pushEscape, toast } from './overlay';
-import { ExportScope, ExportSettings, PaperSize, defaultExportSettings, normalizeExportSettings, paperLines } from '../../shared/types';
+import { ExportScope, ExportSettings, PaperSize, ScriptLanguage, defaultExportSettings, normalizeExportSettings, paperLines } from '../../shared/types';
 import { characterLabel, characterList, titleFields } from '../../shared/fountain';
 import { capacity } from '../../shared/paginate';
 
@@ -15,9 +15,17 @@ export function defaultPaper(): PaperSize {
   return /^en-(US|CA)/.test(navigator.language) ? 'Letter' : 'A4';
 }
 
+/** Language of the screenplay (for labels like (MORE)): German scene headings, else the system language. */
+export function scriptLanguage(app: App): ScriptLanguage {
+  const text = app.editor?.lines?.slice(0, 4000).map((l: { text: string }) => l.text).join('\n') ?? '';
+  if (/^\.?(INNEN|AUSSEN|AUẞEN|AUSSEN\/INNEN|INNEN\/AUSSEN|INT\.?\/EXT|I\/A)\b/m.test(text)) return 'de';
+  if (/^\.?(INT|EXT|EST)[\s.]/m.test(text)) return 'en';
+  return /^de\b/.test(navigator.language) ? 'de' : 'en';
+}
+
 /** The export settings currently stored for a project (or defaults). */
 export function projectExportSettings(app: App): ExportSettings {
-  return normalizeExportSettings(app.project?.meta.exportSettings, defaultPaper());
+  return normalizeExportSettings(app.project?.meta.exportSettings, defaultPaper(), scriptLanguage(app));
 }
 
 export interface FontEntry {
@@ -156,7 +164,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   presetSel.addEventListener('change', () => {
     const pr = meta.exportPresets.find((x) => x.name === presetSel.value);
     if (!pr) return;
-    s = normalizeExportSettings(pr.settings, s.paper);
+    s = normalizeExportSettings(pr.settings, s.paper, scriptLanguage(app));
     build();
     refresh();
   });
@@ -182,7 +190,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     renderPresets();
   }
   function resetDefaults() {
-    s = defaultExportSettings(s.paper);
+    s = defaultExportSettings(s.paper, scriptLanguage(app));
     build();
     refresh();
   }
@@ -190,7 +198,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   // Controls ---------------------------------------------------------------------------
   const row = (label: string, control: Node) => h('div', { class: 'form-row' }, h('label', null, label), control);
   const numIn = (key: keyof ExportSettings, min: number, max: number, step: number, unit = '') => {
-    const i = h('input', { class: 'field num-in', type: 'number', min: String(min), max: String(max), step: String(step), value: String(s[key]), 'aria-label': String(key) });
+    const i = h('input', { class: 'field num-in', type: 'number', min: String(min), max: String(max), step: step ? String(step) : 'any', value: String(s[key]), 'aria-label': String(key) });
     i.addEventListener('change', () => {
       const v = Math.max(min, Math.min(max, Number(i.value)));
       if (!Number.isFinite(v)) return;
@@ -457,23 +465,23 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
         row('Paper', paperSel()),
         row('Script font', fontSel('font', true)),
         row('Font size', numIn('fontSize', 8, 16, 0.5, 'pt')),
-        row('Line height', numIn('lineHeight', 8, 24, 0.5, 'pt')),
+        row('Line height', numIn('lineHeight', 8, 24, 0, 'pt')),
       ),
       section(
         'Page layout',
-        row('Top margin', numIn('topMargin', 1, 20, 1, 'lines')),
+        row('Top margin', numIn('topMarginPt', 18, 216, 1, 'pt')),
         row('Lines per page', numIn('linesPerPage', 20, 90, 1, 'lines')),
-        row('Left margin', numIn('leftMargin', 2, 40, 1, 'characters')),
+        row('Left margin', numIn('leftMargin', 2, 40, 0.5, 'characters')),
         row('Action width', numIn('actionWidth', 30, 100, 1, 'characters')),
         marginsInfo,
       ),
       section(
         'Elements',
         h('div', { class: 'capacity' }, 'Indents count characters from the action column.'),
-        row('Character cue indent', numIn('characterIndent', 0, 60, 1, 'characters')),
-        row('Dialogue indent', numIn('dialogueIndent', 0, 40, 1, 'characters')),
+        row('Character cue indent', numIn('characterIndent', 0, 60, 0.5, 'characters')),
+        row('Dialogue indent', numIn('dialogueIndent', 0, 40, 0.5, 'characters')),
         row('Dialogue width', numIn('dialogueWidth', 10, 80, 1, 'characters')),
-        row('Parenthetical indent', numIn('parentheticalIndent', 0, 40, 1, 'characters')),
+        row('Parenthetical indent', numIn('parentheticalIndent', 0, 40, 0.5, 'characters')),
         row('Parenthetical width', numIn('parentheticalWidth', 6, 60, 1, 'characters')),
         row('Transitions', sel('transitionAlign', [['right', 'Right-aligned'], ['left', 'Indented']])),
         s.transitionAlign === 'left' ? row('Transition indent', numIn('transitionIndent', 0, 80, 1, 'characters')) : null,
@@ -501,6 +509,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
         row('Lines after a break', numIn('minLinesAfterBreak', 1, 6, 1, 'at least')),
         chk('splitDialogue', 'Split long dialogue across pages'),
         chk('splitAction', 'Split long action across pages'),
+        chk('dialogueSentenceBreaks', 'Break dialogue only at the end of a sentence'),
         chk('useMoreContd', 'Add (MORE) and (CONT’D) at dialogue breaks'),
         row('MORE label', textIn('moreLabel')),
         row('CONT’D label', textIn('contdLabel')),
@@ -510,14 +519,16 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
         'Title page',
         chk('titlePage', 'Include the title page'),
         row('Title font', fontSel('titleFont', false)),
-        row('Title size', numIn('titleSize', 8, 48, 1, 'pt')),
+        row('Title size', numIn('titleSize', 8, 96, 1, 'pt')),
         row('Letter spacing', numIn('titleTracking', 0, 200, 5, '% of the size')),
         chk('titleBold', 'Bold title'),
         chk('titleUnderline', 'Underline title'),
         chk('titleUppercase', 'Uppercase title'),
-        row('Title starts at', numIn('titleLine', 4, 50, 1, 'line')),
+        row('Title baseline', numIn('titleBaseline', 36, 700, 1, 'pt from the top')),
+        row('Detail spacing', numIn('titleDetailsTracking', 0, 50, 1, '% between letters')),
+        row('Corner distance', numIn('titleInset', 24, 144, 1, 'pt from the edges')),
         row('Contact details', sel('contactPosition', [['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right']])),
-        h('div', { class: 'capacity' }, 'Only the title uses the title font; credit, author and contact use 12 pt Courier.'),
+        h('div', { class: 'capacity' }, 'Only the title uses the title font; credit, author and the details in the corners use 12 pt Courier. A long title shrinks to fit the page.'),
       ),
       section(
         'Page numbers & furniture',
@@ -646,7 +657,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   function updateCapacity() {
     const c = capacity(s, advance());
     cap.textContent = `${c.cap.linesPerPage} lines per page · action ${c.cap.actionChars} · dialogue ${c.cap.dialogueChars} · parenthetical ${c.cap.parentheticalChars} characters per line`;
-    marginsInfo.textContent = `The page holds ${c.cap.totalLines} lines × ${c.cap.totalChars} characters: ${c.cap.bottomMarginLines} lines remain at the bottom and ${c.cap.rightMarginChars} characters to the right of the action.`;
+    marginsInfo.textContent = `The page holds ${c.cap.totalLines} lines × ${c.cap.totalChars} characters: ${Math.round(c.cap.bottomMarginPt)} pt remain at the bottom and ${c.cap.rightMarginChars} characters to the right of the action.`;
     warnings.textContent = c.warnings.join(' ');
   }
 

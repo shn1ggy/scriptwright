@@ -98,8 +98,10 @@ export function openRewriteFor(app: App, passageId: string, isNew = false) {
       row.addEventListener('dblclick', async () => {
         const n = await promptDialog('Rename version', 'Name', a.name, { okLabel: 'Rename' });
         if (n) {
-          a.name = n;
-          app.markMetaDirty();
+          app.undoable(() => {
+            a.name = n;
+            app.markMetaDirty();
+          }, 'Rename Version');
           render();
         }
       });
@@ -125,8 +127,10 @@ export function openRewriteFor(app: App, passageId: string, isNew = false) {
         onclick: async () => {
           const n = await promptDialog('Rename version', 'Name', a.name, { okLabel: 'Rename' });
           if (n) {
-            a.name = n;
-            app.markMetaDirty();
+            app.undoable(() => {
+              a.name = n;
+              app.markMetaDirty();
+            }, 'Rename Version');
             render();
           }
         },
@@ -150,9 +154,11 @@ export function openRewriteFor(app: App, passageId: string, isNew = false) {
     const src = q.alternatives.find((x) => x.id === fromId)!;
     const text = src.id === q.activeId && !q.detached ? activeText() : src.text;
     const alt = { id: uid(), name: `Version ${q.alternatives.length + 1}`, text, created: new Date().toISOString() };
-    q.alternatives.push(alt);
+    app.undoable(() => {
+      q.alternatives.push(alt);
+      app.markMetaDirty();
+    }, 'New Version');
     selected = alt.id;
-    app.markMetaDirty();
     render();
     editor.focus();
   };
@@ -160,10 +166,12 @@ export function openRewriteFor(app: App, passageId: string, isNew = false) {
   const deleteVersion = async (id: string) => {
     const q = find()!;
     const a = q.alternatives.find((x) => x.id === id)!;
-    if (!(await confirmDialog('Delete version', `Delete the version “${a.name}”? This cannot be undone.`, 'Delete', { danger: true }))) return;
-    q.alternatives = q.alternatives.filter((x) => x.id !== id);
-    selected = q.activeId;
-    app.markMetaDirty();
+    if (!(await confirmDialog('Delete version', `Delete the version “${a.name}”?`, 'Delete', { danger: true }))) return;
+    app.undoable(() => {
+      q.alternatives = q.alternatives.filter((x) => x.id !== id);
+      app.markMetaDirty();
+    }, 'Delete Version');
+    selected = find()?.activeId ?? '';
     render();
   };
 

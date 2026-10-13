@@ -357,9 +357,20 @@ export class Editor {
     return true;
   }
 
+  /** Adds a change made outside the text to the undo history. */
+  pushCustom(custom: { undo(): void; redo(): void }, label?: string) {
+    this.history.push({ steps: [], selBefore: this.sel, selAfter: this.sel, kind: 'other', time: Date.now(), custom, label });
+    this.history.seal();
+  }
+
   undo() {
     const e = this.history.done.pop();
     if (!e) return false;
+    if (e.custom) {
+      this.history.undone.push(e);
+      e.custom.undo();
+      return true;
+    }
     for (let i = e.steps.length - 1; i >= 0; i--) applyStep(this.lines, invertStep(e.steps[i]));
     this.history.undone.push(e);
     this.version++;
@@ -371,6 +382,11 @@ export class Editor {
   redo() {
     const e = this.history.undone.pop();
     if (!e) return false;
+    if (e.custom) {
+      this.history.done.push(e);
+      e.custom.redo();
+      return true;
+    }
     for (const st of e.steps) applyStep(this.lines, st);
     this.history.done.push(e);
     this.version++;

@@ -863,6 +863,53 @@ export class App {
     else if (this.saveState === 'unsaved') this.save();
   }
 
+  private metaChangeDepth = 0;
+
+  /**
+   * Runs a change to comments, highlights, passages, the shelf or scene details as one step
+   * in the undo history (Mod+Z undoes it like an edit of the text).
+   */
+  undoable<T>(fn: () => T, label = ''): T {
+    if (!this.project || this.metaChangeDepth > 0) return fn();
+    const before = this.metaSnapshot();
+    this.metaChangeDepth++;
+    let out: T;
+    try {
+      out = fn();
+    } finally {
+      this.metaChangeDepth--;
+    }
+    const after = this.metaSnapshot();
+    if (after.json !== before.json || after.live !== before.live) {
+      const project = this.project;
+      const apply = (s: { json: string; anchors: Map<string, any> }) => {
+        if (this.project !== project) return;
+        this.restoreMetaSnapshot(s);
+      };
+      this.editor.pushCustom({ undo: () => apply(before), redo: () => apply(after) }, label);
+    }
+    return out;
+  }
+
+  private metaSnapshot() {
+    const m = this.project!.meta;
+    const json = JSON.stringify({ highlights: m.highlights, comments: m.comments, passages: m.passages, shelf: m.shelf, scenes: m.scenes, detached: m.detached });
+    const anchors = new Map<string, any>();
+    for (const [id, an] of this.annotations.live) anchors.set(id, { a: { ...an.a }, b: { ...an.b } });
+    return { json, anchors, live: JSON.stringify([...anchors]) };
+  }
+
+  private restoreMetaSnapshot(s: { json: string; anchors: Map<string, any> }) {
+    const m = this.project!.meta;
+    Object.assign(m, JSON.parse(s.json));
+    this.annotations.restoreLive(s.anchors);
+    this.markMetaDirty();
+    this.updateScenes();
+    this.outline.render();
+    this.cards.render();
+    this.rightPane?.render?.();
+  }
+
   markMetaDirty() {
     if (!this.project) return;
     this.project.metaDirty = true;
@@ -1396,10 +1443,11 @@ export class App {
   }
 
   updateSceneRecord(item: SceneItem, patch: Partial<SceneRecord>) {
-    const r = this.sceneRecord(item);
-    if (!r) return;
-    Object.assign(r, patch);
-    this.markMetaDirty();
+    if (!this.sceneRecord(item)) return;
+    this.undoable(() => {
+      Object.assign(this.sceneRecord(item)!, patch);
+      this.markMetaDirty();
+    }, 'Scene Details');
     this.updateScenes();
     this.outline.render();
     this.cards.render();
@@ -2200,7 +2248,7 @@ export class App {
         class: 'btn',
         title: 'Export this dialogue as PDF',
         onclick: () => this.openPanel('export', { dialogue: { character: this.dialogueCharacter, action: this.dialogueAction } }),
-      }, 'Export…'),
+      }, 'Export'),
     );
   }
 
@@ -2501,7 +2549,10 @@ export class App {
 
   private undoRedo(which: 'undo' | 'redo') {
     const a = document.activeElement as HTMLElement | null;
-    if (this.editor.hasFocus() || !a || a === document.body) {
+    // Text fields undo their own typing; everywhere else (buttons, lists, panes) undo goes to
+    // the screenplay history, which also holds comments, highlights, the shelf and scene details.
+    const typing = !!a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'button'].includes((a as HTMLInputElement).type)) || a.isContentEditable);
+    if (this.editor.hasFocus() || !typing) {
       if (which === 'undo') {
         this.editor.history.seal();
         this.editor.undo();
@@ -2599,7 +2650,12 @@ export class App {
       initialFocus: ta,
     });
     ta.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) (ta.closest('.dialog')?.querySelector('.btn.primary') as HTMLElement | null)?.click();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        // Handled here, so the native menu does not also run its Mod+Enter command.
+        e.preventDefault();
+        e.stopPropagation();
+        (ta.closest('.dialog')?.querySelector('.btn.primary') as HTMLElement | null)?.click();
+      }
     });
   }
 

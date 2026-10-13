@@ -121,15 +121,17 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
   const lineH = cap.lineHeight;
   const left = cap.left;
   const top = cap.top;
-  const baseline = s.fontSize * 0.78;
+  // `top` is where the letters of a line begin; the baseline sits two thirds of the size below
+  // (a 1 in top margin puts the first baseline at 80 pt, as on printed 12 pt screenplays).
+  const baseline = s.fontSize * (2 / 3);
   const actionRight = left + cap.actionChars * charW;
   const W = cap.pageWidth;
   const H = cap.pageHeight;
   const totalPages = result.bodyPageCount;
   const vars = (n: number) => ({ title: info.title ?? '', page: String(n), pages: String(totalPages), date: s.draftDate });
-  // Page furniture sits in the margins, aligned with the text column.
-  const headerY = Math.max(lineH, top - 2 * lineH) + baseline;
-  const footerY = Math.min(H - lineH, cap.textBottom + 2 * lineH) + baseline;
+  // Page furniture sits halfway into the top and bottom margins, aligned with the text column.
+  const headerY = Math.max(lineH, top / 2) + baseline;
+  const footerY = Math.min(H - lineH, cap.textBottom + (H - cap.textBottom) / 2) + baseline - lineH / 2;
 
   const revRgb = hexRgb(s.revColor);
   // Light tint of the revision color for highlighting.
@@ -147,17 +149,26 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
       doc.watermark(wm, 'F1', size, 0.88, 45, unit * size);
     }
     if (page.title) {
+      const inset = Math.max(24, s.titleInset ?? 70);
       for (const item of page.title) {
         const isTitle = !!item.title;
-        const size = isTitle ? s.titleSize : 12;
+        let size = isTitle ? s.titleSize : 12;
         const font = isTitle ? `T${s.titleBold ? 1 : 0}` : 'C0';
-        // Letter spacing (title only) is added after every character except the last.
-        const tracking = isTitle ? (Math.max(0, s.titleTracking ?? 0) / 100) * size : 0;
-        const w = doc.measure(font, item.text, size) + tracking * Math.max(0, [...item.text].length - 1);
-        let x = left;
-        // The title block is centered on the page; contact details align to the text column.
+        const n = Math.max(0, [...item.text].length - 1);
+        // Letter spacing is added after every character except the last.
+        const trackPct = isTitle ? s.titleTracking ?? 0 : s.titleDetailsTracking ?? 0;
+        let tracking = (Math.max(0, trackPct) / 100) * size;
+        let w = doc.measure(font, item.text, size) + tracking * n;
+        // A long title shrinks to fit between the side insets.
+        if (isTitle && w > W - 2 * inset && w > 0) {
+          const f = (W - 2 * inset) / w;
+          size *= f;
+          tracking *= f;
+          w *= f;
+        }
+        let x = inset;
         if (item.align === 'center') x = (W - w) / 2;
-        else if (item.align === 'right') x = actionRight - w;
+        else if (item.align === 'right') x = W - inset - w;
         doc.text(x, item.y, item.text, font, size, 0, undefined, tracking);
         if (isTitle && s.titleUnderline && item.text.trim()) doc.line(x, item.y + size * 0.15, x + w, item.y + size * 0.15, Math.max(0.5, size / 24));
       }
@@ -197,7 +208,7 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
         const style = changed && s.revBold ? run.style | S_BOLD : run.style;
         const font = `F${styleIndex(style)}`;
         const w = run.text.length * charW;
-        if (changed && s.revHighlight && run.text.trim()) doc.rect(x - 0.5, y - s.fontSize * 0.8, w + 1, lineH * 0.98, revTint);
+        if (changed && s.revHighlight && run.text.trim()) doc.rect(x - 0.5, y - s.fontSize * 0.72, w + 1, lineH * 0.98, revTint);
         doc.text(x, y, run.text, font, s.fontSize, 0, changed && s.revColorText ? revRgb : undefined);
         if (run.style & S_UNDERLINE) doc.line(x, y + s.fontSize * 0.14, x + w, y + s.fontSize * 0.14, Math.max(0.5, s.fontSize / 20), changed && s.revColorText ? revRgb : undefined);
         if (changed && s.revUnderline && run.text.trim()) doc.line(x, y + s.fontSize * 0.2, x + w, y + s.fontSize * 0.2, Math.max(0.6, s.fontSize / 16), revRgb);
@@ -206,9 +217,11 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
       if (line.mark && s.revMargin && s.revMarkChar.trim()) doc.text(markX, y, s.revMarkChar.trim().slice(0, 3), 'F1', s.fontSize, 0, s.revColorText || s.revHighlight || s.revUnderline ? revRgb : undefined);
       if (line.sceneNumber && s.sceneNumbers !== 'off') {
         const num = line.sceneNumber;
-        if (s.sceneNumbers === 'left' || s.sceneNumbers === 'both') doc.text(Math.max(18, left - (num.length + leftGap) * charW), y, num, 'F0', s.fontSize);
+        // Numbers are set like the heading they belong to.
+        const nf = s.boldHeadings ? 'F1' : 'F0';
+        if (s.sceneNumbers === 'left' || s.sceneNumbers === 'both') doc.text(Math.max(18, left - (num.length + leftGap) * charW), y, num, nf, s.fontSize);
         // Right: just outside the text column, but never into the outer half-inch of the paper.
-        if (s.sceneNumbers === 'right' || s.sceneNumbers === 'both') doc.text(Math.min(actionRight + rightGap * charW, W - 36 - num.length * charW), y, num, 'F0', s.fontSize);
+        if (s.sceneNumbers === 'right' || s.sceneNumbers === 'both') doc.text(Math.min(actionRight + rightGap * charW, W - 36 - num.length * charW), y, num, nf, s.fontSize);
       }
     }
   }

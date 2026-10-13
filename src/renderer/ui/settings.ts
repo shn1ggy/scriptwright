@@ -3,7 +3,7 @@
 import type { App } from '../app';
 import { bridge } from '../bridge';
 import { h } from './dom';
-import { openDialog } from './overlay';
+import { openDialog, toast } from './overlay';
 import { CommandList } from './palette';
 import { loadFonts } from './export';
 import { DEFAULT_DARK, DEFAULT_LIGHT, ThemeColors } from '../../shared/types';
@@ -253,7 +253,39 @@ export function openSettings(app: App, section: Section = 'editor') {
     cmdList.el.style.border = '1px solid var(--line)';
     cmdList.el.style.borderRadius = '4px';
     cmdList.el.style.minHeight = '360px';
-    content.append(h('div', { class: 'notice' }, 'Shortcuts apply immediately and are saved with your settings.'), cmdList.el);
+    const exportKeys = async () => {
+      const file = await bridge.dialog('save', { title: 'Export shortcuts', defaultPath: 'Scriptwright shortcuts.json', filters: [{ name: 'Shortcuts', extensions: ['json'] }] });
+      if (!file) return;
+      const data = { format: 'scriptwright-shortcuts', version: 1, keymap: app.commands.overrides };
+      await bridge.call('writeFile', file, JSON.stringify(data, null, 2) + '\n');
+      toast(`Shortcuts exported (${Object.keys(app.commands.overrides).length} changed from the defaults).`);
+    };
+    const importKeys = async () => {
+      const file = await bridge.dialog('open', { title: 'Import shortcuts', filters: [{ name: 'Shortcuts', extensions: ['json'] }] });
+      if (!file) return;
+      let keymap: Record<string, string[]> | null = null;
+      try {
+        const data = JSON.parse(await bridge.call('readTextFile', file));
+        const km = data?.format === 'scriptwright-shortcuts' ? data.keymap : null;
+        if (km && typeof km === 'object' && Object.values(km).every((v) => Array.isArray(v) && v.every((k) => typeof k === 'string'))) keymap = km;
+      } catch {
+        keymap = null;
+      }
+      if (!keymap) {
+        toast('This file does not contain Scriptwright shortcuts.', { warn: true });
+        return;
+      }
+      const known = Object.fromEntries(Object.entries(keymap).filter(([id]) => !!app.commands.get(id)));
+      app.commands.overrides = known;
+      app.commands.onChange?.();
+      cmdList.render();
+      toast(`Shortcuts imported (${Object.keys(known).length} changed from the defaults).`);
+    };
+    content.append(
+      h('div', { class: 'notice' }, 'Shortcuts apply immediately and are saved with your settings.'),
+      h('div', { class: 'settings-actions' }, h('button', { class: 'btn', onclick: () => void exportKeys() }, 'Export Shortcuts…'), h('button', { class: 'btn', onclick: () => void importKeys() }, 'Import Shortcuts…')),
+      cmdList.el,
+    );
   }
 
   function saving() {

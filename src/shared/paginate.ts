@@ -82,7 +82,7 @@ export interface Capacity {
   /** Points per character and per line. */
   charWidth: number;
   lineHeight: number;
-  /** Left edge of the action column, top of the first text line, bottom of the text area (points). */
+  /** Left edge of the action column, top of the first line's letters, bottom of the text area (points). */
   left: number;
   top: number;
   textBottom: number;
@@ -90,7 +90,8 @@ export interface Capacity {
   pageHeight: number;
   totalLines: number;
   totalChars: number;
-  bottomMarginLines: number;
+  /** Points between the bottom of the text area and the paper edge. */
+  bottomMarginPt: number;
   rightMarginChars: number;
 }
 
@@ -226,7 +227,7 @@ function layoutPara(p: Para): OutLine[] {
       const seg = text.slice(a, b);
       let c = p.col;
       if (p.align === 'right') c = p.col + Math.max(0, p.alignWidth - seg.length);
-      else if (p.align === 'center') c = p.col + Math.max(0, Math.floor((p.alignWidth - seg.length) / 2));
+      else if (p.align === 'center') c = p.col + Math.max(0, (p.alignWidth - seg.length) / 2); // centred on the page
       out.push({ col: c, runs: toRuns(text, styles, a, b, p.extra), kind: p.kind, breakAfter: false, sourceLine: source });
     }
   }
@@ -270,44 +271,52 @@ export function capacity(s: ExportSettings, advanceEm = 0.6): { cap: Capacity; w
   const charW = s.fontSize * advanceEm;
   const lineH = Math.max(4, s.lineHeight);
   const warnings: string[] = [];
+  const top = Math.max(0, s.topMarginPt);
   const totalLines = Math.floor(dims.height / lineH + 1e-6);
   const totalChars = Math.floor(dims.width / charW + 1e-6);
   let lpp = Math.max(1, Math.round(s.linesPerPage));
-  const bottomLines = totalLines - s.topMargin - lpp;
-  if (bottomLines < 1) {
-    lpp = Math.max(1, totalLines - s.topMargin - 1);
-    warnings.push(`${s.linesPerPage} lines do not fit below a ${s.topMargin}-line top margin; ${lpp} lines are used.`);
-  } else if (bottomLines < 3) warnings.push(`Only ${bottomLines} line${bottomLines === 1 ? '' : 's'} remain below the text for page numbers and footers.`);
+  // Space below the last line (its letters reach about one line below its top).
+  const below = (n: number) => dims.height - top - n * lineH;
+  if (below(lpp) < lineH) {
+    lpp = Math.max(1, Math.floor((dims.height - top - lineH) / lineH));
+    warnings.push(`${s.linesPerPage} lines do not fit below a ${fmt(top)} pt top margin; ${lpp} lines are used.`);
+  } else if (below(lpp) < 2.5 * lineH) warnings.push(`Only ${fmt(below(lpp))} pt remain below the text for page numbers and footers.`);
   const check = (name: string, indent: number, width: number) => {
     const right = totalChars - s.leftMargin - indent - width;
-    if (right < 0) warnings.push(`${name} extends ${-right} character${right === -1 ? '' : 's'} past the edge of the page.`);
-    else if (right < 4) warnings.push(`${name} leaves only ${right} character${right === 1 ? '' : 's'} of right margin.`);
+    if (right < 0) warnings.push(`${name} extends ${fmt(-right)} character${right === -1 ? '' : 's'} past the edge of the page.`);
+    else if (right < 4) warnings.push(`${name} leaves only ${fmt(right)} character${right === 1 ? '' : 's'} of right margin.`);
   };
   check('Action', 0, s.actionWidth);
   check('Dialogue', s.dialogueIndent, s.dialogueWidth);
   check('Parenthetical', s.parentheticalIndent, s.parentheticalWidth);
   if (s.characterIndent >= s.actionWidth) warnings.push('Character indent is wider than the action width.');
+  // Indents may use half characters (as on many printed screenplays).
+  const half = (v: number) => Math.max(0, Math.round(v * 2) / 2);
   const cap: Capacity = {
     linesPerPage: lpp,
     actionChars: Math.max(10, Math.round(s.actionWidth)),
     dialogueChars: Math.max(8, Math.round(s.dialogueWidth)),
     parentheticalChars: Math.max(6, Math.round(s.parentheticalWidth)),
-    characterCol: Math.max(0, Math.round(s.characterIndent)),
-    dialogueCol: Math.max(0, Math.round(s.dialogueIndent)),
-    parentheticalCol: Math.max(0, Math.round(s.parentheticalIndent)),
+    characterCol: half(s.characterIndent),
+    dialogueCol: half(s.dialogueIndent),
+    parentheticalCol: half(s.parentheticalIndent),
     charWidth: charW,
     lineHeight: lineH,
-    left: s.leftMargin * charW,
-    top: s.topMargin * lineH,
-    textBottom: (s.topMargin + lpp) * lineH,
+    left: half(s.leftMargin) * charW,
+    top,
+    textBottom: top + lpp * lineH,
     pageWidth: dims.width,
     pageHeight: dims.height,
     totalLines,
     totalChars,
-    bottomMarginLines: totalLines - s.topMargin - lpp,
+    bottomMarginPt: below(lpp),
     rightMarginChars: totalChars - s.leftMargin - s.actionWidth,
   };
   return { cap, warnings };
+}
+
+function fmt(n: number): string {
+  return String(Math.round(n * 10) / 10);
 }
 
 export interface RevisionMarks {
@@ -484,7 +493,7 @@ export function paginate(
         raws.push(trimRaw(sty(j), j));
         j++;
       }
-      pushUnit(unit('other', [para('centered', raws, cap.actionChars, 0, { align: 'center', alignWidth: cap.actionChars })], scene, i));
+      pushUnit(unit('other', [para('centered', raws, cap.actionChars, -cap.left / cap.charWidth, { align: 'center', alignWidth: cap.pageWidth / cap.charWidth })], scene, i));
       i = j;
       continue;
     }
@@ -531,12 +540,12 @@ export function paginate(
     const cueStart = st.text.length - st.text.trimStart().length;
     let cueText = st.text.trim().replace(/\s*\^$/, '').toUpperCase();
     const cueStyles = st.styles.slice(cueStart, cueStart + cueText.length).map((x) => x & S_CHANGED);
-    if (s.contdAfterAction && lastCue && lastCue.scene === scene && lastCue.cue === pl.cue && lastCue.sawAction && !/CONT/i.test(cueText)) {
+    if (s.contdAfterAction && s.contdLabel.trim() && lastCue && lastCue.scene === scene && lastCue.cue === pl.cue && lastCue.sawAction && !/CONT/i.test(cueText)) {
       cueText += ' ' + s.contdLabel;
     }
     lastCue = { cue: pl.cue ?? '', scene, sawAction: false };
     const out: Para[] = [
-      para('character', [{ text: cueText, styles: cueStyles.concat(new Array(Math.max(0, cueText.length - cueStyles.length)).fill(0)), source: cueLine }], cap.actionChars - cap.characterCol, cap.characterCol, { extra: s.boldCues ? S_BOLD : 0 }),
+      para('character', [{ text: cueText, styles: cueStyles.concat(new Array(Math.max(0, cueText.length - cueStyles.length)).fill(0)), source: cueLine }], Math.floor(cap.actionChars - cap.characterCol), cap.characterCol, { extra: s.boldCues ? S_BOLD : 0 }),
     ];
     let k = cueLine + 1;
     while (k < end) {
@@ -735,7 +744,8 @@ export function paginate(
         const offsets = new Set<number>();
         if (r > 0) offsets.add(-1); // boundary between hard lines
         for (const off of sentenceEnds(raw.text)) if (off < raw.text.length) offsets.add(off);
-        if (forced) for (const [, b] of wrap(raw.text, p.width)) if (b < raw.text.length) offsets.add(b);
+        // Dialogue may break at any line unless only sentence ends are allowed.
+        if (forced || (isDialogue && !s.dialogueSentenceBreaks)) for (const [, b] of wrap(raw.text, p.width)) if (b < raw.text.length) offsets.add(b);
         for (const off of offsets) {
           let firstRaw: Raw[];
           let restRaw: Raw[];
@@ -776,7 +786,7 @@ export function paginate(
     for (const ol of layoutParas(split.first)) place(ol);
     const isDialogue = un.kind === 'dialogue';
     if (moreLabel(un)) {
-      place({ col: cap.characterCol, runs: [{ text: s.moreLabel, style: 0 }], kind: 'more', breakAfter: false, sourceLine: un.sourceLine });
+      place({ col: cap.parentheticalCol, runs: [{ text: s.moreLabel, style: 0 }], kind: 'more', breakAfter: false, sourceLine: un.sourceLine });
     }
     newPage();
     let rest = split.rest;
@@ -784,7 +794,7 @@ export function paginate(
       const cue = un.paras[0];
       if (s.useMoreContd) {
         let cueText = cue.raw[0].text;
-        if (!cueText.includes(s.contdLabel)) cueText = cueText + ' ' + s.contdLabel;
+        if (s.contdLabel.trim() && !cueText.includes(s.contdLabel)) cueText = cueText + ' ' + s.contdLabel;
         rest = [{ ...cue, raw: [{ text: cueText, styles: new Array(cueText.length).fill(0), source: cue.raw[0].source }] }, ...rest];
       } else {
         rest = [cue, ...rest];
@@ -838,16 +848,20 @@ function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings, 
   // Empty fields (placeholders like "Contact:") print nothing.
   const get = (...keys: string[]) => fields.filter((f) => keys.includes(f.key)).map((f) => strip(f.value)).filter((v) => v.trim() !== '');
   const items: TitleItem[] = [];
-  const lh = cap.lineHeight;
-  let y = s.titleLine * lh;
+  // Title page details are set in 12 pt with single (12 pt) spacing; positions are baselines.
+  const lh = 12;
+  let y = Math.max(s.titleSize, s.titleBaseline);
   const titles = get('title');
+  let first = true;
   for (const t of titles) {
     for (const part of t.split('\n')) {
+      if (!first) y += s.titleSize * 1.15;
+      first = false;
       items.push({ text: s.titleUppercase ? part.toUpperCase() : part, y, align: 'center', title: true });
-      y += Math.max(lh, s.titleSize * 1.25);
     }
   }
-  y += lh * 2;
+  // Credit ("written by", "von") about five lines below the title, the author a blank line below.
+  y += titles.length ? 67.5 : 0;
   const centerBlock = (vals: string[], gapAfter: number) => {
     for (const v of vals)
       for (const part of v.split('\n')) {
@@ -857,25 +871,32 @@ function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings, 
     if (vals.length) y += lh * gapAfter;
   };
   centerBlock(get('credit'), 1);
-  centerBlock(get('author', 'authors', 'writer', 'writers'), 3);
+  centerBlock(get('author', 'authors', 'writer', 'writers'), 1);
   centerBlock(get('source'), 1);
-  // Bottom corners
+  // Bottom corners: the same distance from the left, right and bottom edges of the paper.
+  // Notes (e.g. a project number) stand above the contact details, two lines apart; the date
+  // closes the other corner on the same line as the last contact line.
+  const notes = get('notes');
   const contact = get('contact', 'address', 'phone', 'email', 'agent');
   const titleDates = get('draft date', 'date');
   // The export draft date is used on the title page only when the title page has none.
-  const other = [...(titleDates.length ? titleDates : s.draftDate ? [s.draftDate] : []), ...get('revision', 'copyright', 'notes')];
-  const bottom = cap.textBottom;
-  const place = (vals: string[], align: 'left' | 'right') => {
-    const linesOut = vals.flatMap((v) => v.split('\n'));
+  const dates = titleDates.length ? titleDates : s.draftDate ? [s.draftDate] : [];
+  const other = [...get('revision', 'copyright'), ...dates];
+  const bottom = cap.pageHeight - Math.max(24, s.titleInset);
+  const split = (vals: string[]) => vals.flatMap((v) => v.split('\n'));
+  const place = (linesOut: Array<string | null>, align: 'left' | 'right') => {
     let yy = bottom - (linesOut.length - 1) * lh;
     for (const l of linesOut) {
-      items.push({ text: l, y: yy, align });
+      if (l !== null) items.push({ text: l, y: yy, align });
       yy += lh;
     }
   };
+  const contactLines: Array<string | null> = split(notes);
+  if (notes.length && contact.length) contactLines.push(null, null);
+  contactLines.push(...split(contact));
   const contactAlign = s.contactPosition === 'bottom-right' ? 'right' : 'left';
-  place(contact, contactAlign);
-  place(other, contactAlign === 'left' ? 'right' : 'left');
+  place(contactLines, contactAlign);
+  place(split(other), contactAlign === 'left' ? 'right' : 'left');
   return { number: 0, lines: [], title: items, sceneLines: [] };
 }
 

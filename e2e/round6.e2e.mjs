@@ -109,6 +109,8 @@ await check('saving a preset under an existing name asks before replacing', asyn
 });
 
 await check('title letter spacing is written to the PDF', async () => {
+  await page.locator('input[aria-label="titleSize"]').fill('12');
+  await page.locator('input[aria-label="titleSize"]').press('Tab');
   await page.fill('input[aria-label="Letter spacing"]', '50').catch(async () => {
     const inp = page.locator('.form-row:has-text("Letter spacing") input');
     await inp.fill('50');
