@@ -6,8 +6,11 @@ import { h } from './dom';
 import { confirmDialog, openDialog, toast } from './overlay';
 import { SCENE_COLORS, STATUS_LABELS } from './outline';
 import { SceneStatus } from '../../shared/types';
+import { renderReview } from './review';
+import { renderShelf } from './shelf';
+import { openComparison, renderDrafts } from './drafts';
 
-type Tab = 'notes' | 'scene' | 'history';
+type Tab = 'notes' | 'scene' | 'comments' | 'shelf' | 'history';
 
 export class RightPane {
   el: HTMLElement;
@@ -19,9 +22,14 @@ export class RightPane {
 
   constructor(private app: App) {
     const mk = (t: Tab, label: string) => h('button', { class: 'tab', tabindex: '-1', onclick: () => this.switchTo(t) }, label);
-    this.tabBtns = { notes: mk('notes', 'Notes'), scene: mk('scene', 'Scene'), history: mk('history', 'History') };
+    this.tabBtns = { notes: mk('notes', 'Notes'), scene: mk('scene', 'Scene'), comments: mk('comments', 'Review'), shelf: mk('shelf', 'Shelf'), history: mk('history', 'History') };
     this.body = h('div', { class: 'rp-body' });
-    this.el = h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0' } }, h('div', { class: 'rp-tabs' }, this.tabBtns.notes, this.tabBtns.scene, this.tabBtns.history), this.body);
+    this.el = h(
+      'div',
+      { style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0' } },
+      h('div', { class: 'rp-tabs' }, this.tabBtns.notes, this.tabBtns.scene, this.tabBtns.comments, this.tabBtns.shelf, this.tabBtns.history),
+      this.body,
+    );
   }
 
   private switchTo(t: Tab) {
@@ -40,6 +48,31 @@ export class RightPane {
   focusTab() {
     const f = this.body.querySelector<HTMLElement>('textarea, input');
     f?.focus();
+  }
+
+  private reviewTimer: any = null;
+
+  /** Annotations changed: re-render the Review tab (debounced while typing). */
+  annotationsChanged() {
+    this.updateBadges();
+    if (this.tab !== 'comments' || !this.app.state.layout.rightVisible) return;
+    if (this.body.contains(document.activeElement) && document.activeElement !== document.body) return;
+    clearTimeout(this.reviewTimer);
+    this.reviewTimer = setTimeout(() => this.render(), 150);
+  }
+
+  shelfChanged() {
+    this.updateBadges();
+    if (this.tab === 'shelf') this.render();
+  }
+
+  private updateBadges() {
+    const m = this.app.project?.meta;
+    const open = m ? m.comments.filter((c) => !c.resolved && !c.detached).length : 0;
+    const detached = m ? [...m.comments, ...m.highlights, ...m.passages].filter((r) => r.detached).length : 0;
+    this.tabBtns.comments.textContent = open || detached ? `Review ${open + detached}` : 'Review';
+    this.tabBtns.comments.classList.toggle('has-warn', detached > 0);
+    this.tabBtns.comments.title = detached ? `${open} open comments, ${detached} detached items` : `${open} open comments`;
   }
 
   historyChanged() {
@@ -64,9 +97,20 @@ export class RightPane {
       this.body.append(h('div', { class: 'notice' }, 'Open a project to see its notes.'));
       return;
     }
+    this.updateBadges();
+    const rerender = () => {
+      const st = this.body.scrollTop;
+      this.render();
+      this.body.scrollTop = st;
+    };
     if (this.tab === 'notes') this.renderNotes();
     else if (this.tab === 'scene') this.renderScene();
-    else this.renderHistory();
+    else if (this.tab === 'comments') renderReview(this.app, this.body, rerender);
+    else if (this.tab === 'shelf') renderShelf(this.app, this.body, rerender);
+    else {
+      renderDrafts(this.app, this.body, rerender);
+      this.renderHistory();
+    }
   }
 
   private renderNotes() {
@@ -170,8 +214,8 @@ export class RightPane {
     const p = this.app.project!;
     const wrap = h('div', { style: { display: 'flex', flexDirection: 'column' } });
     this.body.append(
-      h('div', { class: 'notice' }, 'Automatic snapshots while you write (at most every few minutes). All from the last 24 hours are kept, then one per day for 30 days.'),
-      h('div', { style: { display: 'flex', gap: '6px' } }, h('button', { class: 'btn', onclick: () => this.snapshotNow() }, 'Save snapshot now')),
+      h('div', { class: 'rv-head' }, h('span', null, 'Automatic history'), h('span', { class: 'spacer' }), h('button', { class: 'btn sm', onclick: () => this.snapshotNow() }, 'Snapshot now')),
+      h('div', { class: 'notice' }, 'Saved while you write (at most every few minutes). Everything from the last 24 hours is kept, then one per day for 30 days. Named drafts are never removed automatically.'),
       wrap,
     );
     const list = await bridge.call('listHistory', p.rel);
@@ -188,7 +232,7 @@ export class RightPane {
           'div',
           { class: 'history-row' },
           h('span', { class: 'label' }, when, label && label !== 'auto' ? h('span', { class: 'dim' }, ` · ${label}`) : null),
-          h('button', { class: 'btn sm', onclick: () => this.preview(it.name, when) }, 'Preview'),
+          h('button', { class: 'btn sm', onclick: () => this.preview(it.name, when) }, 'Compare…'),
         ),
       );
     }
@@ -204,23 +248,6 @@ export class RightPane {
   private async preview(name: string, when: string) {
     const p = this.app.project!;
     const text = await bridge.call('readHistory', p.rel, name);
-    const pre = h('div', { class: 'preview-text' }, text);
-    openDialog({
-      title: `Snapshot from ${when}`,
-      width: 720,
-      body: [pre],
-      buttons: [
-        { label: 'Close' },
-        {
-          label: 'Restore this version',
-          primary: true,
-          run: async () => {
-            await bridge.call('snapshotProject', p.rel, this.app.editor.getText(), 'before restore');
-            await this.app.replaceAllText(text, `Restored the snapshot from ${when}. The previous text was kept in history.`);
-            this.render();
-          },
-        },
-      ],
-    });
+    openComparison(this.app, { title: `Snapshot from ${when}`, text, label: `snapshot from ${when}` });
   }
 }

@@ -575,6 +575,26 @@ export class Backend extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------------
+  // Named drafts (kept until the writer deletes them)
+
+  private draftFile(rel: string, id: string) {
+    return path.join(this.resolve(rel), META_DIR, 'drafts', `${id.replace(/[^\w-]/g, '')}.fountain`);
+  }
+
+  saveDraft(rel: string, id: string, text: string) {
+    atomicWrite(this.draftFile(rel, id), text);
+  }
+
+  readDraft(rel: string, id: string): string {
+    return fs.readFileSync(this.draftFile(rel, id), 'utf8');
+  }
+
+  deleteDraft(rel: string, id: string) {
+    const f = this.draftFile(rel, id);
+    if (fs.existsSync(f)) fs.unlinkSync(f);
+  }
+
+  // ---------------------------------------------------------------------------------
   // Watching for external changes (fs.watch plus polling for synced and network folders)
 
   private watch(rel: string, dir: string, file: string, hash: string, metaHash: string) {

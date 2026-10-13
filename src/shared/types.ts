@@ -162,6 +162,84 @@ export interface ProjectMeta {
   dictionary: string[];
   exportPresets: ExportPreset[];
   exportSettings?: ExportSettings;
+  highlights: HighlightRecord[];
+  comments: CommentRecord[];
+  passages: PassageRecord[];
+  shelf: ShelfItem[];
+  drafts: DraftInfo[];
+}
+
+/** Text position stored as quoted text with context (see shared/anchors.ts). */
+export interface StoredAnchorRec {
+  quote: string;
+  prefix: string;
+  suffix: string;
+  line: number;
+}
+
+export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink';
+
+export interface HighlightRecord {
+  id: string;
+  color: HighlightColor;
+  anchor: StoredAnchorRec;
+  /** Reason when the text could not be found; the record is kept for review. */
+  detached?: string;
+  created: string;
+}
+
+export interface CommentReply {
+  id: string;
+  text: string;
+  created: string;
+}
+
+export interface CommentRecord {
+  id: string;
+  text: string;
+  created: string;
+  resolved: boolean;
+  replies: CommentReply[];
+  anchor: StoredAnchorRec;
+  detached?: string;
+  sceneHeading?: string;
+}
+
+export interface Alternative {
+  id: string;
+  name: string;
+  /** For the active alternative this is refreshed from the screenplay when switching away. */
+  text: string;
+  created: string;
+}
+
+export interface PassageRecord {
+  id: string;
+  name: string;
+  anchor: StoredAnchorRec;
+  activeId: string;
+  alternatives: Alternative[];
+  detached?: string;
+  sceneHeading?: string;
+}
+
+export interface ShelfItem {
+  id: string;
+  text: string;
+  created: string;
+  kind: 'cut' | 'copy';
+  sceneId?: string;
+  sceneHeading?: string;
+  note?: string;
+}
+
+export interface DraftInfo {
+  id: string;
+  name: string;
+  created: string;
+  words: number;
+  /** Scene ids in order, for comparisons that survive reordering. */
+  sceneIds: string[];
 }
 
 export function emptyMeta(id: string): ProjectMeta {
@@ -175,6 +253,11 @@ export function emptyMeta(id: string): ProjectMeta {
     detached: [],
     dictionary: [],
     exportPresets: [],
+    highlights: [],
+    comments: [],
+    passages: [],
+    shelf: [],
+    drafts: [],
   };
 }
 
@@ -326,16 +409,49 @@ export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettin
   };
 }
 
-/** Stored settings over defaults; settings from older versions (inch-based) are ignored. */
+/** Settings saved before page geometry moved to lines and characters (measured in inches). */
+function isInchGeometry(stored: any): boolean {
+  return 'marginLeft' in stored || 'linesPerInch' in stored || 'titlePosition' in stored || !('topMargin' in stored);
+}
+
+/** Converts inch-based settings (first version) to lines and characters. */
+function convertInchGeometry(stored: any, paper: PaperSize): any {
+  const out: any = { ...stored };
+  const size = typeof stored.fontSize === 'number' ? stored.fontSize : 12;
+  const cpi = 72 / (size * 0.6); // characters per inch
+  const lpi = typeof stored.linesPerInch === 'number' ? stored.linesPerInch : 6;
+  const hIn = paperDims(paper).height / 72;
+  const top = typeof stored.marginTop === 'number' ? stored.marginTop : 1;
+  const bottom = typeof stored.marginBottom === 'number' ? stored.marginBottom : 1;
+  const chars = (k: string) => {
+    if (typeof stored[k] === 'number') out[k] = Math.round(stored[k] * cpi);
+  };
+  for (const k of ['actionWidth', 'characterIndent', 'dialogueIndent', 'dialogueWidth', 'parentheticalIndent', 'parentheticalWidth']) chars(k);
+  if (typeof stored.marginLeft === 'number') out.leftMargin = Math.round(stored.marginLeft * cpi);
+  out.lineHeight = Math.round((72 / lpi) * 2) / 2;
+  out.topMargin = Math.round(top * lpi);
+  out.linesPerPage = Math.floor((hIn - top - bottom) * lpi + 1e-6);
+  if (typeof stored.titlePosition === 'number') out.titleLine = Math.round(stored.titlePosition * hIn * lpi);
+  for (const k of ['marginLeft', 'marginRight', 'marginTop', 'marginBottom', 'linesPerInch', 'titlePosition']) delete out[k];
+  return out;
+}
+
+/** Stored settings over defaults. Settings from the first (inch-based) version are converted. */
 export function normalizeExportSettings(stored: Partial<ExportSettings> | undefined, paper: PaperSize): ExportSettings {
-  const d = defaultExportSettings((stored?.paper as PaperSize) ?? paper);
-  if (!stored) return d;
+  const p = ((stored?.paper as PaperSize) ?? paper) === 'A4' ? 'A4' : 'Letter';
+  const d = defaultExportSettings(p);
+  if (!stored || typeof stored !== 'object') return d;
+  const src = isInchGeometry(stored) ? convertInchGeometry(stored, p) : stored;
   const out: any = { ...d };
   for (const k of Object.keys(d) as Array<keyof ExportSettings>) {
-    const v = (stored as any)[k];
+    const v = (src as any)[k];
     if (v !== undefined && typeof v === typeof (d as any)[k]) out[k] = v;
   }
   if (out.titleFont === 'Helvetica' || out.titleFont === 'Times') out.titleFont = 'Courier Prime';
+  // Guard against impossible values from damaged settings: fall back to defaults.
+  if (out.actionWidth < 20 || out.dialogueWidth < 8 || out.linesPerPage < 10) {
+    for (const k of ['actionWidth', 'characterIndent', 'dialogueIndent', 'dialogueWidth', 'parentheticalIndent', 'parentheticalWidth', 'linesPerPage', 'topMargin', 'leftMargin', 'lineHeight'] as const) (out as any)[k] = (d as any)[k];
+  }
   return out as ExportSettings;
 }
 
@@ -383,7 +499,7 @@ export interface LayoutState {
   leftVisible: boolean;
   rightWidth: number;
   rightVisible: boolean;
-  rightTab: 'notes' | 'scene' | 'history';
+  rightTab: 'notes' | 'scene' | 'comments' | 'shelf' | 'history';
   projectsCollapsed: boolean;
 }
 

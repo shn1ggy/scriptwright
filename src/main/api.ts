@@ -42,6 +42,9 @@ export function createApi(b: Backend) {
     writeFile: (file: string, data: Uint8Array | string) => b.writeFile(file, typeof data === 'string' ? data : Buffer.from(data)),
     fontsAvailable: () => b.fontsAvailable(),
     listFonts: () => b.listFonts(),
+    saveDraft: (rel: string, id: string, text: string) => b.saveDraft(rel, id, text),
+    readDraft: (rel: string, id: string) => b.readDraft(rel, id),
+    deleteDraft: (rel: string, id: string) => b.deleteDraft(rel, id),
   };
 }
 

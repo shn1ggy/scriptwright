@@ -105,6 +105,8 @@ export class Editor {
   private selLayer: HTMLElement;
   private hlLayer: HTMLElement;
   private pbLayer: HTMLElement;
+  private decoLayer: HTMLElement;
+  private decorations: Array<{ a: { key: number; ch: number }; b: { key: number; ch: number }; cls: string }> = [];
   pageMarkers: Array<{ key: number; frac: number; label: string }> = [];
   private caretEl: HTMLElement;
   private input: HTMLTextAreaElement;
@@ -146,6 +148,7 @@ export class Editor {
     this.column = el('div', 'ed-column');
     this.hlLayer = el('div', 'ed-layer ed-hl');
     this.pbLayer = el('div', 'ed-layer ed-pb');
+    this.decoLayer = el('div', 'ed-layer ed-deco');
     this.selLayer = el('div', 'ed-layer ed-sel');
     this.content = el('div', 'ed-content');
     this.caretEl = el('div', 'ed-caret');
@@ -157,7 +160,7 @@ export class Editor {
     this.input.setAttribute('spellcheck', 'false');
     this.input.setAttribute('aria-label', 'Screenplay');
     this.input.wrap = 'off';
-    this.column.append(this.pbLayer, this.hlLayer, this.selLayer, this.content, this.caretEl, this.input);
+    this.column.append(this.pbLayer, this.decoLayer, this.hlLayer, this.selLayer, this.content, this.caretEl, this.input);
     this.dom.append(this.column);
     host.append(this.dom);
     this.parsed = parse(['']);
@@ -261,6 +264,12 @@ export class Editor {
   setHighlights(h: Highlight[], current = -1) {
     this.highlights = h;
     this.currentHighlight = current;
+    this.paintSoon();
+  }
+
+  /** Persistent ranges (highlights, comments, passages) painted behind the text. */
+  setDecorations(decos: Array<{ a: { key: number; ch: number }; b: { key: number; ch: number }; cls: string }>) {
+    this.decorations = decos;
     this.paintSoon();
   }
 
@@ -980,6 +989,32 @@ export class Editor {
       for (const r of this.rangeRects(v, h.from, h.to)) hlFrag.append(box(r, colRect, idx === this.currentHighlight ? 'hl-box current' : 'hl-box'));
     });
     this.hlLayer.replaceChildren(hlFrag);
+
+    // Decorations
+    const decoFrag = document.createDocumentFragment();
+    if (this.decorations.length) {
+      const idx = new Map<number, number>();
+      for (const d of this.decorations) {
+        idx.set(d.a.key, -1);
+        idx.set(d.b.key, -1);
+      }
+      this.lines.forEach((l, i) => idx.has(l.key) && idx.set(l.key, i));
+      for (const d of this.decorations) {
+        const a = idx.get(d.a.key)!;
+        const b = idx.get(d.b.key)!;
+        if (a < 0 || b < 0) continue;
+        for (let i = a; i <= b; i++) {
+          const v = this.viewForLine(i);
+          if (!v) continue;
+          const lr = v.el.getBoundingClientRect();
+          if (lr.bottom < viewTop || lr.top > viewBottom) continue;
+          const from = i === a ? d.a.ch : 0;
+          const to = i === b ? d.b.ch : this.lines[i].text.length;
+          for (const r of this.rangeRects(v, from, to)) decoFrag.append(box(r, colRect, `deco ${d.cls}`));
+        }
+      }
+    }
+    this.decoLayer.replaceChildren(decoFrag);
 
     // Page break markers
     const pbFrag = document.createDocumentFragment();

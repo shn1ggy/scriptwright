@@ -6,7 +6,7 @@ import { CommandRegistry, comboFromEvent, formatCombo, hasModifier, isNavigation
 import { h, icon, iconButton, debounce, fmtNum, uid } from './ui/dom';
 import { alertDialog, choiceDialog, confirmDialog, handleEscape, openDialog, openMenu, overlayOpen, promptDialog, toast, MenuItem } from './ui/overlay';
 import { applyTheme } from './theme';
-import { Line, Pos, Selection, cursor, joinLines, makeLines, selEmpty, selFrom, selTo, newKey } from '../shared/doc';
+import { Line, Pos, Selection, Step, cursor, joinLines, makeLines, selEmpty, selFrom, selTo, newKey } from '../shared/doc';
 import { ParseResult, SceneInfo, characterLabel, characterList, cleanText, countWords, sceneIndexAt } from '../shared/fountain';
 import { AppState, ProjectMeta, ProjectSession, SceneRecord, Settings, ViewName, defaultAppState, defaultSettings } from '../shared/types';
 import { detach, fingerprint, hasInfo, reconcile } from '../shared/scenes';
@@ -22,6 +22,13 @@ import { paginate } from '../shared/paginate';
 import { openRename } from './ui/rename';
 import { compareDialog } from './ui/compare';
 import { SceneCards } from './ui/cards';
+import { Annotations } from './annotations';
+import { openRewrite } from './ui/rewrite';
+import { renderShelf, toShelf } from './ui/shelf';
+import { saveDraft } from './ui/drafts';
+import { openFountainExport, openSceneNumbers } from './ui/fountaintools';
+import { keyIndex } from '../shared/anchors';
+import { HighlightColor } from '../shared/types';
 
 export interface SceneItem {
   kind: 'scene' | 'title' | 'opening';
@@ -101,6 +108,7 @@ export class App {
   rightPane!: RightPane;
   findbar!: FindBar;
   cards!: SceneCards;
+  annotations = new Annotations(this);
   private leftToggle!: HTMLButtonElement;
   private tooltipButtons: Array<[HTMLButtonElement, string, string]> = [];
 
@@ -209,7 +217,7 @@ export class App {
     this.editor = new Editor(this.center, this.settings.editor);
     this.editor.editKeysFromMenu = bridge.isElectron;
     this.editor.hooks = {
-      onChange: (origin, steps) => this.onEditorChange(origin),
+      onChange: (origin, steps) => this.onEditorChange(origin, steps),
       onSelection: () => this.onSelectionChange(),
       onScroll: () => this.onScroll(),
       onContextMenu: (e, pos) => this.editorContextMenu(e, pos),
@@ -422,6 +430,7 @@ export class App {
     this.editor.setText(r.text);
     p.savedVersion = this.editor.version;
     this.assignSceneIdsFromRecords();
+    this.annotations.load();
     this.dialogueCharacter = session?.dialogueCharacter ?? '';
     this.dialogueScope = session?.dialogueScope ?? 'all';
     this.dialogueAction = session?.dialogueAction ?? false;
@@ -511,6 +520,8 @@ export class App {
     this.findbar.close(false);
     this.hideBanner();
     this.editor.setFilter(null, null);
+    this.annotations.live.clear();
+    this.editor.setDecorations([]);
     this.editor.setText('');
     this.scenes = [];
     this.outline.render();
@@ -678,6 +689,7 @@ export class App {
   private saveMetaSoon = debounce(() => this.saveMetaNow(), 1000);
 
   async saveMetaNow() {
+    this.annotations.syncToMeta();
     const p = this.project;
     if (!p || !p.metaDirty) return;
     this.syncSceneRecords();
@@ -726,6 +738,7 @@ export class App {
       if (m) {
         p.meta = m.meta;
         this.assignSceneIdsFromRecords();
+        this.annotations.load();
         this.refreshDerived(true);
         this.rightPane.render();
       }
@@ -901,7 +914,7 @@ export class App {
   }
 
   /** Replaces the whole screenplay as one undoable change. */
-  async replaceAllText(text: string, message: string | null, origin: 'command' | 'external' = 'command') {
+  async replaceAllText(text: string, message: string | null, origin: 'command' | 'external' = 'command', sceneIds?: string[]) {
     const head = this.editor.sel.head;
     const newLines = makeLines(text);
     // Keep keys for lines that did not change at the same position, so scenes keep identity.
@@ -915,6 +928,18 @@ export class App {
       }, origin === 'external' ? 'external' : 'command');
       // Scenes whose heading line changed are matched to stored information again.
       this.syncSceneRecordsFromKeys();
+      if (sceneIds && this.project) {
+        // A restored draft knows which scene is which.
+        const used = new Set(this.project.sceneIds.values());
+        this.editor.parsed.scenes.forEach((sc, i) => {
+          const key = this.editor.lines[sc.line].key;
+          const id = sceneIds[i];
+          if (id && !this.project!.sceneIds.has(key) && !used.has(id)) {
+            this.project!.sceneIds.set(key, id);
+            used.add(id);
+          }
+        });
+      }
       this.assignSceneIdsFromRecords(true);
     } finally {
       this.suspendScenes = false;
@@ -931,9 +956,10 @@ export class App {
   /** While true, scene identity is being re-established and derived state waits. */
   private suspendScenes = false;
 
-  private onEditorChange(origin: string) {
+  private onEditorChange(origin: string, steps: Step[] = []) {
     if (!this.project) return;
     if (origin === 'load') return; // openProject assigns scene identity first
+    this.annotations.onChange(origin, steps);
     if (origin !== 'load') {
       if (this.isDirty()) {
         if (this.saveState !== 'conflict' && this.saveState !== 'missing') this.setSaveState('unsaved');
@@ -1821,6 +1847,20 @@ export class App {
     items.push({ label: 'Copy', kbd: formatCombo('Mod+C'), disabled: !hasSel, run: () => this.clipboardCopy() });
     items.push({ label: 'Paste', kbd: formatCombo('Mod+V'), run: () => this.clipboardPaste() });
     items.push({ label: 'Select All', kbd: formatCombo('Mod+A'), run: () => ed.selectAll() });
+    items.push({ sep: true });
+    items.push({ label: 'Rewrite…', kbd: this.commands.label('edit.rewrite'), run: () => openRewrite(this) });
+    items.push({ label: 'Comment…', kbd: this.commands.label('edit.comment'), disabled: !hasSel, run: () => this.addComment() });
+    items.push({ head: 'Highlight' });
+    for (const c of ['yellow', 'green', 'blue', 'pink'] as const) items.push({ label: c[0].toUpperCase() + c.slice(1), dot: HL_DOTS[c], disabled: !hasSel, run: () => this.highlight(c) });
+    items.push({ label: 'Remove highlight', disabled: !hasSel && !(pos && this.annotations.at(pos).some((r) => r.kind === 'highlight')), run: () => this.highlight(null, pos) });
+    items.push({ sep: true });
+    items.push({ label: 'Cut to shelf', kbd: this.commands.label('shelf.cut'), disabled: !hasSel, run: () => toShelf(this, true) });
+    items.push({ label: 'Copy to shelf', kbd: this.commands.label('shelf.copy'), disabled: !hasSel, run: () => toShelf(this, false) });
+    if (pos) {
+      const here = this.annotations.at(pos);
+      const c = here.find((r) => r.kind === 'comment');
+      if (c) items.push({ sep: true }, { label: 'Show comment', run: () => this.showRightTab('comments') });
+    }
     const pl = pos ? ed.parsed.lines[pos.line] : null;
     if (pl?.type === 'character' && pl.cue) {
       items.push({ sep: true }, { label: `Rename ${pl.cue}…`, run: () => openRename(this, pl.cue) });
@@ -1920,6 +1960,16 @@ export class App {
       if (a) this.moveSceneBy(a, 1);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
     reg('dialogue.goToPassage', 'Go to Passage in Script', 'Scenes', ['Mod+Enter'], () => this.goToPassage(), { enabled: () => !this.isFullView(), menu: 'Scene' });
+    reg('edit.rewrite', 'Rewrite…', 'Edit', ['Alt+A'], () => openRewrite(this), { enabled: hasProject, menu: 'Edit' });
+    reg('edit.highlight', 'Highlight…', 'Edit', ['Mod+H'], () => this.highlightMenu(), { enabled: hasProject, menu: 'Edit' });
+    reg('edit.comment', 'Comment…', 'Edit', ['Mod+Shift+M'], () => this.addComment(), { enabled: hasProject, menu: 'Edit' });
+    reg('shelf.cut', 'Cut to Shelf', 'Edit', ['Mod+Shift+X'], () => toShelf(this, true), { enabled: hasProject, menu: 'Edit' });
+    reg('shelf.copy', 'Copy to Shelf', 'Edit', ['Mod+Shift+C'], () => toShelf(this, false), { enabled: hasProject, menu: 'Edit' });
+    reg('draft.save', 'Save Named Draft…', 'File', ['Mod+Shift+D'], () => saveDraft(this).then(() => undefined), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('project.exportFountain', 'Export Fountain File…', 'File', ['Mod+Shift+E'], () => openFountainExport(this), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('scene.writtenNumbers', 'Scene Numbers in Fountain Text…', 'Scenes', [], () => openSceneNumbers(this), { enabled: hasProject, menu: 'Scene' });
+    reg('project.review', 'Review: Comments & Alternatives', 'Scenes', [], () => this.showRightTab('comments'), { enabled: hasProject, menu: 'Scene' });
+    reg('project.shelf', 'Shelf', 'Scenes', [], () => this.showRightTab('shelf'), { enabled: hasProject, menu: 'Scene' });
     reg('scene.cards', 'Scene Cards', 'Scenes', ['Mod+Shift+O'], () => this.cards.toggle(), { inFields: true, enabled: hasProject, menu: 'Scene' });
     reg('scene.notes', 'Scene Notes', 'Scenes', [], () => this.showRightTab('scene'), { enabled: hasProject, menu: 'Scene' });
     reg('project.notes', 'Project Notes', 'Scenes', [], () => this.showRightTab('notes'), { enabled: hasProject, menu: 'Scene' });
@@ -1942,7 +1992,87 @@ export class App {
     else this.editor.selectAll();
   }
 
-  showRightTab(tab: 'notes' | 'scene' | 'history') {
+  private highlight(color: HighlightColor | null, pos?: Pos | null) {
+    const ann = this.annotations;
+    if (!ann.selectionAnchor()) {
+      // Remove the highlight under the caret / pointer.
+      const at = pos ?? this.editor.sel.head;
+      const hl = ann.at(at).find((r) => r.kind === 'highlight');
+      if (color === null && hl) {
+        const an = ann.live.get(hl.rec.id) ?? null;
+        ann.removeRecord(hl.rec.id);
+        toast('Highlight removed.', { actions: [{ label: 'Undo', run: () => ann.restoreRecord('highlight', hl.rec, an) }] });
+      } else toast('Select the text to highlight.');
+      return;
+    }
+    ann.highlight(color);
+  }
+
+  /** Highlight colors at the caret (Mod+H). */
+  private highlightMenu() {
+    const c = this.editor.coordsAtPos(this.editor.sel.head);
+    const at = c ? { x: c.left, y: c.bottom + 4 } : { x: 200, y: 200 };
+    openMenu(
+      [
+        ...(['yellow', 'green', 'blue', 'pink'] as const).map((k) => ({ label: k[0].toUpperCase() + k.slice(1), dot: HL_DOTS[k], run: () => this.highlight(k) })),
+        { sep: true },
+        { label: 'Remove highlight', run: () => this.highlight(null) },
+      ],
+      at,
+    );
+  }
+
+  async addComment() {
+    const an = this.annotations.selectionAnchor();
+    if (!an) {
+      toast('Select the text to comment on.');
+      return;
+    }
+    const ta = h('textarea', { class: 'field', rows: 4, placeholder: 'Comment', 'aria-label': 'Comment' });
+    openDialog({
+      title: 'Comment',
+      body: [h('div', { class: 'notice' }, `“${this.editor.selectedText().slice(0, 120)}”`), ta],
+      buttons: [
+        { label: 'Cancel' },
+        {
+          label: 'Add comment',
+          primary: true,
+          run: () => {
+            if (!ta.value.trim()) return false;
+            this.annotations.addComment(ta.value.trim(), an);
+            this.showRightTab('comments');
+            this.editor.focus();
+          },
+        },
+      ],
+      initialFocus: ta,
+    });
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) (ta.closest('.dialog')?.querySelector('.btn.primary') as HTMLElement | null)?.click();
+    });
+  }
+
+  /** Shows an annotation's text in the editor (switching to Script view if it is hidden). */
+  revealAnnotation(id: string) {
+    const an = this.annotations.live.get(id);
+    if (!an) {
+      toast('This item is detached from the text.');
+      return;
+    }
+    const idx = keyIndex(this.editor.lines);
+    const a = { line: idx.get(an.a.key)!, ch: an.a.ch };
+    const b = { line: idx.get(an.b.key)!, ch: an.b.ch };
+    if (!this.editor.isVisibleLine(a.line)) {
+      if (this.view === 'scene') {
+        const item = this.sceneAt(a.line);
+        if (item) this.enterScene(item, { caret: a });
+      } else this.setView('script', { quiet: true });
+    }
+    this.editor.setSelection({ anchor: a, head: b }, { scroll: 'center' });
+    this.editor.focus();
+  }
+
+  showRightTab(tab: 'notes' | 'scene' | 'comments' | 'shelf' | 'history') {
     this.state.layout.rightVisible = true;
     this.state.layout.rightTab = tab;
     this.applyLayout();
@@ -2181,3 +2311,5 @@ function matchKeys(old: Line[], next: Line[]): Line[] {
 }
 
 export { joinLines, Transaction };
+
+const HL_DOTS: Record<HighlightColor, string> = { yellow: '#E8C547', green: '#6EC878', blue: '#5AA0F0', pink: '#EB78B4' };

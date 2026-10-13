@@ -116,6 +116,30 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
   synopses are excluded by default.
 - Named presets per project and reset to defaults. Very long passages paginate without loss.
 
+**Rewriting and review (stage 2)**
+- **Rewrite** (⌥A / Alt+A, or the text context menu): keep several named versions of any
+  passage. Exactly one is in the screenplay; the others are stored in the project information.
+  Edit, compare, rename, delete and swap versions; swapping keeps the outgoing text as its own
+  version and is one undo step. Selecting inside an existing passage reopens it.
+- **Comments** (Mod+Shift+M) anchored to the selected text, with replies, resolve and reopen.
+- **Highlights** in yellow, green, blue and pink (Mod+H or the context menu), and removing them.
+- Highlights, comments and passages follow typing, line breaks, scene moves, undo/redo and
+  external reloads. When their text is deleted or can't be found unambiguously they become
+  **detached**: listed in the Review pane with their last text, to attach to a new selection or
+  delete. They are never attached to other text silently, and never exported.
+- **Shelf**: cut (Mod+Shift+X) or copy (Mod+Shift+C) passages out of the screenplay with their
+  scene; insert at the caret later (a selection is never replaced), copy, add a note. Items stay
+  until you delete them.
+- **Named drafts** (Mod+Shift+D), kept until you delete them. Preview and compare any draft or
+  automatic snapshot with the current screenplay, as full text or scene by scene: scenes are
+  matched by identity (then heading and content), moves are shown separately from changes, and
+  uncertain matches are marked. Restoring saves your current text as a draft first and can be
+  undone.
+- **Scene numbers in the Fountain text**: remove all written `#n#` numbers, add them where
+  missing, or renumber in outline order (one undo step).
+- **Export Fountain file** (Mod+Shift+E) for other apps: write, keep or remove scene numbers,
+  optionally drop notes and omitted text. The screenplay itself is not changed.
+
 ## Default shortcuts
 
 `Mod` is ⌘ on macOS and Ctrl on Windows/Linux. All can be changed in the command window.
@@ -139,6 +163,9 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 | Move scene up / down | ⌥⇧/Alt+Shift + ↑ / ↓ |
 | Go to passage (from Scene or Dialogue view) | Mod+Enter |
 | Scene cards | Mod+Shift+O |
+| Rewrite / comment / highlight | ⌥A or Alt+A / Mod+Shift+M / Mod+H |
+| Cut to shelf / copy to shelf | Mod+Shift+X / Mod+Shift+C |
+| Save named draft / export Fountain | Mod+Shift+D / Mod+Shift+E |
 
 Escape closes menus and dialogs, leaves search fields and exits minimal view.
 Word movement: Ctrl+←/→ on Windows/Linux; on macOS ⌥⇧←/→ selects by word (⌥←/→ is scene
@@ -165,8 +192,8 @@ Distinguishing what was actually run from what was not:
 
 | Area | Status |
 | --- | --- |
-| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, storage backend | 83 unit tests, run on Linux (Node 22) |
-| Renderer (editor, views, outline, dialogs, export preview) | 6 end-to-end suites (67 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
+| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, storage backend | 95 unit tests, run on Linux (Node 22) |
+| Renderer (editor, views, outline, dialogs, export preview) | 7 end-to-end suites (76 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
 | Typing latency | ≈4 ms per keystroke on a 6,200-line (≈130 page) script in Chromium |
 | Electron shell (window, menus, dialogs, IPC, close/quit, maximize, spellchecking) | **Written but not run** — Electron could not be installed in the build environment |
 | macOS, Windows | **Not tested** |
@@ -186,14 +213,13 @@ please run `npm start` on each platform before relying on it.
 - `dev/harness.ts` — serves the renderer to a browser with the real backend over HTTP (tests and
   development only; not shipped).
 
-## Roadmap (later stages of the brief)
+## Roadmap
 
 | Brief section | Status |
 | --- | --- |
-| §13 Rewrite and alternative passages | Not started |
-| §14 Cut-material shelf | Not started |
-| §15 Named drafts and draft/scene comparison | Automatic history with preview and restore exists; named drafts and position-independent scene comparison not started |
-| §16 Comments, highlights, detached-annotation review | Project and scene notes exist; comments and highlights not started (line keys are in place for anchoring) |
+| §13 Rewrite and alternative passages | Done (stage 2) |
+| §14 Cut-material shelf | Done (stage 2) |
+| §15 Named drafts and draft/scene comparison | Done (stage 2); production revision marks are part of §24 |
+| §16 Comments, highlights, detached-annotation review | Done (stage 2) |
 | §21 Collaboration | Not started |
-| §24 Production tools (revision sets, locked numbering, reports, Final Draft) | Not started |
-| Alt/⌥+A (Rewrite) and Mod+H (highlights) shortcuts | Reserved for those features |
+| §24 Production tools (revision sets, locked numbering, reports, Final Draft) | Not started; written scene numbers can already be managed |

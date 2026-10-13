@@ -228,3 +228,19 @@ test('system fonts are found and a title in a proportional font is centered', as
   const center = item.transform[4] + item.width / 2;
   assert.ok(Math.abs(center - 306) < 2, `title center ${center}`);
 });
+
+test('settings saved by the first version (inches) are converted, not misread as characters', async () => {
+  const { normalizeExportSettings } = await import('../src/shared/types');
+  const old = { paper: 'Letter', marginTop: 1, marginBottom: 1, marginLeft: 1.5, marginRight: 1, font: 'Courier Prime', fontSize: 12, linesPerInch: 6, actionWidth: 6, characterIndent: 2.2, dialogueIndent: 1, dialogueWidth: 3.5, parentheticalIndent: 1.6, parentheticalWidth: 2.5, titlePosition: 0.36, boldHeadings: false };
+  const s = normalizeExportSettings(old as any, 'Letter');
+  assert.equal(s.actionWidth, 60);
+  assert.equal(s.dialogueWidth, 35);
+  assert.equal(s.characterIndent, 22);
+  assert.equal(s.leftMargin, 15);
+  assert.equal(s.topMargin, 6);
+  assert.equal(s.linesPerPage, 54);
+  assert.equal(s.lineHeight, 12);
+  assert.equal(s.boldHeadings, false);
+  const r = paginate(['INT. A - DAY', '', 'word '.repeat(40)], parse(['INT. A - DAY', '', 'word '.repeat(40)]), s);
+  assert.ok(r.pages[0].lines[1].runs[0].text.length > 50);
+});
