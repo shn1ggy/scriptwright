@@ -107,9 +107,6 @@ export class OutlinePane {
         h('span', { class: 'label' }, it.heading || '(empty heading)'),
         it.record?.status ? h('span', { class: 'meta' }, it.record.status === 'done' ? '✓' : it.record.status === 'revise' ? '!' : '·') : null,
       );
-      row.addEventListener('mousedown', (e) => {
-        if (e.button === 0) e.preventDefault();
-      });
       row.addEventListener('click', () => {
         this.select(it.id);
         this.app.goToScene(it);

@@ -24,22 +24,59 @@
   "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "electron": "^38.2.0",
+    "electron": "^39.0.0",
     "electron-builder": "^26.0.12",
-    "esbuild": "^0.25.10",
-    "pdfjs-dist": "^5.4.149",
+    "esbuild": "^0.28.2",
+    "pdfjs-dist": "^6.2.108",
     "playwright": "^1.56.0",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   },
   "build": {
     "appId": "app.scriptwright.desktop",
     "productName": "Scriptwright",
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "!dist/harness.js", "package.json"],
-    "extraResources": [{ "from": "resources/fonts", "to": "fonts", "filter": ["*.ttf", "*.txt"] }],
-    "mac": { "category": "public.app-category.productivity", "target": ["dmg", "zip"] },
-    "win": { "target": ["nsis"] },
-    "linux": { "target": ["AppImage", "deb"], "category": "Office" },
-    "fileAssociations": [{ "ext": "fountain", "name": "Fountain screenplay", "role": "Editor" }]
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/harness.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/fonts",
+        "to": "fonts",
+        "filter": [
+          "*.ttf",
+          "*.txt"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office"
+    },
+    "fileAssociations": [
+      {
+        "ext": "fountain",
+        "name": "Fountain screenplay",
+        "role": "Editor"
+      }
+    ]
   }
 }

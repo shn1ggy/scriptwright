@@ -428,7 +428,8 @@ export class App {
       this.showBanner(`This project also appears to be open on ${r.otherInstance.host}. Changes are checked before saving, so nothing will be overwritten silently.`, [{ label: 'OK', run: () => this.hideBanner() }]);
     }
     if (p.conflicts.length) this.showConflictCopiesBanner();
-    if (r.recovery) await this.offerRecovery(r.recovery);
+    // Not awaited: the recovery question must not block startup.
+    if (r.recovery) this.offerRecovery(r.recovery);
     this.saveStateSoon();
   }
 
@@ -875,11 +876,19 @@ export class App {
     // Keep keys for lines that did not change at the same position, so scenes keep identity.
     const old = this.editor.lines;
     const matched = matchKeys(old, newLines);
-    this.editor.edit((tx) => {
-      tx.replaceAll(matched);
-      return cursor({ line: Math.min(head.line, matched.length - 1), ch: head.ch });
-    }, origin === 'external' ? 'external' : 'command');
-    if (origin === 'external') this.assignSceneIdsFromRecords(true);
+    this.suspendScenes = true;
+    try {
+      this.editor.edit((tx) => {
+        tx.replaceAll(matched);
+        return cursor({ line: Math.min(head.line, matched.length - 1), ch: head.ch });
+      }, origin === 'external' ? 'external' : 'command');
+      // Scenes whose heading line changed are matched to stored information again.
+      this.syncSceneRecordsFromKeys();
+      this.assignSceneIdsFromRecords(true);
+    } finally {
+      this.suspendScenes = false;
+    }
+    this.refreshDerived(true);
     if (message) toast(message, { actions: [{ label: 'Undo', run: () => this.editor.undo() }] });
   }
 
@@ -888,14 +897,19 @@ export class App {
 
   private derivedTimer: any = null;
 
+  /** While true, scene identity is being re-established and derived state waits. */
+  private suspendScenes = false;
+
   private onEditorChange(origin: string) {
     if (!this.project) return;
+    if (origin === 'load') return; // openProject assigns scene identity first
     if (origin !== 'load') {
       if (this.isDirty()) {
         if (this.saveState !== 'conflict' && this.saveState !== 'missing') this.setSaveState('unsaved');
         this.scheduleSave();
       } else if (this.saveState === 'unsaved') this.setSaveState('saved');
     }
+    if (this.suspendScenes) return;
     this.refreshDerived(false);
   }
 
@@ -960,7 +974,15 @@ export class App {
       for (const r of res.unmatched) if (hasInfo(r)) this.addDetached(r, res.ambiguous.includes(r) ? 'Matches more than one scene' : 'Scene not found in the screenplay');
       if (res.unmatched.length) this.markMetaDirty();
     }
-    this.syncSceneRecords();
+    this.updateScenes();
+  }
+
+  /** Forgets heading keys that are no longer headings, so their records can be matched again. */
+  private syncSceneRecordsFromKeys() {
+    const p = this.project;
+    if (!p) return;
+    const headingKeys = new Set(this.editor.parsed.scenes.map((s) => this.editor.lines[s.line].key));
+    for (const k of [...p.sceneIds.keys()]) if (!headingKeys.has(k)) p.sceneIds.delete(k);
   }
 
   private addDetached(r: SceneRecord, reason: string) {
@@ -1028,7 +1050,9 @@ export class App {
   /** Writes current heading text, fingerprint and order into the scene records. */
   private syncSceneRecords() {
     const p = this.project;
-    if (!p) return;
+    if (!p || this.suspendScenes) return;
+    // Work from the current text so no record is dropped because of stale scene items.
+    this.updateScenes();
     const lines = this.editor.lineTexts;
     const byId = new Map(p.meta.scenes.map((r) => [r.id, r]));
     const out: SceneRecord[] = [];
@@ -1080,10 +1104,9 @@ export class App {
 
   /** Scene at the reading position in Script view. */
   readingScene(): SceneItem | undefined {
-    if (this.editor.caretInView()) return this.activeScene();
-    const top = this.editor.topVisibleLine();
-    const item = this.sceneAt(top);
-    if (!item || item.kind === 'title') return this.scenes.find((s) => s.kind !== 'title');
+    let item = this.editor.caretInView() ? this.activeScene() : this.sceneAt(this.editor.topVisibleLine());
+    // At the top of the script (title page or opening) the first actual scene is used.
+    if (!item || item.kind !== 'scene') item = this.scenes.find((s) => s.kind === 'scene') ?? this.scenes.find((s) => s.kind === 'opening');
     return item;
   }
 
