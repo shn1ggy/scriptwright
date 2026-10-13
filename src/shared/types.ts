@@ -55,6 +55,8 @@ export interface Settings {
   /** command id → list of key combos ([] = explicitly cleared). Missing = default. */
   keymap: Record<string, string[]>;
   cards: CardSettings;
+  /** The four highlight slots: their color and the name shown in menus (e.g. "Fix later"). */
+  highlights: Record<HighlightColor, { color: string; label: string }>;
 }
 
 export interface CardSettings {
@@ -103,11 +105,17 @@ export function defaultSettings(): Settings {
       typewriter: false,
       sceneNumbers: 'both',
       showPageBreaks: false,
-      titlePageInScript: true,
+      titlePageInScript: false,
     },
     appearance: { theme: 'dark', dark: { ...DEFAULT_DARK, background: { ...DEFAULT_DARK.background } }, light: { ...DEFAULT_LIGHT, background: { ...DEFAULT_LIGHT.background } } },
     saving: { autosaveDelayMs: 800, snapshotIntervalMin: 10 },
     keymap: {},
+    highlights: {
+      yellow: { color: '#E8C547', label: 'Yellow' },
+      green: { color: '#6EC878', label: 'Green' },
+      blue: { color: '#5AA0F0', label: 'Blue' },
+      pink: { color: '#EB78B4', label: 'Pink' },
+    },
     cards: { size: 'medium', colorStyle: 'tint', showSummary: true, showStatus: true, showCharacters: true, showLength: true, tintOutline: true },
   };
 }

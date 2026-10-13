@@ -85,3 +85,12 @@ export function currentBackgroundHex(a: AppearanceSettings): string {
   const c = a.theme === 'dark' ? a.dark : a.light;
   return rgbToHex(hsbToRgb(c.background));
 }
+
+/** Highlight colors from the settings, as CSS variables (--hl-yellow … and -dot variants). */
+export function applyHighlightColors(hl: Record<string, { color: string }>, light: boolean) {
+  const root = document.documentElement;
+  for (const [k, v] of Object.entries(hl)) {
+    root.style.setProperty(`--hl-${k}`, rgba(v.color, light ? 0.38 : 0.3));
+    root.style.setProperty(`--hl-${k}-dot`, v.color);
+  }
+}

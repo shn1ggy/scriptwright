@@ -130,11 +130,13 @@ await check('Script/Scene cycling skips the title page; first focused scene is t
   assert(f2 !== 'title', f2);
 });
 
-await check('scene search filters the outline; Escape returns to writing', async () => {
+await check('scene search looks through the whole scene text; Escape returns to writing', async () => {
   await page.keyboard.press('Control+Shift+F');
   await page.keyboard.type('harbour');
+  // The harbour scene by its heading, and the first scene where Tom says "From the harbour".
   const n = await page.locator('.outline .row').count();
-  assert(n === 1, String(n));
+  const counts = await page.locator('.outline .row .match-count').allTextContents();
+  assert(n === 2 && counts.every((c) => Number(c) >= 1), `${n} ${JSON.stringify(counts)}`);
   await page.keyboard.press('Escape');
   const focused = await app(() => window.__app.editor.hasFocus());
   const n2 = await page.locator('.outline .row').count();

@@ -82,6 +82,7 @@ await check('revealing syntax does not change line height or vertical position',
 });
 
 await check('double-click selects the word under the pointer even when markers are revealed', async () => {
+  await app(() => { window.__app.settings.editor.titlePageInScript = true; window.__app.applySettings(); });
   const i = await lineIndex('Title: **THE LONG NIGHT**');
   // move caret elsewhere first so the line is inactive
   const j = await lineIndex('Rain hammers the glass. A lamp turns, slow and patient.');
@@ -231,12 +232,12 @@ await check('Script → Scene → Script round trip does not move the caret on s
 
 await check('Dialogue view filters by character, marks hidden action and edits the original', async () => {
   await page.click('.tab:has-text("Dialogue")');
-  await page.selectOption('.view-controls select >> nth=0', 'TOM');
+  await page.selectOption('.view-head select >> nth=0', 'TOM');
   const shown = await app(() => window.__app.editor.displayedLines.map((i) => window.__app.editor.lines[i].text));
   assert(shown.includes('TOM') && !shown.includes('LISA'), JSON.stringify(shown));
   const gaps = await page.locator('.ln-gap-label').allTextContents();
   assert(gaps.some((g) => g.includes('action hidden')), 'gaps ' + JSON.stringify(gaps));
-  const label = await page.locator('.view-controls select >> nth=0').locator('option').allTextContents();
+  const label = await page.locator('.view-head select >> nth=0').locator('option').allTextContents();
   assert(label[1].startsWith('LISA (') || label[1].startsWith('TOM ('), JSON.stringify(label));
   // edit a dialogue line
   const i = await lineIndex('I came because nobody else would.');

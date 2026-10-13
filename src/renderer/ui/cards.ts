@@ -45,7 +45,6 @@ export class SceneCards {
         h('span', { class: 'spacer' }),
         h('span', { class: 'dim', style: { fontSize: '11px' } }, `↵ open · ${isMac ? '⌘' : 'Ctrl+'}click / ⇧click select several · ⌥⇧ arrows move · drag to reorder`),
         iconButton('settings', 'Card display', (e) => this.optionsMenu(e.currentTarget as HTMLElement)),
-        iconButton('close', 'Back to writing (Esc)', () => this.app.closePanel()),
       ),
       this.grid,
     );

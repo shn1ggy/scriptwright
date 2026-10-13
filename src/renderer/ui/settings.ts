@@ -228,6 +228,23 @@ export function openSettings(app: App, section: Section = 'editor') {
           },
         }, `Reset ${a.theme} colors`),
       ),
+      h('h3', null, 'Highlights'),
+      h('div', { class: 'notice' }, 'Give each highlight color a meaning, e.g. “Fix later” or “Cut candidate”. The names appear in the highlight menu and the Review tab.'),
+      ...(['yellow', 'green', 'blue', 'pink'] as const).map((k) => {
+        const hl = app.settings.highlights[k];
+        const col = h('input', { type: 'color', value: hl.color, 'aria-label': `Highlight color ${k}` });
+        col.addEventListener('input', () => {
+          hl.color = col.value;
+          changed();
+        });
+        const label = h('input', { class: 'field', value: hl.label, 'aria-label': `Highlight name ${k}`, placeholder: k[0].toUpperCase() + k.slice(1) });
+        label.addEventListener('change', () => {
+          hl.label = label.value.trim() || k[0].toUpperCase() + k.slice(1);
+          label.value = hl.label;
+          changed();
+        });
+        return row(`Highlight ${['yellow', 'green', 'blue', 'pink'].indexOf(k) + 1}`, h('div', { class: 'inline hl-row' }, col, label));
+      }),
     );
   }
 
@@ -271,7 +288,7 @@ export function openSettings(app: App, section: Section = 'editor') {
         });
         return h(
           'div',
-          null,
+          { class: 'settings-block' },
           row('Settings', h('label', { class: 'inline' }, c, h('span', null, 'Keep settings in the workspace folder')), 'Another workspace brings its own settings; one without any starts from the current ones.'),
           where,
         );

@@ -7,7 +7,6 @@ import { CommentRecord, HighlightRecord, PassageRecord } from '../../shared/type
 import { uid } from './dom';
 import { openRewriteFor } from './rewrite';
 
-const COLOR_NAMES: Record<string, string> = { yellow: 'Yellow', green: 'Green', blue: 'Blue', pink: 'Pink' };
 
 function quote(text: string, max = 90): string {
   const t = text.replace(/\s+/g, ' ').trim();
@@ -76,7 +75,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
       h(
         'div',
         { class: 'rv-item rv-row' },
-        h('span', { class: `rv-dot dot-${hl.color}`, title: COLOR_NAMES[hl.color] }),
+        h('span', { class: `rv-dot dot-${hl.color}`, title: app.settings.highlights[hl.color]?.label }),
         h('button', { class: 'rv-quote', onclick: () => app.revealAnnotation(hl.id) }, quote(ann.textOf(hl.id), 60)),
         h('button', {
           class: 'icon-btn',
@@ -99,7 +98,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
     secDet.append(h('div', { class: 'rv-head warn' }, h('span', null, `Detached (${detached.length})`)));
     secDet.append(h('div', { class: 'notice' }, 'The text these belonged to was deleted or changed. Select the right text and attach them again, or delete them.'));
     for (const { kind, rec } of detached) {
-      const label = kind === 'comment' ? `Comment: ${quote((rec as CommentRecord).text, 50)}` : kind === 'passage' ? `Passage: ${(rec as PassageRecord).name}` : `${COLOR_NAMES[(rec as HighlightRecord).color]} highlight`;
+      const label = kind === 'comment' ? `Comment: ${quote((rec as CommentRecord).text, 50)}` : kind === 'passage' ? `Passage: ${(rec as PassageRecord).name}` : `Highlight: ${app.settings.highlights[(rec as HighlightRecord).color]?.label ?? ''}`;
       secDet.append(
         h(
           'div',

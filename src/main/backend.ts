@@ -45,7 +45,12 @@ export interface ProjectEntry {
   /** Sync conflict copies found next to the screenplay. */
   conflicts: string[];
   modified: number;
+  /** In the workspace's Archive folder. */
+  archived?: boolean;
 }
+
+/** Old projects are moved into this folder of the workspace (visible in Finder/Explorer too). */
+export const ARCHIVE_DIR = 'Archive';
 
 export interface OpenResult {
   text: string;
@@ -134,10 +139,13 @@ export class Backend extends EventEmitter {
   private watched = new Map<string, Watched>();
   workspace: string | null = null;
 
-  constructor(opts: { userDataDir: string; fontsDir: string }) {
+  private trash?: (file: string) => Promise<void>;
+
+  constructor(opts: { userDataDir: string; fontsDir: string; trash?: (file: string) => Promise<void> }) {
     super();
     this.userData = opts.userDataDir;
     this.fontsDir = opts.fontsDir;
+    this.trash = opts.trash;
     fs.mkdirSync(this.userData, { recursive: true });
   }
 
@@ -255,6 +263,20 @@ export class Backend extends EventEmitter {
     const out: ProjectEntry[] = [];
     for (const ent of fs.readdirSync(ws, { withFileTypes: true })) {
       if (ent.name.startsWith('.')) continue;
+      if (ent.isDirectory() && ent.name === ARCHIVE_DIR) {
+        for (const a of fs.readdirSync(path.join(ws, ARCHIVE_DIR), { withFileTypes: true })) {
+          if (!a.isDirectory() || a.name.startsWith('.')) continue;
+          const full = path.join(ws, ARCHIVE_DIR, a.name);
+          const { file, conflicts } = this.findScript(full);
+          if (!file && !conflicts.length && !fs.existsSync(path.join(full, META_DIR))) continue;
+          let modified = 0;
+          try {
+            modified = fs.statSync(file ? path.join(full, file) : full).mtimeMs;
+          } catch {}
+          out.push({ rel: `${ARCHIVE_DIR}/${a.name}`, name: a.name, file, loose: false, conflicts, modified, archived: true });
+        }
+        continue;
+      }
       const full = path.join(ws, ent.name);
       if (ent.isDirectory()) {
         const { file, conflicts } = this.findScript(full);
@@ -306,7 +328,8 @@ export class Backend extends EventEmitter {
 
   renameProject(rel: string, newName: string): ProjectEntry {
     const src = this.resolve(rel);
-    const target = path.join(this.ws(), safeName(newName));
+    // Stays where it is (an archived project stays in the archive).
+    const target = path.join(path.dirname(src), safeName(newName));
     if (fs.existsSync(target)) throw new Error('A project with that name already exists.');
     this.unwatch(rel);
     fs.renameSync(src, target);
@@ -320,7 +343,49 @@ export class Backend extends EventEmitter {
       if (meta) atomicWrite(metaFile, JSON.stringify({ ...meta, scriptFile: newFileName }, null, 2));
     }
     const { file, conflicts } = this.findScript(target);
-    return { rel: path.basename(target), name: path.basename(target), file, loose: false, conflicts, modified: Date.now() };
+    const newRel = path.relative(this.ws(), target).split(path.sep).join('/');
+    return { rel: newRel, name: path.basename(target), file, loose: false, conflicts, modified: Date.now(), archived: newRel.startsWith(ARCHIVE_DIR + '/') };
+  }
+
+  /** Moves a project into the workspace's Archive folder, or back out of it. */
+  archiveProject(rel: string, archive: boolean): ProjectEntry {
+    const src = this.resolve(rel);
+    const name = path.basename(src);
+    const destDir = archive ? path.join(this.ws(), ARCHIVE_DIR) : this.ws();
+    fs.mkdirSync(destDir, { recursive: true });
+    let dest = path.join(destDir, name);
+    let n = 2;
+    while (fs.existsSync(dest)) dest = path.join(destDir, `${name} ${n++}`);
+    this.unwatch(rel);
+    fs.renameSync(src, dest);
+    const { file, conflicts } = this.findScript(dest);
+    const newRel = path.relative(this.ws(), dest).split(path.sep).join('/');
+    return { rel: newRel, name: path.basename(dest), file, loose: false, conflicts, modified: Date.now(), archived: archive };
+  }
+
+  /**
+   * Deletes a project folder (or loose file) by moving it to the system trash. Without a
+   * trash (development harness) it goes to the workspace's .scriptwright/deleted folder.
+   */
+  async deleteProject(rel: string): Promise<void> {
+    const src = this.resolve(rel);
+    if (src === this.ws()) throw new Error('Refusing to delete the workspace');
+    this.unwatch(rel);
+    if (this.trash) {
+      await this.trash(src);
+      return;
+    }
+    const bin = path.join(this.ws(), META_DIR, 'deleted');
+    fs.mkdirSync(bin, { recursive: true });
+    fs.renameSync(src, path.join(bin, `${stamp()} ${path.basename(src)}`));
+  }
+
+  /** Creates a new, empty workspace folder and returns its path. */
+  createWorkspace(parent: string, name: string): string {
+    const dir = path.join(parent, safeName(name));
+    if (fs.existsSync(dir) && fs.readdirSync(dir).filter((f) => !f.startsWith('.')).length) throw new Error('A folder with that name already exists and is not empty.');
+    fs.mkdirSync(path.join(dir, META_DIR), { recursive: true });
+    return dir;
   }
 
   // ---------------------------------------------------------------------------------

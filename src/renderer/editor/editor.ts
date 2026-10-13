@@ -1048,7 +1048,12 @@ export class Editor {
         const r = v.el.getBoundingClientRect();
         if (r.bottom < viewTop || r.top > viewBottom) continue;
         const rows = Math.max(1, Math.round(r.height / lh));
-        const y = r.top + Math.round(m.frac * rows) * lh;
+        let y = r.top + Math.round(m.frac * rows) * lh;
+        // Between paragraphs the rule sits in the middle of the blank line, not on the text.
+        if (m.frac === 0) {
+          const prev = v.line > 0 ? this.prevDisplayed(v.line) : null;
+          if (prev !== null && this.lines[prev].text.trim() === '') y -= lh / 2;
+        }
         const mark = el('div', 'pb-mark');
         mark.style.transform = `translate(${Math.round(contentRect.left - colRect.left)}px, ${Math.round(y - colRect.top)}px)`;
         mark.style.width = `${Math.round(contentRect.width)}px`;

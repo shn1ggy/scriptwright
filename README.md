@@ -66,6 +66,10 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 - Whole-script character rename with casing preserved, possessive forms handled for German
   (Andreas Tasche → Lisas Tasche, Lisas → Andreas') and English (Andrea's → Lisa's), longer
   names and characters named like a genitive protected, merge warning, one undo step.
+- Workspaces like Obsidian vaults: switch, open or create them at the bottom of the scene pane;
+  settings travel with the workspace. Projects can be archived (Archive folder) or deleted
+  (to the system trash).
+- Scene search looks through the whole scene: heading, text, names, summary and notes.
 - Characters view: speeches, words, share of dialogue, scenes, first/last appearance, who shares
   scenes with whom, a presence strip through the story, and characters introduced in action
   who never speak.
@@ -186,6 +190,7 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 | Move scene up / down | ⌥⇧/Alt+Shift + ↑ / ↓ |
 | Go to passage (from Scene or Dialogue view) | Mod+Enter |
 | Scene cards (also) | Mod+Shift+O |
+| Scene pane / notes pane | Mod+0 / Mod+Shift+0 |
 | Select several scenes (outline, cards) | Mod+click, Shift+click, Shift+arrows, Mod+A |
 | Rewrite / comment / highlight | ⌥A or Alt+A / Mod+Shift+M / Mod+H |
 | Cut to shelf / copy to shelf | Mod+Shift+X / Mod+Shift+C |

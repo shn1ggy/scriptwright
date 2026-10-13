@@ -5,7 +5,7 @@ import { Editor, Transaction } from './editor/editor';
 import { CommandRegistry, comboFromEvent, formatCombo, hasModifier, isNavigationCombo, toAccelerator } from './commands';
 import { h, icon, iconButton, debounce, fmtNum, uid } from './ui/dom';
 import { alertDialog, choiceDialog, confirmDialog, handleEscape, openDialog, openMenu, overlayOpen, promptDialog, toast, MenuItem } from './ui/overlay';
-import { applyTheme } from './theme';
+import { applyHighlightColors, applyTheme } from './theme';
 import { Line, Pos, Selection, Step, cursor, joinLines, makeLines, selEmpty, selFrom, selTo, newKey } from '../shared/doc';
 import { ParseResult, SceneInfo, characterLabel, characterList, cleanText, countWords, sceneIndexAt, titlePageTemplate } from '../shared/fountain';
 import { AppState, ProjectMeta, ProjectSession, SceneRecord, Settings, ViewName, defaultAppState, defaultSettings } from '../shared/types';
@@ -24,6 +24,7 @@ import { compareDialog } from './ui/compare';
 import { SceneCards } from './ui/cards';
 import { CharactersPanel } from './ui/characters';
 import { Annotations } from './annotations';
+import { sceneNumberEdits } from '../shared/fountainout';
 import { openRewrite, openRewriteFor } from './ui/rewrite';
 import { openCommentDialog, deleteComment } from './ui/review';
 import { renderShelf, toShelf } from './ui/shelf';
@@ -64,6 +65,8 @@ interface Project {
 type SaveState = 'saved' | 'unsaved' | 'saving' | 'error' | 'conflict' | 'missing' | 'none';
 
 const MIN_LEFT = 220;
+/** Height of the header row in Scene and Dialogue view (matches .view-head in the CSS). */
+const VIEW_HEAD_H = 34;
 
 /** CSS color (hex, rgb() or a name the canvas understands) to #rrggbb. */
 function toHex(c: string): string {
@@ -164,6 +167,7 @@ export class App {
       this.updateViewControls();
     };
     applyTheme(this.settings.appearance);
+    applyHighlightColors(this.settings.highlights, this.settings.appearance.theme === 'light');
     if (bridge.isElectron) {
       document.body.classList.add('frameless', `platform-${bridge.platform}`);
       bridge.on('fullscreen', (on: boolean) => document.body.classList.toggle('fullscreen', on));
@@ -187,6 +191,7 @@ export class App {
       }
     }
     this.projectsPane.render();
+    this.renderWorkspaceBar();
     this.updateWelcome();
     this.updateChrome();
     this.ready = true;
@@ -232,9 +237,10 @@ export class App {
       characters: mkPanelTab('characters', 'Characters'),
       source: mkTab('source', 'Source'),
     };
-    this.viewControls = h('div', { class: 'view-controls' });
+    // Options of the Scene and Dialogue views live in the view itself, never in the tab bar.
+    this.viewControls = h('div', { class: 'view-head hidden' });
     const t = this.tabs;
-    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters, t.source), this.viewControls);
+    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters, t.source));
 
     this.leftPane = h('div', { class: 'pane pane-left' });
     this.rightPaneEl = h('div', { class: 'pane pane-right' });
@@ -266,13 +272,14 @@ export class App {
 
     this.projectsPane = new ProjectsPane(this);
     this.outline = new OutlinePane(this);
-    this.leftPane.append(this.projectsPane.el, this.outline.el);
+    this.workspaceBar = h('div', { class: 'workspace-bar' });
+    this.leftPane.append(this.projectsPane.el, this.outline.el, this.workspaceBar);
     this.rightPane = new RightPane(this);
     this.rightPaneEl.append(this.rightPane.el);
     this.findbar = new FindBar(this);
     this.cards = new SceneCards(this);
     this.characters = new CharactersPanel(this);
-    this.center.append(this.findbar.el, this.cards.el, this.characters.el);
+    this.center.append(this.viewControls, this.findbar.el, this.cards.el, this.characters.el);
 
     this.makeResizer(this.leftResizer, 'left');
     this.makeResizer(this.rightResizer, 'right');
@@ -348,6 +355,7 @@ export class App {
 
   applySettings() {
     applyTheme(this.settings.appearance);
+    applyHighlightColors(this.settings.highlights, this.settings.appearance.theme === 'light');
     this.syncTitleBar();
     const offset = this.editor.measureCaretOffset();
     this.editor.applySettings(this.settings.editor);
@@ -384,25 +392,125 @@ export class App {
   // Workspace & projects
 
   async chooseWorkspace() {
-    const dir = await bridge.dialog('folder', { title: 'Choose a workspace folder' });
+    const dir = await bridge.dialog('folder', { title: 'Open a folder as workspace' });
     if (!dir) return;
     await this.setWorkspace(dir);
+  }
+
+  /** A new, empty workspace: a name and the folder it goes in. */
+  async createWorkspace() {
+    const name = await promptDialog('New workspace', 'Name', 'Screenplays', { okLabel: 'Choose location…' });
+    if (!name?.trim()) return;
+    const parent = await bridge.dialog('folder', { title: `Where should the workspace “${name.trim()}” be created?` });
+    if (!parent) return;
+    try {
+      const dir = await bridge.call('createWorkspace', parent, name.trim());
+      await this.setWorkspace(dir);
+      toast(`Workspace “${name.trim()}” created. Projects, settings and history for it are kept in its folder.`);
+    } catch (e: any) {
+      alertDialog('Workspace not created', e.message);
+    }
+  }
+
+  revealPath(rel: string) {
+    if (!this.state.workspace) return;
+    bridge.window('reveal', rel ? `${this.state.workspace}/${rel}` : this.state.workspace);
+  }
+
+  private workspaceMenu(anchor: HTMLElement) {
+    const cur = this.state.workspace;
+    const base = (d: string) => d.split(/[\\/]/).filter(Boolean).pop() ?? d;
+    const items: MenuItem[] = [{ head: 'Workspaces' }];
+    for (const d of this.state.recentWorkspaces) items.push({ label: `${d === cur ? '✓' : '  '} ${base(d)}`, kbd: d === cur ? '' : undefined, run: () => d !== cur && this.setWorkspace(d) });
+    items.push(
+      { sep: true },
+      { label: 'Open Folder as Workspace…', kbd: this.commands.label('project.openWorkspace'), run: () => this.chooseWorkspace() },
+      { label: 'Create New Workspace…', run: () => this.createWorkspace() },
+    );
+    if (cur && bridge.isElectron) items.push({ sep: true }, { label: 'Show Workspace in Folder', run: () => this.revealPath('') });
+    if (this.state.recentWorkspaces.length > 1) items.push({ label: 'Clear List of Other Workspaces', run: () => {
+      this.state.recentWorkspaces = cur ? [cur] : [];
+      this.saveStateSoon();
+    } });
+    openMenu(items, anchor.getBoundingClientRect());
+  }
+
+  private workspaceBar!: HTMLElement;
+
+  renderWorkspaceBar() {
+    const ws = this.state.workspace;
+    const name = ws ? ws.split(/[\\/]/).filter(Boolean).pop() ?? ws : 'No workspace';
+    const btn = h('button', { class: 'ws-switch', title: ws ? `Workspace: ${ws}\nSwitch or create workspaces` : 'Open or create a workspace' }, h('span', { class: 'ws-icon' }, icon('folder')), h('span', { class: 'ws-name' }, name), icon('chevronDown'));
+    btn.addEventListener('click', () => this.workspaceMenu(btn));
+    this.workspaceBar.replaceChildren(btn, h('span', { class: 'spacer' }), iconButton('settings', `Settings (${this.commands.label('app.settings')})`, () => this.run('app.settings')));
+  }
+
+  async archiveProject(rel: string, archive: boolean) {
+    const wasOpen = this.project?.rel === rel;
+    if (wasOpen) await this.closeProject();
+    try {
+      const e = await bridge.call('archiveProject', rel, archive);
+      await this.refreshProjects();
+      if (wasOpen) await this.openProject(e.rel);
+      toast(archive ? `“${e.name}” moved to the archive.` : `“${e.name}” moved out of the archive.`, {
+        actions: [{ label: 'Undo', run: async () => {
+          const again = this.project?.rel === e.rel;
+          if (again) await this.closeProject();
+          const back = await bridge.call('archiveProject', e.rel, !archive);
+          await this.refreshProjects();
+          if (again) await this.openProject(back.rel);
+        } }],
+      });
+    } catch (err: any) {
+      alertDialog('Not moved', err.message);
+      if (wasOpen) await this.openProject(rel);
+    }
+    this.updateWelcome();
+  }
+
+  async deleteProject(rel: string) {
+    const entry = this.projects.find((p) => p.rel === rel);
+    if (!entry) return;
+    const where = bridge.isElectron ? (isMac ? 'the Trash' : 'the Recycle Bin') : 'the workspace’s deleted items';
+    const ok = await confirmDialog(
+      'Delete project',
+      `Delete “${entry.name}”? The project folder with its screenplay, history, drafts, comments and notes is moved to ${where}.`,
+      'Delete',
+      { danger: true },
+    );
+    if (!ok) return;
+    if (this.project?.rel === rel) await this.closeProject();
+    try {
+      await bridge.call('deleteProject', rel);
+      if (this.state.lastProject === rel) this.state.lastProject = undefined;
+      delete this.state.sessions[rel];
+      this.saveStateSoon();
+      toast(`“${entry.name}” moved to ${where}.`);
+    } catch (e: any) {
+      alertDialog('Not deleted', e.message);
+    }
+    await this.refreshProjects();
+    this.updateWelcome();
+    this.updateChrome();
   }
 
   async setWorkspace(dir: string) {
     // Pending settings belong to the workspace being left.
     this.saveSettings.flush?.();
+    // The open project is saved and closed while the old workspace is still selected.
+    await this.closeProject();
     const r = await bridge.call('setWorkspace', dir);
     if (!r.ok) {
       await alertDialog('Workspace unavailable', r.message ?? 'The folder cannot be used.');
+      if (this.state.workspace) await bridge.call('setWorkspace', this.state.workspace);
       return;
     }
-    await this.closeProject();
     this.state.workspace = dir;
     this.state.recentWorkspaces = [dir, ...this.state.recentWorkspaces.filter((d) => d !== dir)].slice(0, 8);
     this.state.lastProject = undefined;
     await this.reloadSettings();
     await this.refreshProjects();
+    this.renderWorkspaceBar();
     this.saveStateSoon();
     this.updateWelcome();
     this.updateChrome();
@@ -1325,12 +1433,17 @@ export class App {
       return;
     }
     const from = this.view;
-    const offset = !opts.quiet && this.editor.caretInView() ? this.editor.measureCaretOffset() : null;
+    let offset = !opts.quiet && this.editor.caretInView() ? this.editor.measureCaretOffset() : null;
+    // Scene and Dialogue have a header row above the text: keep the caret at the same height
+    // on screen by showing/hiding it now and correcting the measured offset.
+    const headH = (x: ViewName) => (x === 'scene' || x === 'dialogue' ? VIEW_HEAD_H : 0);
+    if (offset !== null) offset += headH(from) - headH(v);
+    this.center.classList.toggle('has-view-head', headH(v) > 0);
     if (from === 'scene') this.storeSceneContext();
     // Remember where the caret sat in Script/Source view: a shorter view (a single scene)
     // may not be able to show it at the same height, and returning should restore it exactly.
     const head = this.editor.sel.head;
-    if (this.isFullView(from) && !this.isFullView(v) && offset !== null) this.fullViewReturn = { line: head.line, ch: head.ch, key: this.editor.lines[head.line].key, offset };
+    if (this.isFullView(from) && !this.isFullView(v) && offset !== null) this.fullViewReturn = { line: head.line, ch: head.ch, key: this.editor.lines[head.line].key, offset: offset + headH(v) - headH(from) };
     if (v === 'scene') {
       const item = this.isFullView(from) ? this.readingScene() : this.activeScene() ?? this.readingScene();
       this.editor.setSource(false);
@@ -1348,6 +1461,8 @@ export class App {
       this.focus = null;
       this.editor.setFilter(null, null);
       this.editor.setSource(v === 'source');
+      // Hide (or show) the title page before restoring the caret position on screen.
+      this.updateTitleHiding();
       if (from !== v && !opts.quiet) {
         const ret = this.fullViewReturn;
         const same = ret && ret.ch === head.ch && this.editor.lines[head.line]?.key === ret.key;
@@ -1605,10 +1720,12 @@ export class App {
   goToPassage() {
     if (this.isFullView()) return;
     const caret = this.editor.sel.head;
-    const offset = this.editor.caretInView() ? this.editor.measureCaretOffset() : null;
+    // Measured below the view header, which Script view does not have.
+    const offset = this.editor.caretInView() ? (this.editor.measureCaretOffset() ?? 0) + VIEW_HEAD_H : null;
     if (this.view === 'scene') this.storeSceneContext();
     this.view = 'script';
     this.focus = null;
+    this.center.classList.remove('has-view-head');
     this.editor.setFilter(null, null);
     this.updateTitleHiding();
     this.editor.setSelection(cursor(caret), { scroll: false });
@@ -1977,17 +2094,29 @@ export class App {
     this.updateCounts();
   }
 
+  private viewHeadScene: HTMLElement | null = null;
+
   updateViewControls() {
     const c = this.viewControls;
     c.textContent = '';
-    if (!this.project) return;
+    this.viewHeadScene = null;
+    const show = !!this.project && !this.panel && (this.view === 'scene' || this.view === 'dialogue');
+    c.classList.toggle('hidden', !show);
+    this.center.classList.toggle('has-view-head', show);
+    if (!show) return;
     if (this.view === 'scene') {
-      c.append(iconButton('left', `Previous scene (${this.commands.label('scene.prev')})`, () => this.stepScene(-1)), iconButton('right', `Next scene (${this.commands.label('scene.next')})`, () => this.stepScene(1)));
+      this.viewHeadScene = h('span', { class: 'view-head-label' });
+      c.append(
+        iconButton('left', `Previous scene (${this.commands.label('scene.prev')})`, () => this.stepScene(-1)),
+        iconButton('right', `Next scene (${this.commands.label('scene.next')})`, () => this.stepScene(1)),
+        this.viewHeadScene,
+      );
+      this.updateViewHeadScene();
     } else if (this.view === 'dialogue') {
       const chars = characterList(this.editor.parsed);
-      const sel = h('select', { class: 'field', 'aria-label': 'Character', title: 'Character' }, h('option', { value: '' }, 'All characters'));
+      const sel = h('select', { class: 'field sm', 'aria-label': 'Character', title: 'Character' }, h('option', { value: '' }, 'All characters'));
       for (const ch of chars) sel.append(h('option', { value: ch.name }, characterLabel(ch)));
-      if (this.dialogueCharacter && !chars.some((c2) => c2.name === this.dialogueCharacter)) sel.append(h('option', { value: this.dialogueCharacter }, `${this.dialogueCharacter} (0 cues)`));
+      if (this.dialogueCharacter && !chars.some((c2) => c2.name === this.dialogueCharacter)) sel.append(h('option', { value: this.dialogueCharacter }, `${this.dialogueCharacter} (0 speeches)`));
       sel.value = this.dialogueCharacter;
       sel.addEventListener('change', () => {
         this.dialogueCharacter = sel.value;
@@ -1995,7 +2124,7 @@ export class App {
         this.editor.focus();
         this.saveStateSoon();
       });
-      const scope = h('select', { class: 'field', 'aria-label': 'Scope' }, h('option', { value: 'all' }, 'Whole screenplay'), h('option', { value: 'scene' }, 'Current scene'));
+      const scope = h('select', { class: 'field sm', 'aria-label': 'Scope' }, h('option', { value: 'all' }, 'Whole screenplay'), h('option', { value: 'scene' }, 'Current scene'));
       scope.value = this.dialogueScope;
       scope.addEventListener('change', () => {
         this.dialogueScope = scope.value as any;
@@ -2011,13 +2140,22 @@ export class App {
         this.editor.focus();
         this.saveStateSoon();
       });
-      c.append(sel, scope, h('label', null, action, 'Nearby action'));
-      if (!this.dialogueAction) c.append(h('span', { class: 'view-note', title: 'Action lines are not shown in this view' }, 'Action hidden'));
-      c.append(h('button', { class: 'btn sm', title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, 'Go to passage'));
+      c.append(sel, scope, h('label', null, action, h('span', null, 'Nearby action')));
+      c.append(h('span', { class: 'spacer' }));
+      c.append(h('button', { class: 'btn sm', title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, 'Go to passage in Script'));
     }
   }
 
+  /** "Scene 4 of 38 · HEADING" in the Scene view header. */
+  private updateViewHeadScene() {
+    if (!this.viewHeadScene) return;
+    const list = this.scenes.filter((s) => s.kind === 'scene');
+    const f = this.focusedItem() ?? this.activeScene();
+    this.viewHeadScene.textContent = !f ? '' : f.kind === 'scene' ? `Scene ${f.order} of ${list.length}` : f.kind === 'title' ? 'Title page' : 'Opening';
+  }
+
   private updateStatusScene() {
+    this.updateViewHeadScene();
     const p = this.project;
     if (!p) {
       this.statusScene.textContent = '';
@@ -2166,7 +2304,7 @@ export class App {
     items.push({ label: 'Rewrite…', kbd: this.commands.label('edit.rewrite'), run: () => openRewrite(this) });
     items.push({ label: 'Comment…', kbd: this.commands.label('edit.comment'), disabled: !hasSel, run: () => this.addComment() });
     items.push({ head: 'Highlight' });
-    for (const c of ['yellow', 'green', 'blue', 'pink'] as const) items.push({ label: c[0].toUpperCase() + c.slice(1), dot: HL_DOTS[c], disabled: !hasSel, run: () => this.highlight(c) });
+    for (const c of ['yellow', 'green', 'blue', 'pink'] as const) items.push({ label: this.settings.highlights[c].label, dot: this.settings.highlights[c].color, disabled: !hasSel, run: () => this.highlight(c) });
     items.push({ label: 'Remove highlight', disabled: !hasSel && !(pos && this.annotations.at(pos).some((r) => r.kind === 'highlight')), run: () => this.highlight(null, pos) });
     items.push({ sep: true });
     items.push({ label: 'Cut to shelf', kbd: this.commands.label('shelf.cut'), disabled: !hasSel, run: () => toShelf(this, true) });
@@ -2229,7 +2367,8 @@ export class App {
     }, { inFields: true, enabled: hasProject, menu: 'File' });
     reg('file.export', 'Export PDF…', 'File', ['Mod+E'], () => openExport(this), { inFields: true, enabled: hasProject, menu: 'File' });
     reg('project.new', 'New Project…', 'File', ['Mod+Shift+N'], () => this.newProject(), { menu: 'File' });
-    reg('project.openWorkspace', 'Open Workspace Folder…', 'File', ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
+    reg('project.openWorkspace', 'Open Folder as Workspace…', 'File', ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
+    reg('workspace.create', 'Create New Workspace…', 'File', [], () => this.createWorkspace(), { menu: 'File' });
     reg('project.importFountain', 'Import Fountain File…', 'File', ['Mod+I'], () => this.importFountain(), { menu: 'File' });
     reg('project.backup', 'Back Up Project…', 'File', ['Mod+Shift+S'], () => this.backupProject(), { enabled: hasProject, menu: 'File' });
     reg('project.importBackup', 'Import Project Backup…', 'File', ['Mod+Shift+I'], () => this.importBackup(), { menu: 'File' });
@@ -2259,8 +2398,8 @@ export class App {
     reg('view.source', 'Source View', 'View', ['Mod+6'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
     reg('view.minimal', 'Minimal View', 'View', ['Mod+M'], () => this.toggleMinimal(), { inFields: true, menu: 'View' });
     reg('view.toggleMaximize', 'Maximize / Restore Window', 'View', ['Mod+Ö'], () => bridge.window('toggleMaximize'), { inFields: true, menu: 'View' });
-    reg('view.leftPane', 'Toggle Scene Pane', 'View', ['Mod+Alt+1'], () => this.togglePane('left'), { inFields: true, menu: 'View' });
-    reg('view.rightPane', 'Toggle Notes Pane', 'View', ['Mod+Alt+2'], () => this.togglePane('right'), { inFields: true, menu: 'View' });
+    reg('view.leftPane', 'Toggle Scene Pane', 'View', ['Mod+0'], () => this.togglePane('left'), { inFields: true, menu: 'View' });
+    reg('view.rightPane', 'Toggle Notes Pane', 'View', ['Mod+Shift+0'], () => this.togglePane('right'), { inFields: true, menu: 'View' });
     reg('view.zoomIn', 'Larger Text', 'View', ['Mod+='], () => this.zoom(1), { inFields: true, menu: 'View' });
     reg('view.zoomOut', 'Smaller Text', 'View', ['Mod+-'], () => this.zoom(-1), { inFields: true, menu: 'View' });
 
@@ -2365,7 +2504,7 @@ export class App {
     const at = c ? { x: c.left, y: c.bottom + 4 } : { x: 200, y: 200 };
     openMenu(
       [
-        ...(['yellow', 'green', 'blue', 'pink'] as const).map((k) => ({ label: k[0].toUpperCase() + k.slice(1), dot: HL_DOTS[k], run: () => this.highlight(k) })),
+        ...(['yellow', 'green', 'blue', 'pink'] as const).map((k) => ({ label: this.settings.highlights[k].label, dot: this.settings.highlights[k].color, run: () => this.highlight(k) })),
         { sep: true },
         { label: 'Remove highlight', run: () => this.highlight(null) },
       ],
@@ -2497,6 +2636,25 @@ export class App {
       const p = await bridge.call('importFountain', file);
       await this.refreshProjects();
       await this.openProject(p.rel);
+      const numbered = this.editor.parsed.scenes.filter((sc) => sc.sceneNumber).length;
+      if (numbered) {
+        const remove = await choiceDialog(
+          'Written scene numbers',
+          `${numbered} of ${this.editor.parsed.scenes.length} scene headings in this file carry written numbers such as #4#. Scriptwright numbers scenes automatically while writing and in the PDF. Remove the written numbers? (Keep them only for locked production numbering.)`,
+          [
+            { label: 'Keep', value: false },
+            { label: 'Remove numbers', value: true, primary: true },
+          ],
+        );
+        if (remove) {
+          const edits = sceneNumberEdits(this.editor.lineTexts, this.editor.parsed, 'remove');
+          this.editor.edit((tx) => {
+            for (const e of edits) tx.setLine(e.line, e.text);
+            return this.editor.sel;
+          });
+          this.refreshDerived(true);
+        }
+      }
       toast(`Imported into the new project "${p.name}". The original file was not changed.`);
     } catch (e: any) {
       alertDialog('Import failed', e.message);
@@ -2584,7 +2742,12 @@ export class App {
     window.addEventListener('keydown', (e) => this.onGlobalKey(e), true);
     bridge.on('external', (ev) => this.onExternal(ev));
     bridge.on('request-close', () => this.onRequestClose());
-    bridge.on('command', (id: string) => this.run(id));
+    // Menu items (and their shortcuts on macOS) do nothing while a dialog or the export is open,
+    // except the editing keys that act on the dialog's own fields.
+    bridge.on('command', (id: string) => {
+      if (overlayOpen() && !['edit.undo', 'edit.redo', 'edit.selectAll', 'app.quit'].includes(id)) return;
+      this.run(id);
+    });
     window.addEventListener('beforeunload', () => {
       // Browser harness only: best effort.
       if (this.isDirty()) this.writeRecoveryNow();
@@ -2676,4 +2839,3 @@ function matchKeys(old: Line[], next: Line[]): Line[] {
 
 export { joinLines, Transaction };
 
-const HL_DOTS: Record<HighlightColor, string> = { yellow: '#E8C547', green: '#6EC878', blue: '#5AA0F0', pink: '#EB78B4' };

@@ -692,7 +692,7 @@ export function characterList(parse: ParseResult, fromLine = 0, toLine = Infinit
 }
 
 export function characterLabel(c: CharacterCount): string {
-  return `${c.name} (${c.cues} ${c.cues === 1 ? 'cue' : 'cues'})`;
+  return `${c.name} (${c.cues} ${c.cues === 1 ? 'speech' : 'speeches'})`;
 }
 
 /** Title page fields as key → value (multi-line values joined with \n). */

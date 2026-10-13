@@ -222,7 +222,7 @@ function buildMenu() {
 }
 
 function setup() {
-  backend = new Backend({ userDataDir: app.getPath('userData'), fontsDir: fontsDir() });
+  backend = new Backend({ userDataDir: app.getPath('userData'), fontsDir: fontsDir(), trash: (f) => shell.trashItem(f) });
   api = createApi(backend);
 
   ipcMain.handle('api', async (_e, method: ApiMethod, args: unknown[]) => {

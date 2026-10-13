@@ -29,7 +29,7 @@ export class OutlinePane {
   private dragId: string | null = null;
 
   constructor(private app: App) {
-    this.search = h('input', { class: 'field', placeholder: 'Search scenes', 'aria-label': 'Search scenes', spellcheck: 'false' });
+    this.search = h('input', { class: 'field', placeholder: 'Search scenes (text, names, notes)', 'aria-label': 'Search scenes', spellcheck: 'false' });
     this.search.dataset.esc = 'self';
     this.search.addEventListener('input', () => {
       this.lastSig = '';
@@ -62,9 +62,30 @@ export class OutlinePane {
     this.el = h(
       'div',
       { class: 'outline' },
-      h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, h('span', { class: 'spacer' }), iconButton('cards', 'Scene cards', () => this.app.run('view.cards')), iconButton('plus', 'New scene after current', () => this.app.run('scene.new'))),
+      h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, h('span', { class: 'spacer' }), iconButton('plus', 'New scene after current', () => this.app.run('scene.new')), iconButton('more', 'Scene actions', (e) => this.moreMenu(e.currentTarget as HTMLElement))),
       h('div', { class: 'outline-search' }, this.search),
       this.list,
+    );
+  }
+
+  private moreMenu(anchor: HTMLElement) {
+    const has = !!this.app.project;
+    const cmd = (id: string, label: string) => ({ label, kbd: this.app.commands.label(id), disabled: !has, run: () => this.app.run(id) });
+    openMenu(
+      [
+        cmd('scene.new', 'New Scene After Current'),
+        cmd('search.scenes', 'Search Scenes'),
+        { sep: true },
+        cmd('view.cards', 'Scene Cards'),
+        { label: 'Select All Scenes', disabled: !has, run: () => {
+          const sc = this.app.scenes.filter((s) => s.kind === 'scene');
+          this.app.setSceneSelection(sc.map((s) => s.id), sc[0]?.id ?? null);
+          this.list.focus();
+        } },
+        { sep: true },
+        cmd('scene.writtenNumbers', 'Scene Numbers in Fountain Text…'),
+      ],
+      anchor.getBoundingClientRect(),
     );
   }
 
@@ -80,18 +101,45 @@ export class OutlinePane {
     this.search.select();
   }
 
+  private textCache: { version: number; map: Map<string, string> } = { version: -1, map: new Map() };
+
+  /** The scene's whole text in lower case (cached per document version). */
+  private sceneText(it: SceneItem): string {
+    const ed = this.app.editor;
+    if (this.textCache.version !== ed.version) this.textCache = { version: ed.version, map: new Map() };
+    let t = this.textCache.map.get(it.id);
+    if (t === undefined) {
+      t = ed.lines.slice(it.line, Math.max(it.end, it.line + 1)).map((l) => l.text).join('\n').toLowerCase();
+      this.textCache.map.set(it.id, t);
+    }
+    return t;
+  }
+
+  /** How often the search occurs in the scene's text, summary and notes. */
+  private matchCount(it: SceneItem, q: string): number {
+    const hay = `${this.sceneText(it)}\n${it.record?.summary ?? ''}\n${it.record?.notes ?? ''}`.toLowerCase();
+    let n = 0;
+    for (let i = hay.indexOf(q); i >= 0; i = hay.indexOf(q, i + q.length)) n++;
+    return n;
+  }
+
+  /**
+   * Scene search looks at everything that belongs to a scene: heading, number, summary,
+   * notes and the full text (action, dialogue, character names).
+   */
   private visibleItems(): SceneItem[] {
     const q = this.search.value.trim().toLowerCase();
     if (!q) return this.app.scenes;
     return this.app.scenes.filter((s) => {
-      const hay = `${s.order || ''} ${s.heading} ${s.record?.summary ?? ''} ${s.sceneNumber ?? ''}`.toLowerCase();
-      return hay.includes(q);
+      const meta = `${s.order || ''} ${s.sceneNumber ?? ''}`.toLowerCase();
+      return meta.split(' ').includes(q) || this.matchCount(s, q) > 0;
     });
   }
 
   render() {
     const items = this.visibleItems();
-    const sig = items.map((s) => `${s.id}|${s.order}|${s.heading}|${s.record?.color ?? ''}|${s.record?.status ?? ''}|${s.record?.summary ?? ''}`).join('\n');
+    const q = this.search.value.trim().toLowerCase();
+    const sig = (q ? `${q}|${this.app.editor.version}|` : '') + items.map((s) => `${s.id}|${s.order}|${s.heading}|${s.record?.color ?? ''}|${s.record?.status ?? ''}|${s.record?.summary ?? ''}`).join('\n');
     const total = this.app.scenes.filter((s) => s.kind === 'scene').length;
     this.countEl.textContent = this.app.project ? String(total) : '';
     if (sig === this.lastSig) {
@@ -104,7 +152,7 @@ export class OutlinePane {
     this.rows.clear();
     if (!this.app.project) return;
     if (!items.length) {
-      this.list.append(h('div', { class: 'empty-note' }, this.search.value ? 'No matching scenes' : 'No scenes yet. Write a heading such as INT. HOUSE - DAY, or use New Scene.'));
+      this.list.append(h('div', { class: 'empty-note' }, this.search.value ? 'No scene contains this text' : 'No scenes yet. Write a heading such as INT. HOUSE - DAY, or use New Scene.'));
     }
     for (const it of items) {
       const row = h(
@@ -114,6 +162,7 @@ export class OutlinePane {
         it.record?.color ? h('span', { class: 'swatch', style: { background: it.record.color } }) : null,
         h('span', { class: 'label' }, it.heading || '(empty heading)'),
         it.record?.status ? h('span', { class: 'meta' }, it.record.status === 'done' ? '✓' : it.record.status === 'revise' ? '!' : '·') : null,
+        q ? h('span', { class: 'meta match-count', title: 'Matches in this scene' }, String(this.matchCount(it, q) || '')) : null,
       );
       row.addEventListener('click', (e) => {
         this.selectedId = it.id;

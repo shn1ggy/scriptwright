@@ -128,6 +128,7 @@ await check('the export preview zooms (buttons, Mod+= / Mod+0)', async () => {
 
 await check('title page can be hidden from Script view', async () => {
   await app(() => window.__app.setView('script'));
+  await app(() => { window.__app.settings.editor.titlePageInScript = true; window.__app.applySettings(); });
   const shownBefore = await app(() => window.__app.editor.displayedLines[0]);
   await app(() => {
     window.__app.settings.editor.titlePageInScript = false;

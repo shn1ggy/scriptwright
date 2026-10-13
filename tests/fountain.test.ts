@@ -151,7 +151,7 @@ test('two spaces keep a dialogue block together', () => {
 test('character list sorted by cue count with labels', () => {
   const r = parse(L('\nLISA\nHi.\n\nTOM\nHey.\n\nLISA\nHow are you?\n\nLISA (CONT\'D)\nOkay.'));
   const list = characterList(r);
-  assert.deepEqual(list.map(characterLabel), ['LISA (3 cues)', 'TOM (1 cue)']);
+  assert.deepEqual(list.map(characterLabel), ['LISA (3 speeches)', 'TOM (1 speech)']);
 });
 
 test('reinterpretation: heading typed into an action line becomes heading when context allows', () => {

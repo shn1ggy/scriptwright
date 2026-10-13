@@ -48,6 +48,12 @@ function loadPdfjs(): Promise<any> {
 export function openExport(app: App) {
   const p = app.project;
   if (!p) return;
+  // Only one export window: pressing the shortcut again just focuses it.
+  const existing = document.querySelector<HTMLElement>('.export');
+  if (existing) {
+    (existing.querySelector('select, input, button') as HTMLElement | null)?.focus();
+    return;
+  }
   const meta = p.meta;
   let s: ExportSettings = projectExportSettings(app);
   let fonts: FontEntry[] = [];

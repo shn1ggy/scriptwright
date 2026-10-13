@@ -1,7 +1,7 @@
 // Characters: who speaks how much, where in the story, and with whom.
 
 import type { App, SceneItem } from '../app';
-import { h, iconButton } from './dom';
+import { h } from './dom';
 import { pushEscape } from './overlay';
 import { analyzeCharacters, CharacterStats } from '../../shared/characters';
 import { openRename } from './rename';
@@ -15,7 +15,6 @@ export class CharactersPanel {
   private countEl: HTMLElement;
   private search: HTMLInputElement;
   private sortSel: HTMLSelectElement;
-  private silentChk: HTMLInputElement;
   private selected: string | null = null;
   private popEsc: (() => void) | null = null;
   private cache: { version: number; scenes: SceneItem[]; stats: CharacterStats[] } | null = null;
@@ -45,8 +44,6 @@ export class CharactersPanel {
       h('option', { value: 'name' }, 'Name'),
     );
     this.sortSel.addEventListener('change', () => this.render());
-    this.silentChk = h('input', { type: 'checkbox', 'aria-label': 'Show characters without dialogue' });
-    this.silentChk.addEventListener('change', () => this.render());
     this.list = h('div', { class: 'ch-list', role: 'listbox', tabindex: '0', 'aria-label': 'Characters' });
     this.list.addEventListener('keydown', (e) => this.onKey(e));
     this.detail = h('div', { class: 'ch-detail' });
@@ -59,10 +56,8 @@ export class CharactersPanel {
         h('span', { class: 'doc-title', style: { padding: '0' } }, 'Characters'),
         this.countEl,
         h('span', { class: 'spacer' }),
-        h('label', { class: 'inline dim', style: { fontSize: '12px' } }, this.silentChk, ' Without dialogue'),
         this.sortSel,
         this.search,
-        iconButton('close', 'Back to writing (Esc)', () => this.app.closePanel()),
       ),
       h('div', { class: 'ch-body' }, this.list, this.detail),
     );
@@ -103,7 +98,7 @@ export class CharactersPanel {
     const { stats } = this.data();
     const q = this.search.value.trim().toLowerCase();
     const sort = this.sortSel.value as SortKey;
-    const list = stats.filter((c) => (this.silentChk.checked || !c.silent) && (!q || c.name.toLowerCase().includes(q)));
+    const list = stats.filter((c) => !c.silent && (!q || c.name.toLowerCase().includes(q)));
     const by: Record<SortKey, (a: CharacterStats, b: CharacterStats) => number> = {
       cues: (a, b) => b.cues - a.cues || b.words - a.words,
       words: (a, b) => b.words - a.words || b.cues - a.cues,
@@ -118,8 +113,7 @@ export class CharactersPanel {
     if (!this.isOpen || !this.app.project) return;
     const { scenes, stats } = this.data();
     const speaking = stats.filter((c) => c.cues > 0).length;
-    const silent = stats.length - speaking;
-    this.countEl.textContent = `${speaking} speaking${silent ? ` · ${silent} without dialogue` : ''} · ${scenes.length} scenes`;
+    this.countEl.textContent = `${speaking} characters · ${scenes.length} scenes`;
     const list = this.visible();
     if (!this.selected || !list.some((c) => c.name === this.selected)) this.selected = list[0]?.name ?? null;
     this.list.textContent = '';
