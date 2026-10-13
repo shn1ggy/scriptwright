@@ -12,6 +12,7 @@ import {
   cleanText,
   titleFields,
 } from './fountain';
+import { sceneNumberList } from './scenenumbers';
 import { ExportScope, ExportSettings, paperDims } from './types';
 
 export const S_BOLD = 1;
@@ -374,13 +375,13 @@ export function paginate(
   const newPageScenes = s.sceneStartsNewPage || scope.kind === 'scenesNewPage';
 
   // Scene numbers
+  // Locked numbers (written on the headings) always print; new scenes get letters (12A).
   const sceneNum = new Map<number, string>();
-  let auto = 0;
-  for (const sc of parse.scenes) {
-    auto++;
-    const n = sc.sceneNumber ?? (s.autoSceneNumbers ? String(auto) : null);
-    if (n) sceneNum.set(sc.line, (s.sceneNumberFormat || '{n}').replace('{n}', n));
-  }
+  const locked = !!s.numbersLocked;
+  const nums = sceneNumberList(parse, locked);
+  parse.scenes.forEach((sc, i) => {
+    if (locked || s.autoSceneNumbers || sc.sceneNumber) sceneNum.set(sc.line, (s.sceneNumberFormat || '{n}').replace('{n}', nums[i]));
+  });
 
   const trimRaw = (st: { text: string; styles: number[] }, source: number): Raw => {
     const start = st.text.length - st.text.trimStart().length;

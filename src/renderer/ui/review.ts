@@ -5,7 +5,7 @@ import { h } from './dom';
 import { confirmDialog, openDialog, toast } from './overlay';
 import { CommentRecord, HighlightRecord, PassageRecord } from '../../shared/types';
 import { uid } from './dom';
-import { openRewriteFor } from './rewrite';
+import { namePassage, openRewriteFor, passageLabel, passageName, passageText } from './rewrite';
 
 
 function quote(text: string, max = 90): string {
@@ -79,9 +79,16 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
       h(
         'div',
         { class: 'rv-item rv-passage' },
-        h('button', { class: 'rv-quote', onclick: () => app.revealAnnotation(p.id) }, p.name),
+        // The label is the text in the screenplay now; a name, when given, stands above it.
+        passageName(p) ? h('div', { class: 'rv-label' }, passageName(p)) : null,
+        h('button', { class: 'rv-quote', title: 'Go to the passage', onclick: () => app.revealAnnotation(p.id) }, `“${passageText(app, p)}”`),
         h('div', { class: 'rv-meta' }, `${p.alternatives.length} version${p.alternatives.length === 1 ? '' : 's'} · using “${active?.name ?? '?'}”${p.sceneHeading ? ' · ' + p.sceneHeading : ''}`),
-        h('div', { class: 'rv-actions' }, h('button', { class: 'btn sm', onclick: () => openRewriteFor(app, p.id) }, 'Open…')),
+        h(
+          'div',
+          { class: 'rv-actions' },
+          h('button', { class: 'btn sm', onclick: () => openRewriteFor(app, p.id) }, 'Open…'),
+          h('button', { class: 'btn sm', onclick: () => void namePassage(app, p.id) }, passageName(p) ? 'Rename…' : 'Name…'),
+        ),
       ),
     );
   }
@@ -119,7 +126,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
     secDet.append(h('div', { class: 'rv-head warn' }, h('span', null, `Detached (${detached.length})`)));
     secDet.append(h('div', { class: 'notice' }, 'The text these belonged to was deleted or changed. Select the right text and attach them again, or delete them.'));
     for (const { kind, rec } of detached) {
-      const label = kind === 'comment' ? `Comment: ${quote((rec as CommentRecord).text, 50)}` : kind === 'passage' ? `Passage: ${(rec as PassageRecord).name}` : `Highlight: ${app.settings.highlights[(rec as HighlightRecord).color]?.label ?? ''}`;
+      const label = kind === 'comment' ? `Comment: ${quote((rec as CommentRecord).text, 50)}` : kind === 'passage' ? `Passage: ${passageLabel(app, rec as PassageRecord)}` : `Highlight: ${app.settings.highlights[(rec as HighlightRecord).color]?.label ?? ''}`;
       secDet.append(
         h(
           'div',

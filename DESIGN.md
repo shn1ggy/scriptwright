@@ -41,6 +41,7 @@ file first, then the code.
 - View headers (Dialogue, Cards, Characters, Export) are 40 px: title, a short info, then the
   view's controls; all controls in them are 30 px. Scene view has no header: previous/next
   scene sit in the status bar.
+- **Double-click a tab** to open it in focus: both side panes are hidden (Export excepted).
 - The notes pane's tabs are right-aligned, so the last one ends 14 px from the window edge.
 - **Scene pane:** minimum 220 px, default 280 px. **Notes pane:** minimum 310 px, default 320 px.
 - Text in the interface is not selectable; text a person writes is.
@@ -144,9 +145,14 @@ unless a writer changes them:
   contact line. Both corners keep the **same 70 pt** from the side and bottom edges. Details
   use 5 % letter spacing.
 
+- Scene numbers count 1, 2, 3 … until they are **locked** (Scene ▸ Lock Scene Numbers). Locked
+  numbers are written on the headings (#12#); new scenes take letters (12A), removed scenes
+  stay as "12 OMITTED" / "ENTFÄLLT", and the scene pane shows a small lock.
+
 ## 9. Words
 
 - Name things by what writers know: scene, speech, character, draft, version, shelf.
+- Don't ask for names nobody needs. A passage is shown by its current text; a name is optional.
 - Buttons say what happens: "Move to Archive", "Put back", "Export PDF…" (… when a dialog follows).
 - Sentence case everywhere. No exclamation marks, no apologies in errors; say what happened and
   what to do.

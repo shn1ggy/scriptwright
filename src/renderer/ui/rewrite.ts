@@ -7,6 +7,42 @@ import { diffLines } from './compare';
 import { PassageRecord } from '../../shared/types';
 import { keyIndex } from '../../shared/anchors';
 
+/**
+ * The name a writer gave a passage, or '' when it has none. Names made automatically by
+ * earlier versions (the first words in quotes, or "Passage") count as no name.
+ */
+export function passageName(p: PassageRecord): string {
+  const n = (p.name ?? '').trim();
+  if (!n || n === 'Passage' || /^“.*”$/s.test(n)) return '';
+  return n;
+}
+
+/** Text of a passage as it is in the screenplay now (the last known text when detached). */
+export function passageText(app: App, p: PassageRecord, max = 90): string {
+  const t = (app.annotations.live.has(p.id) ? app.annotations.textOf(p.id) : p.anchor.quote).replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1) + '…' : t;
+}
+
+/** Short label: the name if there is one, else the current text in quotes. */
+export function passageLabel(app: App, p: PassageRecord, max = 50): string {
+  return passageName(p) || `“${passageText(app, p, max)}”`;
+}
+
+/** Gives a passage a name (or removes it with an empty name); undoable. */
+export async function namePassage(app: App, passageId: string) {
+  const p = app.project?.meta.passages.find((x) => x.id === passageId);
+  if (!p) return;
+  const n = await promptDialog('Name passage', 'Name (optional)', passageName(p), { okLabel: 'Save' });
+  if (n === null || n === undefined) return;
+  app.undoable(() => {
+    const q = app.project!.meta.passages.find((x) => x.id === passageId);
+    if (!q) return;
+    q.name = n.trim();
+    app.markMetaDirty();
+  }, 'Name Passage');
+  app.rightPane.annotationsChanged();
+}
+
 /** Opens the rewrite tool for the selection (or the passage at the caret). */
 export function openRewrite(app: App) {
   const ann = app.annotations;
@@ -29,15 +65,14 @@ export function openRewrite(app: App) {
     const sb = [idx.get(sel.b.key)!, sel.b.ch];
     const le = (x: number[], y: number[]) => x[0] < y[0] || (x[0] === y[0] && x[1] <= y[1]);
     if (over.length === 1 && le(pa, sa) && le(sb, pb)) return openRewriteFor(app, p.rec.id);
-    toast(`The selection overlaps the passage “${(p.rec as PassageRecord).name}”. Select it exactly, or text outside it.`, {
+    toast(`The selection overlaps the passage ${passageLabel(app, p.rec as PassageRecord)}. Select it exactly, or text outside it.`, {
       warn: true,
       actions: [{ label: 'Open that passage', run: () => openRewriteFor(app, p.rec.id) }],
     });
     return;
   }
-  const text = app.editor.selectedText();
-  const words = text.replace(/\s+/g, ' ').trim().split(' ').slice(0, 5).join(' ');
-  const rec = ann.addPassage(sel, words.length > 2 ? `“${words}${text.length > words.length + 2 ? '…' : ''}”` : 'Passage');
+  // Passages have no name unless the writer gives one; lists show their current text.
+  const rec = ann.addPassage(sel, '');
   openRewriteFor(app, rec.id, true);
 }
 
@@ -47,15 +82,6 @@ export function openRewriteFor(app: App, passageId: string, isNew = false) {
   let p = find();
   if (!p) return;
   let selected = isNew ? '' : p.activeId;
-  const nameIn = h('input', { class: 'field', value: p.name, 'aria-label': 'Passage name' });
-  nameIn.addEventListener('change', () => {
-    const q = find();
-    if (q && nameIn.value.trim()) {
-      q.name = nameIn.value.trim();
-      app.markMetaDirty();
-      app.rightPane.annotationsChanged();
-    }
-  });
   const list = h('div', { class: 'rw-list', role: 'listbox' });
   const editor = h('textarea', { class: 'field rw-text', spellcheck: 'true', 'aria-label': 'Version text' });
   // Versions read like the screenplay: the editor's font, size and line height.
@@ -194,7 +220,6 @@ export function openRewriteFor(app: App, passageId: string, isNew = false) {
     title: 'Rewrite',
     cls: 'rewrite-dialog',
     body: [
-      h('div', { class: 'form-row' }, h('label', null, 'Passage'), nameIn),
       h('div', { class: 'rw-split' }, list, h('div', { class: 'rw-main' }, editor, info)),
       buttons,
     ],

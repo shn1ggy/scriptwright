@@ -17,7 +17,7 @@ import { RightPane } from './ui/rightpane';
 import { FindBar } from './ui/findbar';
 import { openPalette } from './ui/palette';
 import { openSettings } from './ui/settings';
-import { ExportPreset, FontEntry, loadFonts, openExport, projectExportSettings } from './ui/export';
+import { ExportPreset, FontEntry, loadFonts, openExport, projectExportSettings, scriptLanguage } from './ui/export';
 import { paginate } from '../shared/paginate';
 import { openRename } from './ui/rename';
 import { compareDialog } from './ui/compare';
@@ -25,11 +25,12 @@ import { SceneCards } from './ui/cards';
 import { CharactersPanel } from './ui/characters';
 import { Annotations } from './annotations';
 import { sceneNumberEdits } from '../shared/fountainout';
-import { openRewrite, openRewriteFor } from './ui/rewrite';
+import { isOmittedHeading, omittedHeading, sceneNumberList } from '../shared/scenenumbers';
+import { openRewrite, openRewriteFor, passageLabel } from './ui/rewrite';
 import { openCommentDialog, deleteComment } from './ui/review';
 import { renderShelf, toShelf } from './ui/shelf';
 import { saveDraft } from './ui/drafts';
-import { openFountainExport, openSceneNumbers } from './ui/fountaintools';
+import { exportFinalDraft, openFountainExport, openSceneNumbers } from './ui/fountaintools';
 import { keyIndex } from '../shared/anchors';
 import { CommentRecord, HighlightColor, PassageRecord } from '../shared/types';
 
@@ -42,6 +43,8 @@ export interface SceneItem {
   heading: string;
   order: number;
   sceneNumber?: string;
+  /** Number shown for the scene: 1, 2, 3 … or the locked number (12, 12A). */
+  number: string;
   record?: SceneRecord;
 }
 
@@ -227,11 +230,17 @@ export class App {
       h('span', { class: 'spacer' }),
       this.rightToggle,
     );
-    const mkTab = (v: ViewName, label: string) => {
-      const b = h('button', { class: 'tab', tabindex: '-1', onclick: () => this.setView(v) }, label);
+    // A double-click opens the tab in focus: both panes are hidden.
+    const focusOpen = (b: HTMLButtonElement) => {
+      b.title = 'Double-click to open without the side panes';
+      b.addEventListener('dblclick', () => this.hidePanes());
       return b;
     };
-    const mkPanelTab = (p: PanelName, label: string) => h('button', { class: 'tab', tabindex: '-1', onclick: () => this.openPanel(p) }, label);
+    const mkTab = (v: ViewName, label: string) => focusOpen(h('button', { class: 'tab', tabindex: '-1', onclick: () => this.setView(v) }, label));
+    const mkPanelTab = (p: PanelName, label: string) => {
+      const b = h('button', { class: 'tab', tabindex: '-1', onclick: () => this.openPanel(p) }, label);
+      return p === 'export' ? b : focusOpen(b);
+    };
     this.tabs = {
       script: mkTab('script', 'Script'),
       scene: mkTab('scene', 'Scene'),
@@ -1361,15 +1370,16 @@ export class App {
     const parsed = this.editor.parsed;
     const lines = this.editor.lines;
     const items: SceneItem[] = [];
-    if (parsed.titleEnd > 0) items.push({ kind: 'title', id: 'title', key: lines[0].key, line: 0, end: parsed.titleEnd, heading: 'Title page', order: 0 });
+    if (parsed.titleEnd > 0) items.push({ kind: 'title', id: 'title', key: lines[0].key, line: 0, end: parsed.titleEnd, heading: 'Title page', order: 0, number: '' });
     const firstScene = parsed.scenes[0];
     const openingEnd = firstScene ? firstScene.line : lines.length;
     let openingHas = false;
     for (let i = parsed.bodyStart; i < openingEnd; i++) if (lines[i].text.trim()) openingHas = true;
-    if (openingHas) items.push({ kind: 'opening', id: 'opening', key: lines[parsed.bodyStart].key, line: parsed.bodyStart, end: openingEnd, heading: 'Opening', order: 0 });
+    if (openingHas) items.push({ kind: 'opening', id: 'opening', key: lines[parsed.bodyStart].key, line: parsed.bodyStart, end: openingEnd, heading: 'Opening', order: 0, number: '' });
     if (p) {
       let changed = false;
-      for (const s of parsed.scenes) {
+      const nums = sceneNumberList(parsed, this.numbersLocked);
+      for (const [si, s] of parsed.scenes.entries()) {
         const key = lines[s.line].key;
         let id = p.sceneIds.get(key);
         if (!id) {
@@ -1378,7 +1388,7 @@ export class App {
           changed = true;
         }
         const record = p.meta.scenes.find((r) => r.id === id) ?? p.meta.detached.find((r) => r.id === id);
-        items.push({ kind: 'scene', id, key, line: s.line, end: s.end, heading: s.heading, order: s.order, sceneNumber: s.sceneNumber, record });
+        items.push({ kind: 'scene', id, key, line: s.line, end: s.end, heading: s.heading, order: s.order, sceneNumber: s.sceneNumber, number: nums[si], record });
       }
       // Re-attach detached info whose scene came back (e.g. after undo).
       const present = new Set(items.map((i) => i.id));
@@ -1976,11 +1986,13 @@ export class App {
   }
 
   updateSceneRecords(items: SceneItem[], patch: Partial<SceneRecord>) {
-    for (const it of items) {
-      const r = this.sceneRecord(it);
-      if (r) Object.assign(r, patch);
-    }
-    this.markMetaDirty();
+    this.undoable(() => {
+      for (const it of items) {
+        const r = this.sceneRecord(it);
+        if (r) Object.assign(r, patch);
+      }
+      this.markMetaDirty();
+    }, 'Scene Details');
     this.updateScenes();
     this.outline.render();
     this.cards.render();
@@ -2090,15 +2102,113 @@ export class App {
     if (this.view === 'dialogue') this.applyDialogueFilter(false);
   }
 
+  /**
+   * Locks scene numbers for production: every heading gets its current number written into
+   * the Fountain text (#12#). From then on new scenes take letters (12A) and removed scenes
+   * stay as OMITTED, so numbers on pages already sent out never change.
+   */
+  lockSceneNumbers() {
+    const parsed = this.editor.parsed;
+    const nums = sceneNumberList(parsed, this.numbersLocked);
+    const edits: Array<{ line: number; text: string }> = [];
+    parsed.scenes.forEach((sc, i) => {
+      if (sc.sceneNumber) return;
+      const text = this.editor.lines[sc.line].text;
+      edits.push({ line: sc.line, text: `${text.trimEnd()} #${nums[i]}#` });
+    });
+    this.undoable(() => {
+      this.project!.meta.numbersLocked = true;
+      this.markMetaDirty();
+    }, 'Lock Scene Numbers');
+    if (edits.length)
+      this.editor.edit((tx) => {
+        for (const e of edits) tx.setLine(e.line, e.text);
+        return this.editor.sel;
+      });
+    this.editor.history.seal();
+    this.refreshDerived(true);
+    this.outline.refresh();
+    toast(`Scene numbers locked. New scenes get letters such as ${nums[0]}A; removed scenes stay as omitted.`, { actions: [{ label: 'Undo', run: () => this.unlockUndo(edits.length > 0) }] });
+  }
+
+  /**
+   * With locked numbers, writes the letter numbers of new scenes (12A) into their headings,
+   * e.g. after pages went out, so they cannot shift any more. Returns the numbers written.
+   */
+  writeNewSceneNumbers(): string[] {
+    const parsed = this.editor.parsed;
+    if (!this.numbersLocked) return [];
+    const nums = sceneNumberList(parsed, this.numbersLocked);
+    const edits = parsed.scenes.flatMap((sc, i) => (sc.sceneNumber ? [] : [{ line: sc.line, text: `${this.editor.lines[sc.line].text.trimEnd()} #${nums[i]}#`, num: nums[i] }]));
+    if (!edits.length) return [];
+    this.editor.history.seal();
+    this.editor.edit((tx) => {
+      for (const e of edits) tx.setLine(e.line, e.text);
+      return this.editor.sel;
+    });
+    this.editor.history.seal();
+    this.refreshDerived(true);
+    return edits.map((e) => e.num);
+  }
+
+  async unlockSceneNumbers() {
+    const parsed = this.editor.parsed;
+    const omitted = parsed.scenes.filter((sc) => isOmittedHeading(this.editor.lines[sc.line].text));
+    const msg = `Written numbers are removed from all headings and scenes are counted 1, 2, 3 … again.${omitted.length ? ` The ${omitted.length} omitted scene${omitted.length === 1 ? '' : 's'} (only a number) ${omitted.length === 1 ? 'is' : 'are'} removed as well.` : ''} You can undo this.`;
+    if (!(await confirmDialog('Unlock scene numbers', msg, 'Unlock'))) return;
+    const edits = sceneNumberEdits(this.editor.lineTexts, parsed, 'remove');
+    const omit = omitted.map((sc) => ({ key: this.editor.lines[sc.line].key, len: sc.end - sc.line }));
+    this.editor.edit((tx) => {
+      for (const e of edits) tx.setLine(e.line, e.text);
+      for (const o of omit) {
+        const start = tx.lines.findIndex((l) => l.key === o.key);
+        if (start >= 0) tx.removeLines(start, Math.min(o.len, tx.lines.length - start));
+      }
+      if (tx.lines.length === 0) tx.insertLines(0, [{ key: newKey(), text: '' }]);
+      return cursor({ line: Math.min(this.editor.sel.head.line, tx.lines.length - 1), ch: 0 });
+    });
+    this.undoable(() => {
+      this.project!.meta.numbersLocked = false;
+      this.markMetaDirty();
+    }, 'Unlock Scene Numbers');
+    this.editor.history.seal();
+    this.refreshDerived(true);
+    this.outline.refresh();
+    toast('Scene numbers unlocked.', { actions: [{ label: 'Undo', run: () => this.unlockUndo(true) }] });
+  }
+
+  get numbersLocked(): boolean {
+    return !!this.project?.meta.numbersLocked;
+  }
+
+  /** Undoes a lock or unlock (a text change and the project flag). */
+  private unlockUndo(withText: boolean) {
+    this.run('edit.undo');
+    if (withText) this.run('edit.undo');
+    this.outline.refresh();
+  }
+
+  /** With locked numbers a removed scene leaves "OMITTED #12#" behind; returns the lines to keep. */
+  private omittedLines(item: SceneItem): Array<{ key: number; text: string }> | null {
+    if (!this.numbersLocked || isOmittedHeading(item.heading)) return null;
+    return [
+      { key: newKey(), text: omittedHeading(item.number, scriptLanguage(this)) },
+      { key: newKey(), text: '' },
+    ];
+  }
+
   async deleteScenes(items: SceneItem[]) {
     const del = items.filter((s) => s.kind === 'scene');
     if (del.length <= 1) return del[0] && this.deleteScene(del[0]);
-    const ok = await confirmDialog('Remove scenes', `Remove ${del.length} scenes and their text? You can undo this.`, 'Remove', { danger: true });
+    const locked = this.numbersLocked;
+    const ok = await confirmDialog('Remove scenes', `Remove ${del.length} scenes and their text?${locked ? ' Scene numbers are locked, so each keeps its number as omitted.' : ''} You can undo this.`, 'Remove', { danger: true });
     if (!ok) return;
     this.editor.edit((tx) => {
       for (const it of [...del].sort((a, b) => b.line - a.line)) {
         const start = tx.lines.findIndex((l) => l.key === it.key);
         tx.removeLines(start, it.end - it.line);
+        const keep = this.omittedLines(it);
+        if (keep) tx.insertLines(start, keep);
       }
       if (tx.lines.length === 0) tx.insertLines(0, [{ key: newKey(), text: '' }]);
       const first = Math.min(...del.map((d) => d.line));
@@ -2143,7 +2253,8 @@ export class App {
 
   async deleteScene(item: SceneItem) {
     if (item.kind !== 'scene') return;
-    const ok = await confirmDialog('Remove scene', `Remove "${item.heading}" and its text? You can undo this.`, 'Remove', { danger: true });
+    const keep = this.omittedLines(item);
+    const ok = await confirmDialog('Remove scene', `Remove "${item.heading}" and its text?${keep ? ` Scene numbers are locked, so ${item.number} stays as omitted.` : ''} You can undo this.`, 'Remove', { danger: true });
     if (!ok) return;
     const wasFocused = this.view === 'scene' && this.focus?.kind === 'scene' && this.focus.key === item.key;
     const list = this.navigableScenes();
@@ -2151,6 +2262,7 @@ export class App {
     this.editor.edit((tx) => {
       const start = tx.lines.findIndex((l) => l.key === item.key);
       tx.removeLines(start, item.end - item.line);
+      if (keep) tx.insertLines(start, keep);
       if (tx.lines.length === 0) tx.insertLines(0, [{ key: newKey(), text: '' }]);
       const line = Math.min(start, tx.lines.length - 1);
       return cursor({ line, ch: 0 });
@@ -2426,7 +2538,7 @@ export class App {
         items.push({ label: `Open comment${label}…`, kbd: formatCombo('Mod+Click'), run: () => openCommentDialog(this, c.id) });
         items.push({ label: `Delete comment${label}`, run: () => deleteComment(this, c.id) });
       }
-      for (const p of passages) items.push({ label: `Versions of ${p.name}…`, kbd: comments.length ? undefined : formatCombo('Mod+Click'), run: () => openRewriteFor(this, p.id) });
+      for (const p of passages) items.push({ label: passages.length > 1 ? `Versions of ${passageLabel(this, p as PassageRecord, 30)}…` : 'Passage versions…', kbd: comments.length ? undefined : formatCombo('Mod+Click'), run: () => openRewriteFor(this, p.id) });
     }
     const pl = pos ? ed.parsed.lines[pos.line] : null;
     if (pl?.type === 'character' && pl.cue) {
@@ -2478,7 +2590,7 @@ export class App {
     reg('project.new', 'New Project…', 'File', ['Mod+Shift+N'], () => this.newProject(), { menu: 'File' });
     reg('project.openWorkspace', 'Open Folder as Workspace…', 'File', ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
     reg('workspace.create', 'Create New Workspace…', 'File', [], () => this.createWorkspace(), { menu: 'File' });
-    reg('project.importFountain', 'Import Fountain File…', 'File', ['Mod+I'], () => this.importFountain(), { menu: 'File' });
+    reg('project.importFountain', 'Import Fountain or Final Draft File…', 'File', ['Mod+I'], () => this.importFountain(), { menu: 'File' });
     reg('project.backup', 'Back Up Project…', 'File', ['Mod+Shift+S'], () => this.backupProject(), { enabled: hasProject, menu: 'File' });
     reg('project.importBackup', 'Import Project Backup…', 'File', ['Mod+Shift+I'], () => this.importBackup(), { menu: 'File' });
     reg('project.rename', 'Rename Project…', 'File', ['Mod+Shift+R'], () => this.renameProject(), { enabled: hasProject, menu: 'File' });
@@ -2539,6 +2651,9 @@ export class App {
     reg('shelf.copy', 'Copy to Shelf', 'Edit', ['Mod+Shift+C'], () => toShelf(this, false), { enabled: hasProject, menu: 'Edit' });
     reg('draft.save', 'Save Named Draft…', 'File', ['Mod+Shift+D'], () => saveDraft(this).then(() => undefined), { inFields: true, enabled: hasProject, menu: 'File' });
     reg('project.exportFountain', 'Export Fountain File…', 'File', ['Mod+Shift+E'], () => openFountainExport(this), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('project.exportFdx', 'Export Final Draft File…', 'File', ['Mod+Alt+E'], () => void exportFinalDraft(this), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('scene.lockNumbers', 'Lock Scene Numbers', 'Scenes', [], () => this.lockSceneNumbers(), { enabled: () => !!this.project && !this.numbersLocked && this.editor.parsed.scenes.length > 0, menu: 'Scene' });
+    reg('scene.unlockNumbers', 'Unlock Scene Numbers…', 'Scenes', [], () => void this.unlockSceneNumbers(), { enabled: () => !!this.project && this.numbersLocked, menu: 'Scene' });
     reg('scene.writtenNumbers', 'Scene Numbers in Fountain Text…', 'Scenes', [], () => openSceneNumbers(this), { enabled: hasProject, menu: 'Scene' });
     reg('project.review', 'Review: Comments & Alternatives', 'Scenes', [], () => this.showRightTab('comments'), { enabled: hasProject, menu: 'Scene' });
     reg('project.shelf', 'Shelf', 'Scenes', [], () => this.showRightTab('shelf'), { enabled: hasProject, menu: 'Scene' });
@@ -2604,7 +2719,7 @@ export class App {
     openMenu(
       [
         ...comments.map((c) => ({ label: `Comment: “${c.text.slice(0, 40)}${c.text.length > 40 ? '…' : ''}”`, dot: 'var(--comment)', run: () => openCommentDialog(this, c.id) })),
-        ...passages.map((p) => ({ label: `Versions: ${p.name}`, dot: 'var(--passage)', run: () => openRewriteFor(this, p.id) })),
+        ...passages.map((p) => ({ label: `Versions: ${passageLabel(this, p as PassageRecord, 30)}`, dot: 'var(--passage)', run: () => openRewriteFor(this, p.id) })),
       ],
       { x: e.clientX, y: e.clientY },
     );
@@ -2690,6 +2805,17 @@ export class App {
     this.saveStateSoon();
   }
 
+  /** Hides both side panes (focus on the open tab). */
+  hidePanes() {
+    const l = this.state.layout;
+    if (!l.leftVisible && !l.rightVisible) return;
+    l.leftVisible = false;
+    l.rightVisible = false;
+    this.applyLayout();
+    this.saveStateSoon();
+    if (!this.panel) this.editor.focus();
+  }
+
   togglePane(side: 'left' | 'right') {
     const l = this.state.layout;
     if (side === 'left') l.leftVisible = !l.leftVisible;
@@ -2747,7 +2873,7 @@ export class App {
       await this.chooseWorkspace();
       if (!this.state.workspace) return;
     }
-    const file = await bridge.dialog('open', { title: 'Import Fountain file', filters: [{ name: 'Fountain', extensions: ['fountain', 'txt', 'spmd'] }] });
+    const file = await bridge.dialog('open', { title: 'Import Fountain or Final Draft file', filters: [{ name: 'Screenplay', extensions: ['fountain', 'fdx', 'txt', 'spmd'] }] });
     if (!file) return;
     try {
       const p = await bridge.call('importFountain', file);
@@ -2763,6 +2889,13 @@ export class App {
             { label: 'Remove numbers', value: true, primary: true },
           ],
         );
+        if (!remove && numbered === this.editor.parsed.scenes.length) {
+          // Every heading has its number: treat them as locked production numbers.
+          this.project!.meta.numbersLocked = true;
+          this.markMetaDirty();
+          this.refreshDerived(true);
+          this.outline.refresh();
+        }
         if (remove) {
           const edits = sceneNumberEdits(this.editor.lineTexts, this.editor.parsed, 'remove');
           this.editor.edit((tx) => {

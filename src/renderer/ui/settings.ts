@@ -278,7 +278,7 @@ export function openSettings(app: App, section: Section = 'editor') {
       const known = Object.fromEntries(Object.entries(keymap).filter(([id]) => !!app.commands.get(id)));
       app.commands.overrides = known;
       app.commands.onChange?.();
-      cmdList.render();
+      cmdList?.render();
       toast(`Shortcuts imported (${Object.keys(known).length} changed from the defaults).`);
     };
     content.append(

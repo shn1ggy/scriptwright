@@ -5,6 +5,9 @@ import { bridge } from '../bridge';
 import { h } from './dom';
 import { alertDialog, openDialog, toast } from './overlay';
 import { NumberMode, exportFountain, sceneNumberEdits } from '../../shared/fountainout';
+import { exportFdx } from '../../shared/fdx';
+import { sceneNumberList } from '../../shared/scenenumbers';
+import { projectExportSettings } from './export';
 
 export function openSceneNumbers(app: App) {
   const sel = h(
@@ -100,4 +103,23 @@ export function openFountainExport(app: App) {
       },
     ],
   });
+}
+
+/** Exports the screenplay as a Final Draft (.fdx) file. Scene numbers follow the PDF settings. */
+export async function exportFinalDraft(app: App) {
+  const p = app.project;
+  if (!p) return;
+  const parsed = app.editor.parsed;
+  const s = projectExportSettings(app);
+  const locked = !!p.meta.numbersLocked;
+  const nums = locked || s.sceneNumbers !== 'off' ? sceneNumberList(parsed, locked) : undefined;
+  const xml = exportFdx(app.editor.lineTexts, parsed, { sceneNumbers: nums, titlePage: true });
+  const dest = await bridge.dialog('save', { title: 'Export Final Draft file', defaultPath: `${p.name}.fdx`, filters: [{ name: 'Final Draft', extensions: ['fdx'] }] });
+  if (!dest) return;
+  try {
+    await bridge.call('writeFile', dest.toLowerCase().endsWith('.fdx') ? dest : dest + '.fdx', xml);
+    toast('Final Draft file exported. Notes, sections, synopses and omitted text are left out.');
+  } catch (e: any) {
+    alertDialog('Export failed', e.message);
+  }
 }

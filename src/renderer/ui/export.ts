@@ -8,6 +8,7 @@ import { alertDialog, confirmDialog, promptDialog, pushEscape, toast } from './o
 import { ExportScope, ExportSettings, PaperSize, ScriptLanguage, defaultExportSettings, normalizeExportSettings, paperLines } from '../../shared/types';
 import { characterLabel, characterList, titleFields } from '../../shared/fountain';
 import { capacity } from '../../shared/paginate';
+import { sceneNumberList } from '../../shared/scenenumbers';
 
 type ScopeKind = 'all' | 'scenes' | 'pages' | 'scenesNewPage' | 'separate' | 'character' | 'dialogue';
 
@@ -25,7 +26,7 @@ export function scriptLanguage(app: App): ScriptLanguage {
 
 /** The export settings currently stored for a project (or defaults). */
 export function projectExportSettings(app: App): ExportSettings {
-  return normalizeExportSettings(app.project?.meta.exportSettings, defaultPaper(), scriptLanguage(app));
+  return { ...normalizeExportSettings(app.project?.meta.exportSettings, defaultPaper(), scriptLanguage(app)), numbersLocked: !!app.project?.meta.numbersLocked };
 }
 
 export interface FontEntry {
@@ -148,6 +149,9 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     root.remove();
     persist();
   }
+
+  /** Current settings plus the project's scene number lock (not stored with the settings). */
+  const withLock = (): ExportSettings => ({ ...s, numbersLocked: !!app.project?.meta.numbersLocked });
 
   function persist() {
     meta.exportSettings = s;
@@ -377,14 +381,15 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       scopeExtra.textContent = '';
       if (scopeKind === 'scenes') {
         const box = h('div', { class: 'scene-pick' });
-        parsed.scenes.forEach((sc) => {
+        const nums = sceneNumberList(parsed, !!meta.numbersLocked);
+        parsed.scenes.forEach((sc, si) => {
           const c = h('input', { type: 'checkbox', checked: selectedScenes.has(sc.line) });
           c.addEventListener('change', () => {
             if (c.checked) selectedScenes.add(sc.line);
             else selectedScenes.delete(sc.line);
             changed();
           });
-          box.append(h('label', { title: sc.heading }, c, `${sc.order}. ${sc.heading}`));
+          box.append(h('label', { title: sc.heading }, c, `${nums[si]}. ${sc.heading}`));
         });
         const allBtn = h('button', { class: 'btn sm', onclick: () => {
           parsed.scenes.forEach((sc) => selectedScenes.add(sc.line));
@@ -677,7 +682,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     let r;
     try {
       if (baseline) await loadBaseline(baseline);
-      r = await bridge.call('exportPdf', app.editor.getText(), s, sc, info());
+      r = await bridge.call('exportPdf', app.editor.getText(), withLock(), sc, info());
     } catch (e: any) {
       if (token !== renderToken) return;
       preview.replaceChildren(h('div', { class: 'state' }, `The PDF could not be created: ${e.message}`));
@@ -807,7 +812,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       if (!folder) return;
       try {
         if (baseline) await loadBaseline(baseline);
-        const r = await bridge.call('exportScenePdfs', app.editor.getText(), s, folder, info());
+        const r = await bridge.call('exportScenePdfs', app.editor.getText(), withLock(), folder, info());
         await recordExport(r.files.length, folder);
         toast(`${r.files.length} scene PDFs written. A copy of this version was saved as “${meta.exports[0].name}”.`);
       } catch (e: any) {
@@ -819,12 +824,15 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     if (!dest) return;
     try {
       if (baseline) await loadBaseline(baseline);
-      const r = await bridge.call('exportPdf', app.editor.getText(), s, scope(), info());
+      const r = await bridge.call('exportPdf', app.editor.getText(), withLock(), scope(), info());
       const file = dest.toLowerCase().endsWith('.pdf') ? dest : dest + '.pdf';
       await bridge.call('writeFile', file, r.pdf as unknown as Uint8Array);
       persist();
       await recordExport(r.pages, file);
-      toast(`Exported ${r.pages} page${r.pages === 1 ? '' : 's'}. This version was saved as “${meta.exports[0].name}” for later comparisons.`);
+      // Pages with locked numbers went out: new scenes keep the letters they were printed with.
+      const fixed = app.writeNewSceneNumbers();
+      const fixedNote = fixed.length ? ` New scene${fixed.length === 1 ? '' : 's'} ${fixed.join(', ')} now keep${fixed.length === 1 ? 's' : ''} ${fixed.length === 1 ? 'its number' : 'their numbers'}.` : '';
+      toast(`Exported ${r.pages} page${r.pages === 1 ? '' : 's'}. This version was saved as “${meta.exports[0].name}” for later comparisons.${fixedNote}`);
       versionName = '';
       versionNote = '';
       const scroll = side.scrollTop;

@@ -109,7 +109,7 @@ export class SceneCards {
     if (!this.isOpen) return;
     clearTimeout(this.renderTimer);
     const items = this.items();
-    const sig = items.map((s) => `${s.id}|${s.order}|${s.heading}|${s.end - s.line}|${s.record?.summary ?? ''}|${s.record?.status ?? ''}|${s.record?.color ?? ''}`).join('\n') + '|' + JSON.stringify(this.app.settings.cards) + '|' + this.app.editor.version;
+    const sig = items.map((s) => `${s.id}|${s.number}|${s.heading}|${s.end - s.line}|${s.record?.summary ?? ''}|${s.record?.status ?? ''}|${s.record?.color ?? ''}`).join('\n') + '|' + JSON.stringify(this.app.settings.cards) + '|' + this.app.editor.version;
     if (sig === this.lastSig) return;
     this.lastSig = sig;
     this.countEl.textContent = `${items.length} scenes`;
@@ -131,7 +131,7 @@ export class SceneCards {
           title: it.heading,
           style: color ? { '--scene': color } : undefined,
         },
-        h('div', { class: 'card-top' }, h('span', { class: 'card-num' }, String(it.order)), h('span', { class: 'card-heading' }, it.heading || '(empty heading)')),
+        h('div', { class: 'card-top' }, h('span', { class: 'card-num' }, it.number), h('span', { class: 'card-heading' }, it.heading || '(empty heading)')),
         o.showSummary ? h('div', { class: `card-summary${rec?.summary ? '' : ' dim'}` }, rec?.summary || 'No summary') : null,
         o.showCharacters && meta?.characters.length ? h('div', { class: 'card-chars' }, meta.characters.join(', ')) : null,
         h(

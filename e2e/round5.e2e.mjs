@@ -60,7 +60,7 @@ await check('Ctrl+click on an alternative passage opens its versions', async () 
   await page.keyboard.down('Control');
   await page.mouse.click(p.x, p.y);
   await page.keyboard.up('Control');
-  await page.waitForSelector('.dialog input[aria-label="Passage name"]');
+  await page.waitForSelector('.rewrite-dialog');
   await page.keyboard.press('Escape');
 });
 

@@ -2,7 +2,7 @@
 // navigation, drag-and-drop and keyboard reordering.
 
 import type { App, SceneItem } from '../app';
-import { h, iconButton, withClear } from './dom';
+import { h, icon, iconButton, withClear } from './dom';
 import { MenuItem, openMenu } from './overlay';
 import { SceneStatus } from '../../shared/types';
 import { isMac } from '../bridge';
@@ -23,6 +23,7 @@ export class OutlinePane {
   private list: HTMLElement;
   private search: HTMLInputElement;
   private countEl: HTMLElement;
+  private lockEl: HTMLElement;
   private rows = new Map<string, HTMLElement>();
   private selectedId: string | null = null;
   private lastSig = '';
@@ -56,12 +57,13 @@ export class OutlinePane {
       }
     });
     this.countEl = h('span', { class: 'dim' });
+    this.lockEl = h('span', { class: 'lock-mark hidden', title: 'Scene numbers are locked: new scenes get letters (12A), removed scenes stay as omitted.' }, icon('lock'));
     this.list = h('div', { class: 'list', tabindex: '0', role: 'listbox', 'aria-label': 'Scenes' });
     this.list.addEventListener('keydown', (e) => this.onKey(e));
     this.el = h(
       'div',
       { class: 'outline' },
-      h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, h('span', { class: 'spacer' }), iconButton('plus', 'New scene after current', () => this.app.run('scene.new')), iconButton('more', 'Scene actions', (e) => this.moreMenu(e.currentTarget as HTMLElement))),
+      h('div', { class: 'section-head' }, h('span', null, 'Scenes'), this.countEl, this.lockEl, h('span', { class: 'spacer' }), iconButton('plus', 'New scene after current', () => this.app.run('scene.new')), iconButton('more', 'Scene actions', (e) => this.moreMenu(e.currentTarget as HTMLElement))),
       h('div', { class: 'outline-search' }, withClear(this.search)),
       this.list,
     );
@@ -82,6 +84,7 @@ export class OutlinePane {
           this.list.focus();
         } },
         { sep: true },
+        this.app.numbersLocked ? cmd('scene.unlockNumbers', 'Unlock Scene Numbers…') : cmd('scene.lockNumbers', 'Lock Scene Numbers'),
         cmd('scene.writtenNumbers', 'Scene Numbers in Fountain Text…'),
       ],
       anchor.getBoundingClientRect(),
@@ -130,7 +133,7 @@ export class OutlinePane {
     const q = this.search.value.trim().toLowerCase();
     if (!q) return this.app.scenes;
     return this.app.scenes.filter((s) => {
-      const meta = `${s.order || ''} ${s.sceneNumber ?? ''}`.toLowerCase();
+      const meta = `${s.number || ''} ${s.sceneNumber ?? ''}`.toLowerCase();
       return meta.split(' ').includes(q) || this.matchCount(s, q) > 0;
     });
   }
@@ -138,9 +141,10 @@ export class OutlinePane {
   render() {
     const items = this.visibleItems();
     const q = this.search.value.trim().toLowerCase();
-    const sig = (q ? `${q}|${this.app.editor.version}|` : '') + items.map((s) => `${s.id}|${s.order}|${s.heading}|${s.record?.color ?? ''}|${s.record?.status ?? ''}|${s.record?.summary ?? ''}`).join('\n');
+    const sig = (q ? `${q}|${this.app.editor.version}|` : '') + items.map((s) => `${s.id}|${s.number}|${s.heading}|${s.record?.color ?? ''}|${s.record?.status ?? ''}|${s.record?.summary ?? ''}`).join('\n');
     const total = this.app.scenes.filter((s) => s.kind === 'scene').length;
     this.countEl.textContent = this.app.project ? String(total) : '';
+    this.lockEl.classList.toggle('hidden', !this.app.project || !this.app.numbersLocked);
     if (sig === this.lastSig) {
       this.updateActive();
       return;
@@ -158,7 +162,7 @@ export class OutlinePane {
         'div',
         { class: `row${it.kind !== 'scene' ? ' title-row' : ''}`, role: 'option', title: this.tooltip(it), dataset: { id: it.id } },
         // The scene colour shows as the colour of its number, so headings always line up.
-        h('span', { class: `num${it.record?.color ? ' colored' : ''}`, style: it.record?.color ? { color: it.record.color } : undefined }, it.kind === 'scene' ? String(it.order) : ''),
+        h('span', { class: `num${it.record?.color ? ' colored' : ''}`, style: it.record?.color ? { color: it.record.color } : undefined }, it.kind === 'scene' ? it.number : ''),
         h('span', { class: 'label' }, it.heading || '(empty heading)'),
         it.record?.status ? h('span', { class: 'meta' }, it.record.status === 'done' ? '✓' : it.record.status === 'revise' ? '!' : '·') : null,
         q ? h('span', { class: 'meta match-count', title: 'Matches in this scene' }, String(this.matchCount(it, q) || '')) : null,
@@ -218,7 +222,7 @@ export class OutlinePane {
   }
 
   private tooltip(it: SceneItem): string {
-    const parts = [it.kind === 'scene' ? `${it.order}. ${it.heading}` : it.heading];
+    const parts = [it.kind === 'scene' ? `${it.number}. ${it.heading}` : it.heading];
     if (it.sceneNumber) parts.push(`Scene number ${it.sceneNumber}`);
     if (it.record?.summary) parts.push(it.record.summary);
     return parts.join('\n');
@@ -357,6 +361,5 @@ export function sceneGroupMenu(app: App, group: SceneItem[]): MenuItem[] {
   items.push({ head: 'Color' });
   for (const c of SCENE_COLORS) items.push({ label: c.name, dot: c.value, run: () => app.updateSceneRecords(group, { color: c.value }) });
   items.push({ label: 'No color', run: () => app.updateSceneRecords(group, { color: undefined }) });
-  items.push({ sep: true }, { label: 'Clear selection', run: () => app.setSceneSelection([], null) });
   return items;
 }

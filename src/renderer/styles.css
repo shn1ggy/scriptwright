@@ -605,14 +605,13 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 
 .settings-block { margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; }
 .settings-block > .notice { margin-top: 8px; }
+.section-head button.collapser .collapse-mark { display: inline-flex; margin-left: 4px; color: var(--text-3); opacity: 0.7; }
+.section-head button.collapser .collapse-mark svg { width: 12px; height: 12px; }
+.section-head button.collapser:hover .collapse-mark { opacity: 1; color: var(--text-2); }
 .settings-actions { display: flex; gap: 8px; margin: 0 0 10px; }
 .ws-switch svg { width: 14px; height: 14px; }
 .ws-switch > svg:last-child { width: 12px; height: 12px; color: var(--text-3); }
 /* The collapse chevron sits in the heading's left padding, so all pane headings start at the same edge. */
-.section-head button.collapser { position: relative; gap: 0; }
-.section-head button.collapser > span:first-child { position: absolute; left: -13px; top: 50%; transform: translateY(-50%); opacity: 0; color: var(--text-3); }
-.section-head button.collapser > span:first-child svg { width: 11px; height: 11px; }
-.section-head:hover button.collapser > span:first-child, .projects .list.hidden ~ * button.collapser > span:first-child { opacity: 1; }
 
 /* Tab bar: the Export tab sits at the far right */
 .viewbar > .tabs:last-child .tab { padding: 0 16px; }
@@ -676,3 +675,5 @@ input[type='checkbox']:disabled { opacity: 0.45; }
 /* Export preview brightness */
 .preview-dim { display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); font-size: var(--ui-small); }
 .preview-dim input[type='range'] { width: 120px; }
+.section-head .lock-mark { display: inline-flex; color: var(--text-3); margin-left: 6px; }
+.section-head .lock-mark svg { width: 12px; height: 12px; }

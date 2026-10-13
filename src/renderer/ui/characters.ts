@@ -207,7 +207,7 @@ export class CharactersPanel {
       d.append(h('div', { class: 'empty-note' }, 'Choose a character.'));
       return;
     }
-    const sceneLabel = (i: number) => (i >= 0 && scenes[i] ? `${scenes[i].order}. ${scenes[i].heading}` : '–');
+    const sceneLabel = (i: number) => (i >= 0 && scenes[i] ? `${scenes[i].number}. ${scenes[i].heading}` : '–');
     const fact = (label: string, value: string) => h('div', { class: 'ch-fact' }, h('span', { class: 'dim' }, label), h('span', null, value));
     d.append(
       h('div', { class: 'ch-detail-head' }, h('span', { class: 'ch-detail-name' }, c.name), c.silent ? h('span', { class: 'meta dim' }, 'no dialogue') : null),
@@ -251,7 +251,7 @@ export class CharactersPanel {
         const b = h(
           'button',
           { class: 'ch-scene-row', title: 'Open the scene', onclick: () => this.openScene(sc) },
-          h('span', { class: 'num' }, String(sc.order)),
+          h('span', { class: 'num' }, sc.number),
           sc.record?.color ? h('span', { class: 'swatch', style: { background: sc.record.color } }) : null,
           h('span', { class: 'label' }, sc.heading),
           h('span', { class: 'dim' }, cues ? `${cues} ${cues === 1 ? 'speech' : 'speeches'}` : 'mentioned'),

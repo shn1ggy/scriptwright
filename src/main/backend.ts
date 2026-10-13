@@ -2,6 +2,7 @@
 // Owns all disk access: workspaces, projects, atomic saves, conflict detection,
 // recovery, history snapshots, backups and PDF export.
 
+import { importFdx } from '../shared/fdx';
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -845,9 +846,11 @@ export class Backend extends EventEmitter {
     return { rel: path.basename(dir), name: path.basename(dir), file, loose: false, conflicts, modified: Date.now() };
   }
 
+  /** Imports a Fountain or Final Draft (.fdx) file into a new project. */
   importFountain(srcFile: string): ProjectEntry {
-    const text = fs.readFileSync(srcFile, 'utf8').replace(/^﻿/, '');
-    return this.createProject(path.basename(srcFile).replace(/\.(fountain|txt|spmd)$/i, ''), text);
+    const raw = fs.readFileSync(srcFile, 'utf8').replace(/^﻿/, '');
+    const text = /\.fdx$/i.test(srcFile) ? importFdx(raw) : raw;
+    return this.createProject(path.basename(srcFile).replace(/\.(fountain|txt|spmd|fdx)$/i, ''), text);
   }
 
   // ---------------------------------------------------------------------------------

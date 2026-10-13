@@ -181,6 +181,8 @@ export interface ProjectMeta {
   exports: ExportRecord[];
   /** Version last used for "Mark changes since" in the export. */
   lastBaseline?: string;
+  /** Scene numbers are locked for production (see shared/scenenumbers.ts). */
+  numbersLocked?: boolean;
 }
 
 /** A copy of the screenplay saved with every PDF export, to compare later versions against. */
@@ -407,6 +409,8 @@ export interface ExportSettings {
   includeNotes: boolean;
   includeSections: boolean;
   includeSynopses: boolean;
+  /** Filled in from the project when exporting (not a print setting): scene numbers are locked. */
+  numbersLocked?: boolean;
 }
 
 /** Default line height: 12 pt Courier set slightly tighter than single spacing (6.41 lines per inch). */
