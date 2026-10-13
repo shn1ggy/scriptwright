@@ -67,6 +67,9 @@ export function applyTheme(a: AppearanceSettings) {
   set('--line', dark ? 'rgba(255,255,255,0.07)' : 'rgba(20,24,30,0.09)');
   set('--line-2', dark ? 'rgba(255,255,255,0.12)' : 'rgba(20,24,30,0.16)');
   set('--note', dark ? '#8fb3cf' : '#3c6e93');
+  set('--warn', dark ? '#e3b866' : '#9a6a00');
+  set('--danger', dark ? '#e5706b' : '#c23b33');
+  set('--ok', dark ? '#7fc48d' : '#2f7d43');
   set('--hl', dark ? 'rgba(227,184,102,0.28)' : 'rgba(230,170,40,0.30)');
   set('--hl-current', dark ? 'rgba(227,184,102,0.55)' : 'rgba(230,170,40,0.6)');
   document.body.style.background = bg;

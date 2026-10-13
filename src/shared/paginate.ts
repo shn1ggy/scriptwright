@@ -780,11 +780,15 @@ function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings):
 
 function strip(v: string): string {
   // Title values may contain emphasis or centering markers; print them clean.
+  // Underscores are only removed when they pair up as underline markers (keeps e-mail addresses).
   return v
+    .replace(/\*{1,3}(?=\S)(.+?)(?<=\S)\*{1,3}/g, '$1')
+    .replace(/(^|[^\p{L}\p{N}])_(?=\S)(.+?)(?<=\S)_(?![\p{L}\p{N}])/gu, '$1$2')
     .replace(/\\([*_])/g, '$1')
-    .replace(/\*{1,3}|_/g, '')
     .replace(/^>\s*|\s*<$/gm, '')
     .trim();
 }
+
+export { strip as cleanTitleValue };
 
 export { cleanText };

@@ -89,8 +89,7 @@ export class RightPane {
             { class: 'history-row' },
             h('span', { class: 'label', title: `${d.reason}\n${bits}` }, `${d.heading || '(no heading)'}${bits ? ' · ' + bits.slice(0, 60) : ''}`),
             h('button', {
-              class: 'btn',
-              style: { height: '22px' },
+              class: 'btn sm',
               onclick: () => {
                 const cur = this.app.activeScene();
                 if (!cur || cur.kind !== 'scene') {
@@ -103,8 +102,7 @@ export class RightPane {
               },
             }, 'Attach'),
             h('button', {
-              class: 'btn',
-              style: { height: '22px' },
+              class: 'btn sm',
               onclick: async () => {
                 if (!(await confirmDialog('Delete detached information', 'Delete this scene information permanently?', 'Delete', { danger: true }))) return;
                 p.meta.detached = p.meta.detached.filter((x) => x.id !== d.id);
@@ -186,7 +184,7 @@ export class RightPane {
           'div',
           { class: 'history-row' },
           h('span', { class: 'label' }, when, label && label !== 'auto' ? h('span', { class: 'dim' }, ` · ${label}`) : null),
-          h('button', { class: 'btn', style: { height: '22px' }, onclick: () => this.preview(it.name, when) }, 'Preview'),
+          h('button', { class: 'btn sm', onclick: () => this.preview(it.name, when) }, 'Preview'),
         ),
       );
     }

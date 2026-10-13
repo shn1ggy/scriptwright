@@ -110,7 +110,7 @@ export class CommandList {
     this.msg.className = `msg${warn ? ' warn' : ''}${text ? '' : ' hidden'}`;
     if (!text) return;
     this.msg.append(h('span', null, text));
-    for (const a of actions) this.msg.append(' ', h('button', { class: 'btn', style: { height: '22px', marginLeft: '6px' }, onclick: a.run }, a.label));
+    for (const a of actions) this.msg.append(' ', h('button', { class: 'btn sm', style: { marginLeft: '6px' }, onclick: a.run }, a.label));
   }
 
   private onKey(e: KeyboardEvent) {

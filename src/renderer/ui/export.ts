@@ -41,7 +41,7 @@ export function openExport(app: App) {
   const cap = h('div', { class: 'capacity' });
   const pageInfo = h('div', { class: 'muted', style: { fontSize: '12px' } });
   const exportBtn = h('button', { class: 'btn primary', onclick: () => doExport() }, 'Export PDF…');
-  const presetSel = h('select', { class: 'field', style: { height: '24px' }, 'aria-label': 'Preset' });
+  const presetSel = h('select', { class: 'field', 'aria-label': 'Preset' });
 
   const root = h(
     'div',
@@ -54,9 +54,9 @@ export function openExport(app: App) {
       h('span', { class: 'spacer' }),
       h('span', { class: 'dim', style: { fontSize: '12px' } }, 'Preset'),
       presetSel,
-      h('button', { class: 'btn', style: { height: '24px' }, onclick: () => savePreset() }, 'Save as preset…'),
-      h('button', { class: 'btn', style: { height: '24px' }, onclick: () => deletePreset() }, 'Delete preset'),
-      h('button', { class: 'btn', style: { height: '24px' }, onclick: () => resetDefaults() }, 'Reset to defaults'),
+      h('button', { class: 'btn', onclick: () => savePreset() }, 'Save as preset…'),
+      h('button', { class: 'btn', onclick: () => deletePreset() }, 'Delete preset'),
+      h('button', { class: 'btn', onclick: () => resetDefaults() }, 'Reset to defaults'),
       iconButton('close', 'Close (Esc)', () => close()),
     ),
     h('div', { class: 'export-main' }, h('div', { class: 'export-side' }, side, h('div', { class: 'foot' }, cap, warnings, pageInfo, exportBtn)), preview),
@@ -185,12 +185,12 @@ export function openExport(app: App) {
           });
           box.append(h('label', { title: sc.heading }, c, `${sc.order}. ${sc.heading}`));
         });
-        const allBtn = h('button', { class: 'btn', style: { height: '22px' }, onclick: () => {
+        const allBtn = h('button', { class: 'btn sm', onclick: () => {
           parsed.scenes.forEach((sc) => selectedScenes.add(sc.line));
           drawScopeExtra();
           changed();
         } }, 'All');
-        const noneBtn = h('button', { class: 'btn', style: { height: '22px' }, onclick: () => {
+        const noneBtn = h('button', { class: 'btn sm', onclick: () => {
           selectedScenes.clear();
           drawScopeExtra();
           changed();

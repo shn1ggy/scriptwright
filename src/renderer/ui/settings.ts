@@ -157,7 +157,7 @@ export function openSettings(app: App, section: Section = 'editor') {
       return h('div', { class: 'inline' }, i, hex);
     };
     const bgPreview = h('span', { style: { width: '34px', height: '26px', borderRadius: '4px', border: '1px solid var(--line-2)', display: 'inline-block' } });
-    const contrastNote = h('div', { class: 'help' });
+    const contrastNote = h('div', { class: 'help', style: { marginTop: '0' } });
     const updateContrast = () => {
       const bg = rgbToHex(hsbToRgb(c.background));
       bgPreview.style.background = bg;
@@ -191,7 +191,7 @@ export function openSettings(app: App, section: Section = 'editor') {
       row('Hue', slider('h', 360, 'Background hue')),
       row('Saturation', slider('s', 100, 'Background saturation')),
       row('Brightness', slider('b', 100, 'Background brightness')),
-      contrastNote,
+      h('div', { class: 'form-row' }, h('span'), contrastNote),
       row(
         '',
         h('button', {

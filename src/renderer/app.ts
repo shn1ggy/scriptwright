@@ -99,6 +99,21 @@ export class App {
   rightPane!: RightPane;
   findbar!: FindBar;
   private leftToggle!: HTMLButtonElement;
+  private tooltipButtons: Array<[HTMLButtonElement, string, string]> = [];
+
+  /** Tooltips show the current shortcut, so they follow keymap changes. */
+  updateTooltips() {
+    for (const [b, title, id] of this.tooltipButtons) {
+      const k = this.commands.label(id);
+      const t = k ? `${title} (${k})` : title;
+      b.title = t;
+      b.setAttribute('aria-label', title);
+    }
+    for (const [v, label] of [['script', 'Script'], ['scene', 'Scene'], ['dialogue', 'Dialogue']] as const) {
+      const k = this.commands.label(`view.${v}`);
+      this.tabs[v].title = k ? `${label} view (${k})` : `${label} view`;
+    }
+  }
   private rightToggle!: HTMLButtonElement;
 
   async start() {
@@ -109,10 +124,13 @@ export class App {
       this.settings.keymap = { ...this.commands.overrides };
       this.saveSettings();
       this.updateMenu();
+      this.updateTooltips();
+      this.updateViewControls();
     };
     applyTheme(this.settings.appearance);
     this.buildDom();
     this.registerCommands();
+    this.updateTooltips();
     this.bindGlobal();
     this.applyLayout();
     this.updateMenu();
@@ -141,6 +159,12 @@ export class App {
     this.subEl = h('span', { class: 'doc-sub' });
     this.leftToggle = iconButton('sidebarLeft', 'Toggle scene pane', () => this.run('view.leftPane'));
     this.rightToggle = iconButton('sidebarRight', 'Toggle notes pane', () => this.run('view.rightPane'));
+    const tb = (name: string, title: string, id: string) => {
+      const b = iconButton(name, title, () => this.run(id));
+      this.tooltipButtons.push([b, title, id]);
+      return b;
+    };
+    this.tooltipButtons.push([this.leftToggle, 'Toggle scene pane', 'view.leftPane'], [this.rightToggle, 'Toggle notes pane', 'view.rightPane']);
     const titlebar = h(
       'div',
       { class: 'titlebar' },
@@ -148,10 +172,10 @@ export class App {
       this.titleEl,
       this.subEl,
       h('span', { class: 'spacer' }),
-      iconButton('search', 'Search in screenplay', () => this.run('search.script')),
-      iconButton('export', 'Export PDF', () => this.run('file.export')),
-      iconButton('command', 'Commands & shortcuts', () => this.run('app.commands')),
-      iconButton('settings', 'Settings', () => this.run('app.settings')),
+      tb('search', 'Search in screenplay', 'search.script'),
+      tb('export', 'Export PDF', 'file.export'),
+      tb('command', 'Commands & shortcuts', 'app.commands'),
+      tb('settings', 'Settings', 'app.settings'),
       this.rightToggle,
     );
     const mkTab = (v: ViewName, label: string) => {
@@ -1549,7 +1573,7 @@ export class App {
       });
       c.append(sel, scope, h('label', null, action, 'Nearby action'));
       if (!this.dialogueAction) c.append(h('span', { class: 'view-note', title: 'Action lines are not shown in this view' }, 'Action hidden'));
-      c.append(h('button', { class: 'btn', style: { height: '22px' }, title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, 'Go to passage'));
+      c.append(h('button', { class: 'btn sm', title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, 'Go to passage'));
     }
     if (this.editor.source) c.append(h('span', { class: 'view-note', style: { color: 'var(--text-2)' } }, 'Fountain source'));
   }

@@ -176,7 +176,7 @@ function buildMenu() {
         { role: 'services' },
         { type: 'separator' },
         { label: `Hide ${app.name}`, click: () => app.hide() },
-        { role: 'hideOthers', accelerator: '' },
+        { role: 'hideOthers' },
         { role: 'unhide' },
         { type: 'separator' },
         { label: `Quit ${app.name}`, accelerator: 'Cmd+Q', registerAccelerator: false, click: () => sendCommand('app.quit') },
@@ -201,7 +201,17 @@ function buildMenu() {
       });
     }
   }
-  if (isMac) template.push({ role: 'windowMenu' });
+  // Custom Window menu: the standard one claims ⌘M, which is the minimal-view shortcut.
+  template.push({
+    label: 'Window',
+    submenu: [
+      { label: 'Minimize', click: () => win?.minimize() },
+      { label: 'Maximize / Restore', click: () => toggleMaximize() },
+      { type: 'separator' },
+      { label: 'Close Window', accelerator: 'CmdOrCtrl+W', click: () => win?.close() },
+      ...(isMac ? [{ type: 'separator' as const }, { role: 'front' as const }] : []),
+    ],
+  });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 

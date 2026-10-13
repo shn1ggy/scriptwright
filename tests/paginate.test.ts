@@ -173,3 +173,11 @@ test('PDF with an embedded TrueType font', async () => {
   const tc = await (await doc.getPage(1)).getTextContent();
   assert.ok(tc.items.map((i: any) => i.str).join('').includes('Ärger über Öl.'));
 });
+
+test('title page values are printed without markers but keep e-mail underscores', async () => {
+  const { cleanTitleValue } = await import('../src/shared/paginate');
+  assert.equal(cleanTitleValue('**THE LONG NIGHT**'), 'THE LONG NIGHT');
+  assert.equal(cleanTitleValue('_Underlined_ title'), 'Underlined title');
+  assert.equal(cleanTitleValue('first_last@example.com'), 'first_last@example.com');
+  assert.equal(cleanTitleValue('> Centered <'), 'Centered');
+});
