@@ -1,0 +1,6 @@
+node_modules/
+dist/
+release/
+.test-build/
+resources/fonts/*.ttf
+resources/fonts/*.part

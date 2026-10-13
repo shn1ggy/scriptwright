@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["src/main/main.ts", "src/preload/preload.ts"]
+}

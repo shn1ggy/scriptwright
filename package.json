@@ -1,0 +1,45 @@
+{
+  "name": "scriptwright",
+  "productName": "Scriptwright",
+  "version": "0.1.0",
+  "description": "A fast, dependable screenplay editor built on Fountain.",
+  "author": "Scriptwright",
+  "license": "MIT",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "postinstall": "node scripts/fetch-fonts.mjs",
+    "build": "node scripts/build.mjs",
+    "build:prod": "node scripts/build.mjs --prod",
+    "start": "node scripts/build.mjs && electron .",
+    "dev:browser": "node scripts/build.mjs && node dist/harness.js --port 5174",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node scripts/test.mjs",
+    "e2e": "node scripts/build.mjs && node e2e/editor.e2e.mjs && node e2e/scenes.e2e.mjs && node e2e/session.e2e.mjs",
+    "dist": "node scripts/build.mjs --prod && electron-builder",
+    "dist:mac": "node scripts/build.mjs --prod && electron-builder --mac",
+    "dist:win": "node scripts/build.mjs --prod && electron-builder --win",
+    "dist:linux": "node scripts/build.mjs --prod && electron-builder --linux"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.10",
+    "pdfjs-dist": "^5.4.149",
+    "playwright": "^1.56.0",
+    "typescript": "^5.9.2"
+  },
+  "build": {
+    "appId": "app.scriptwright.desktop",
+    "productName": "Scriptwright",
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "!dist/harness.js", "package.json"],
+    "extraResources": [{ "from": "resources/fonts", "to": "fonts", "filter": ["*.ttf", "*.txt"] }],
+    "mac": { "category": "public.app-category.productivity", "target": ["dmg", "zip"] },
+    "win": { "target": ["nsis"] },
+    "linux": { "target": ["AppImage", "deb"], "category": "Office" },
+    "fileAssociations": [{ "ext": "fountain", "name": "Fountain screenplay", "role": "Editor" }]
+  }
+}
