@@ -148,6 +148,7 @@ export class App {
         this.state.workspace = undefined;
       }
     }
+    this.projectsPane.render();
     this.updateWelcome();
     this.updateChrome();
     this.ready = true;
@@ -938,6 +939,16 @@ export class App {
     }
     if (this.suspendScenes) return;
     this.refreshDerived(false);
+    // Undo/redo can move the caret into text the current view hides: follow it.
+    if ((origin === 'undo' || origin === 'redo') && !this.editor.isVisibleLine(this.editor.sel.head.line)) {
+      const head = this.editor.sel.head;
+      if (this.view === 'scene') {
+        const item = this.sceneAt(head.line);
+        if (item) this.enterScene(item, { caret: head });
+      } else if (this.view === 'dialogue') {
+        this.goToPassage();
+      }
+    }
   }
 
   /** Updates scenes, outline and counts after a change. */
@@ -966,7 +977,10 @@ export class App {
   private lastSelNonEmpty = false;
 
   private onScroll() {
-    if (this.view === 'script') this.saveStateSoon();
+    if (this.view === 'script') {
+      this.saveStateSoon();
+      this.outline.updateActive();
+    }
   }
 
   // ---------------------------------------------------------------------------------

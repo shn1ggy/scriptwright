@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "A fast, dependable screenplay editor built on Fountain.",
   "author": "Scriptwright",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "private": true,
   "main": "dist/main.js",
   "scripts": {

@@ -96,7 +96,8 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
         const font = isTitle ? `T${(s.titleBold ? 1 : 0)}` : 'C0';
         const w = item.text.length * size * (isTitle && (s.titleFont === 'Helvetica' || s.titleFont === 'Times') ? 0.5 : 0.6);
         let x = left;
-        if (item.align === 'center') x = left + (actionRight - left - w) / 2;
+        // The title block is centered on the page; contact details align to the margins.
+        if (item.align === 'center') x = (dims.width - w) / 2;
         else if (item.align === 'right') x = dims.width - s.marginRight * 72 - w;
         doc.text(x, item.y, item.text, font, size);
         if (isTitle && s.titleUnderline && item.text.trim()) doc.line(x, item.y + size * 0.15, x + w, item.y + size * 0.15, Math.max(0.5, size / 24));

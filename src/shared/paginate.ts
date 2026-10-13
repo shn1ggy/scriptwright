@@ -762,7 +762,9 @@ function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings):
   centerBlock(get('source'), 1);
   // Bottom corners
   const contact = get('contact', 'address', 'phone', 'email', 'agent');
-  const other = [...get('draft date', 'date', 'revision', 'copyright', 'notes'), ...(s.draftDate ? [s.draftDate] : [])];
+  const titleDates = get('draft date', 'date');
+  // The export draft date is used on the title page only when the title page has none.
+  const other = [...(titleDates.length ? titleDates : s.draftDate ? [s.draftDate] : []), ...get('revision', 'copyright', 'notes')];
   const bottom = dims.height - s.marginBottom * 72;
   const place = (vals: string[], align: 'left' | 'right') => {
     const linesOut = vals.flatMap((v) => v.split('\n'));

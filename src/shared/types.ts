@@ -233,13 +233,15 @@ export interface ExportSettings {
   includeSynopses: boolean;
 }
 
+/** Margins that give the classic 6-inch action line on each paper size. */
+export function paperMargins(paper: PaperSize) {
+  return paper === 'A4' ? { marginTop: 1, marginBottom: 1, marginLeft: 1.5, marginRight: 0.75 } : { marginTop: 1, marginBottom: 1, marginLeft: 1.5, marginRight: 1 };
+}
+
 export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettings {
   return {
     paper,
-    marginTop: 1,
-    marginBottom: 1,
-    marginLeft: 1.5,
-    marginRight: 1,
+    ...paperMargins(paper),
     font: 'Courier Prime',
     fontSize: 12,
     linesPerInch: 6,

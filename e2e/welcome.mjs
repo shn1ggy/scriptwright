@@ -1,0 +1,14 @@
+import { spawn } from 'child_process';
+import fs from 'fs'; import os from 'os'; import path from 'path';
+import { chromium } from 'playwright';
+import { root, sleep } from './util.mjs';
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sw-w-'));
+const port = 5900;
+const proc = spawn(process.execPath, [path.join(root, 'dist/harness.js'), '--port', String(port), '--userdata', tmp], { stdio: 'ignore' });
+await sleep(800);
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
+await p.goto(`http://127.0.0.1:${port}/`);
+await sleep(800);
+await p.screenshot({ path: process.argv[2] });
+await b.close(); proc.kill();

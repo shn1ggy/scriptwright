@@ -4,7 +4,7 @@ import type { App } from '../app';
 import { bridge } from '../bridge';
 import { h, iconButton, debounce } from './dom';
 import { alertDialog, confirmDialog, promptDialog, pushEscape, toast } from './overlay';
-import { ExportScope, ExportSettings, defaultExportSettings } from '../../shared/types';
+import { ExportScope, ExportSettings, PaperSize, defaultExportSettings, paperMargins } from '../../shared/types';
 import { characterLabel, characterList, titleFields } from '../../shared/fountain';
 import { capacity } from '../../shared/paginate';
 
@@ -156,6 +156,22 @@ export function openExport(app: App) {
     return h('label', { class: 'check' }, c, label);
   };
 
+  /** Paper choice; margins that still match the old paper's defaults follow the new paper. */
+  function paperSel() {
+    const e = h('select', { class: 'field', 'aria-label': 'Paper' }, h('option', { value: 'Letter' }, 'US Letter'), h('option', { value: 'A4' }, 'A4'));
+    e.value = s.paper;
+    e.addEventListener('change', () => {
+      const old = paperMargins(s.paper);
+      const next = paperMargins(e.value as PaperSize);
+      const untouched = (Object.keys(old) as Array<keyof typeof old>).every((k) => s[k] === old[k]);
+      s.paper = e.value as PaperSize;
+      if (untouched) Object.assign(s, next);
+      build();
+      changed();
+    });
+    return e;
+  }
+
   function build() {
     side.textContent = '';
     const parsed = app.editor.parsed;
@@ -230,7 +246,7 @@ export function openExport(app: App) {
       row('Export', scopeSel),
       scopeExtra,
       h('h3', null, 'Page'),
-      row('Paper', sel('paper', [['Letter', 'US Letter'], ['A4', 'A4']])),
+      row('Paper', paperSel()),
       row('Margin top', numIn('marginTop', 0.25, 3, 0.05, 'in')),
       row('Margin bottom', numIn('marginBottom', 0.25, 3, 0.05, 'in')),
       row('Margin left', numIn('marginLeft', 0.25, 3, 0.05, 'in')),

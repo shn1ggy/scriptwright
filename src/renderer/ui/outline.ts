@@ -168,7 +168,10 @@ export class OutlinePane {
 
   updateActive() {
     const active = this.app.view === 'scene' ? this.app.activeScene() ?? this.app.focusedItem() : this.app.activeScene();
+    // In Script view the scene at the reading position gets a quieter marker.
+    const reading = this.app.view === 'script' && this.app.project ? this.app.sceneAt(this.app.editor.topVisibleLine()) : undefined;
     for (const [id, row] of this.rows) {
+      row.classList.toggle('reading', !!reading && reading.id === id && (!active || active.id !== id));
       const on = !!active && active.id === id;
       if (row.classList.contains('active') !== on) {
         row.classList.toggle('active', on);
