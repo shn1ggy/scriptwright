@@ -54,12 +54,18 @@ file first, then the code.
 - Text in the interface is not selectable; text a person writes is.
 - The status bar lines up with the text view between the panes; with both panes hidden it
   uses the full width. The editor reserves its scrollbar space, so text never shifts.
+- The text column is centred on the window, not on the space between the panes, so it stays
+  put when a pane opens or closes (as long as the space allows).
+- A scene's selection mark sits inside its colour edge, never across it.
 - Double-clicking a tab hides both panes; double-clicking again brings them back.
 - Esc never closes Cards or Characters: in Cards it clears the selection.
 - Settings, the layout and view options (pane widths, open groups, preview brightness …) are
   saved in the workspace so it looks the same on every computer; a switch keeps them local.
 - Export settings are grouped and fold open and closed; This version, Content and Mark changes
   start open. Change marks are red by default and run on across the spaces between words.
+  Export presets belong to the workspace, so every project can use them.
+- Review and History have toggles for what they list (comments, alternatives, highlights);
+  the choice is remembered, like "Only differences".
 
 ## 3. Spacing and sizes
 
@@ -127,8 +133,13 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 
 - Every change to the screenplay is undoable, and so is every change around it: comments,
   replies, resolving, highlights, alternative passages and their versions, the shelf and scene
-  details share one history with the text (Mod+Z / Mod+Shift+Z). Destructive actions on files
-  ask first and say where things go (Trash, Archive).
+  details share one history with the text (Mod+Z / Mod+Shift+Z, Ctrl+Y on Windows). The app
+  handles these keys itself on every system, so they work the same wherever focus is.
+  Destructive actions on files ask first and say where things go (Trash, Archive).
+- No single key removes a scene: in the scene list it takes Mod+Delete, so a slip while
+  writing cannot delete one.
+- Putting something back from the shelf removes it from the shelf (undoable).
+- Live controls (colour pickers, sliders) preview at most once per frame and save on release.
 - A key a field or dialog handles (Enter, Mod+Enter) is consumed there and never also runs a
   menu command.
 - Switching views never moves the caret on screen.
