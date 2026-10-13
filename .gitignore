@@ -4,3 +4,4 @@ release/
 .test-build/
 resources/fonts/*.ttf
 resources/fonts/*.part
+.updated
