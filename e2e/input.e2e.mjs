@@ -80,7 +80,7 @@ async function run(mac) {
   }
 
   await check('Alt+arrow keeps word navigation inside text fields', async () => {
-    await page.keyboard.press(`${M}+F`);
+    await page.keyboard.press(`${M}+Shift+F`);
     await page.keyboard.type('alpha beta');
     const before = await app(() => window.__app.activeScene()?.heading);
     await page.keyboard.press('Alt+ArrowLeft');

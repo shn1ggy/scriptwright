@@ -121,7 +121,7 @@ await check('scene information survives closing and reopening, even after extern
 await check('Script/Scene cycling skips the title page; first focused scene is the first actual scene', async () => {
   await app(() => { const a = window.__app; a.setView('script'); a.editor.setSelection({ anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 } }); a.editor.scrollTop = 0; });
   await app(() => window.__app.editor.focus());
-  await page.keyboard.press('Tab');
+  await page.keyboard.press('Control+2');
   const f = await app(() => [window.__app.view, window.__app.focusedItem()?.kind]);
   assert(f[0] === 'scene' && f[1] !== 'title', JSON.stringify(f));
   // Next/previous never land on the title page
@@ -131,7 +131,7 @@ await check('Script/Scene cycling skips the title page; first focused scene is t
 });
 
 await check('scene search filters the outline; Escape returns to writing', async () => {
-  await page.keyboard.press('Control+F');
+  await page.keyboard.press('Control+Shift+F');
   await page.keyboard.type('harbour');
   const n = await page.locator('.outline .row').count();
   assert(n === 1, String(n));

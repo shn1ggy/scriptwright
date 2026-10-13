@@ -84,7 +84,7 @@ interface LineView {
   zw: Text | null;
   line: number;
   /** What was rendered last time (compared field by field to skip unchanged lines). */
-  prev?: { text: string; p: ParsedLine; active: boolean; miss: string; sn: boolean };
+  prev?: { text: string; p: ParsedLine; active: boolean; miss: string; sn: string };
 }
 
 interface DragState {
@@ -104,6 +104,8 @@ export class Editor {
   private content: HTMLElement;
   private selLayer: HTMLElement;
   private hlLayer: HTMLElement;
+  private pbLayer: HTMLElement;
+  pageMarkers: Array<{ key: number; frac: number; label: string }> = [];
   private caretEl: HTMLElement;
   private input: HTMLTextAreaElement;
 
@@ -143,6 +145,7 @@ export class Editor {
     this.dom.tabIndex = -1;
     this.column = el('div', 'ed-column');
     this.hlLayer = el('div', 'ed-layer ed-hl');
+    this.pbLayer = el('div', 'ed-layer ed-pb');
     this.selLayer = el('div', 'ed-layer ed-sel');
     this.content = el('div', 'ed-content');
     this.caretEl = el('div', 'ed-caret');
@@ -154,7 +157,7 @@ export class Editor {
     this.input.setAttribute('spellcheck', 'false');
     this.input.setAttribute('aria-label', 'Screenplay');
     this.input.wrap = 'off';
-    this.column.append(this.hlLayer, this.selLayer, this.content, this.caretEl, this.input);
+    this.column.append(this.pbLayer, this.hlLayer, this.selLayer, this.content, this.caretEl, this.input);
     this.dom.append(this.column);
     host.append(this.dom);
     this.parsed = parse(['']);
@@ -258,6 +261,15 @@ export class Editor {
   setHighlights(h: Highlight[], current = -1) {
     this.highlights = h;
     this.currentHighlight = current;
+    this.paintSoon();
+  }
+
+  /**
+   * Page break markers: before the line with `key`, `frac` of the way into it (a page can
+   * break inside a long paragraph). Labels are page numbers.
+   */
+  setPageMarkers(markers: Array<{ key: number; frac: number; label: string }>) {
+    this.pageMarkers = markers;
     this.paintSoon();
   }
 
@@ -571,9 +583,9 @@ export class Editor {
       const p = this.parsed.lines[i];
       const isActive = i === active || this.sourceMode;
       const misspelled = this.hooks.isMisspelled && this.settings.spellcheck && p.type !== 'boneyard' ? this.misspellings(line.text, p, i === active) : '';
-      const sn = this.settings.showSceneNumbers;
+      const sn = this.sceneLabel(i, p);
       if (!sameRender(v.prev, line.text, p, isActive, misspelled, sn)) {
-        this.renderLine(v, line.text, p, isActive, misspelled);
+        this.renderLine(v, line.text, p, isActive, misspelled, sn);
         v.prev = { text: line.text, p, active: isActive, miss: misspelled, sn };
       } else v.prev!.p = p;
     }
@@ -613,11 +625,11 @@ export class Editor {
       const p = pl[i];
       const isActive = i === active || this.sourceMode;
       const misspelled = this.hooks.isMisspelled && this.settings.spellcheck && p.type !== 'boneyard' ? this.misspellings(line.text, p, i === active) : '';
-      const sn = this.settings.showSceneNumbers;
+      const sn = this.sceneLabel(i, p);
       let v = this.views.get(line.key);
       if (!v || v.sig === '' || !sameRender(v.prev, line.text, p, isActive, misspelled, sn)) {
         if (!v) v = { el: el('div', 'ln'), sig: '', segs: [], zw: null, line: i };
-        this.renderLine(v, line.text, p, isActive, misspelled);
+        this.renderLine(v, line.text, p, isActive, misspelled, sn);
         v.sig = 'r';
         v.prev = { text: line.text, p, active: isActive, miss: misspelled, sn };
         this.views.set(line.key, v);
@@ -665,7 +677,26 @@ export class Editor {
     return out.join(',');
   }
 
-  private renderLine(v: LineView, text: string, p: ParsedLine, active: boolean, misspelled: string) {
+  private labelsFor: ParseResult | null = null;
+  private labels = new Map<number, string>();
+
+  /**
+   * Scene number shown beside a heading: the written #12A# number, otherwise the scene's
+   * position in the outline (as if #n# had been written). Returns "mode:label" or ''.
+   */
+  private sceneLabel(i: number, p: ParsedLine): string {
+    const mode = this.settings.sceneNumbers;
+    if (p.type !== 'heading' || mode === 'off') return '';
+    if (this.labelsFor !== this.parsed) {
+      this.labels.clear();
+      for (const sc of this.parsed.scenes) this.labels.set(sc.line, sc.sceneNumber ?? String(sc.order));
+      this.labelsFor = this.parsed;
+    }
+    const label = p.sceneNumber ?? this.labels.get(i);
+    return label ? `${mode}:${label}` : '';
+  }
+
+  private renderLine(v: LineView, text: string, p: ParsedLine, active: boolean, misspelled: string, snLabel = '') {
     const e = v.el;
     let cls = `ln el-${p.type}`;
     if (active) cls += ' is-active';
@@ -724,10 +755,13 @@ export class Editor {
       e.append(span);
       v.zw = node;
     }
-    if (p.sceneNumber && this.settings.showSceneNumbers) {
-      const sn = el('span', 'sn', p.sceneNumber);
-      sn.setAttribute('aria-hidden', 'true');
-      e.append(sn);
+    if (snLabel) {
+      const [mode, label] = [snLabel.slice(0, snLabel.indexOf(':')), snLabel.slice(snLabel.indexOf(':') + 1)];
+      for (const side of mode === 'both' ? ['l', 'r'] : [mode === 'left' ? 'l' : 'r']) {
+        const sn = el('span', `sn sn-${side}`, label);
+        sn.setAttribute('aria-hidden', 'true');
+        e.append(sn);
+      }
     }
   }
 
@@ -946,6 +980,27 @@ export class Editor {
       for (const r of this.rangeRects(v, h.from, h.to)) hlFrag.append(box(r, colRect, idx === this.currentHighlight ? 'hl-box current' : 'hl-box'));
     });
     this.hlLayer.replaceChildren(hlFrag);
+
+    // Page break markers
+    const pbFrag = document.createDocumentFragment();
+    if (this.pageMarkers.length && !this.filter) {
+      const contentRect = this.content.getBoundingClientRect();
+      for (const m of this.pageMarkers) {
+        const v = this.views.get(m.key);
+        if (!v) continue;
+        const r = v.el.getBoundingClientRect();
+        if (r.bottom < viewTop || r.top > viewBottom) continue;
+        const rows = Math.max(1, Math.round(r.height / lh));
+        const y = r.top + Math.round(m.frac * rows) * lh;
+        const mark = el('div', 'pb-mark');
+        mark.style.transform = `translate(${Math.round(contentRect.left - colRect.left)}px, ${Math.round(y - colRect.top)}px)`;
+        mark.style.width = `${Math.round(contentRect.width)}px`;
+        mark.append(el('span', '', m.label));
+        mark.title = `Page ${m.label} starts here`;
+        pbFrag.append(mark);
+      }
+    }
+    this.pbLayer.replaceChildren(pbFrag);
   }
 
   /** Rects of the text between a and b on one line, merged per visual row. */
@@ -1405,9 +1460,9 @@ export class Editor {
       this.drag = { x: e.clientX, y: e.clientY, moved: true, mode: 'word', anchorFrom: from, anchorTo: to };
       this.setSelection({ anchor: from, head: to }, { scroll: false });
     } else if (e.detail >= 3) {
+      // A triple click selects the line's text only, never the line break after it.
       const from = { line: pos.line, ch: 0 };
-      const next = this.nextDisplayed(pos.line);
-      const to = next !== null && next === pos.line + 1 ? { line: next, ch: 0 } : { line: pos.line, ch: this.lines[pos.line].text.length };
+      const to = { line: pos.line, ch: this.lines[pos.line].text.length };
       this.drag = { x: e.clientX, y: e.clientY, moved: true, mode: 'line', anchorFrom: from, anchorTo: to };
       this.setSelection({ anchor: from, head: to }, { scroll: false });
     } else {
@@ -1505,7 +1560,7 @@ export class Editor {
   minPos = minPos;
 }
 
-function sameRender(prev: LineView['prev'], text: string, p: ParsedLine, active: boolean, miss: string, sn: boolean): boolean {
+function sameRender(prev: LineView['prev'], text: string, p: ParsedLine, active: boolean, miss: string, sn: string): boolean {
   if (!prev) return false;
   const q = prev.p;
   if (prev.text !== text || prev.active !== active || prev.miss !== miss || prev.sn !== sn) return false;

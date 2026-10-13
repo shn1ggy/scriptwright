@@ -19,7 +19,8 @@ import {
   emptyMeta,
   mergeSettings,
 } from '../shared/types';
-import { renderPdf } from './pdfexport';
+import { RenderInfo, renderPdf, scriptFontAdvance } from './pdfexport';
+import { FontFamily, listFontFamilies } from './fonts';
 import { readZip, writeZip } from './zip';
 
 export const META_DIR = '.scriptwright';
@@ -728,11 +729,25 @@ export class Backend extends EventEmitter {
   // ---------------------------------------------------------------------------------
   // Export
 
+  private renderInfo(extra: { title?: string; author?: string } = {}): RenderInfo {
+    return { ...extra, fontsDir: this.fontsDir, families: () => this.fontFamilies() };
+  }
+
+  fontFamilies(): FontFamily[] {
+    return listFontFamilies(path.join(this.userData, 'font-cache.json'));
+  }
+
+  /** Font families for the font menus (without file details). */
+  listFonts(): Array<{ family: string; mono: boolean; advance: number }> {
+    return this.fontFamilies().map((f) => ({ family: f.family, mono: f.mono, advance: f.advance }));
+  }
+
   exportPdf(text: string, settings: ExportSettings, scope: ExportScope, info: { title?: string; author?: string; extraPrefixes?: string[] }) {
     const lines = text.replace(/\r\n?/g, '\n').split('\n');
     const p = parse(lines, { extraPrefixes: info.extraPrefixes });
-    const result = paginate(lines, p, settings, scope);
-    const out = renderPdf(result, settings, { title: info.title, author: info.author, fontsDir: this.fontsDir });
+    const ri = this.renderInfo({ title: info.title, author: info.author });
+    const result = paginate(lines, p, settings, scope, scriptFontAdvance(settings, ri));
+    const out = renderPdf(result, settings, ri);
     return { pdf: out.pdf, pages: result.bodyPageCount, warnings: out.warnings, fontUsed: out.fontUsed, capacity: result.capacity };
   }
 
@@ -741,10 +756,12 @@ export class Backend extends EventEmitter {
     const lines = text.replace(/\r\n?/g, '\n').split('\n');
     const p = parse(lines, { extraPrefixes: info.extraPrefixes });
     fs.mkdirSync(folder, { recursive: true });
+    const ri = this.renderInfo({ title: info.title });
+    const adv = scriptFontAdvance(settings, ri);
     const written: string[] = [];
     p.scenes.forEach((sc, idx) => {
-      const r = paginate(lines, p, { ...settings, titlePage: false }, { kind: 'scenes', sceneLines: [sc.line] });
-      const out = renderPdf(r, settings, { title: info.title, fontsDir: this.fontsDir });
+      const r = paginate(lines, p, { ...settings, titlePage: false }, { kind: 'scenes', sceneLines: [sc.line] }, adv);
+      const out = renderPdf(r, settings, ri);
       const name = `${String(idx + 1).padStart(3, '0')} ${safeName(sc.heading).slice(0, 60)}.pdf`;
       atomicWrite(path.join(folder, name), out.pdf);
       written.push(name);

@@ -42,12 +42,49 @@ export function matchCase(sample: string, name: string): string {
 const B = '(?<![\\p{L}\\p{N}_])';
 const A = '(?![\\p{L}\\p{N}_])';
 
+export type PossessiveStyle = 'de' | 'en';
+
+/** Guesses whether the screenplay is written in German or English. */
+export function guessLanguage(lines: string[]): PossessiveStyle {
+  let de = 0;
+  let en = 0;
+  const DE = /\b(und|der|die|das|nicht|ist|ich|du|sie|ein|eine|mit|auf|zu|sich|auch|aber|INNEN|AUSSEN|TAG|NACHT)\b/g;
+  const EN = /\b(the|and|is|not|you|it|of|to|with|on|but|this|that|INT|EXT|DAY|NIGHT)\b/g;
+  for (const l of lines) {
+    de += (l.match(DE) ?? []).length;
+    en += (l.match(EN) ?? []).length;
+  }
+  return de > en ? 'de' : 'en';
+}
+
+const SIBILANT = /(s|ß|x|z|ce)$/i;
+
+/**
+ * Builds the possessive/genitive form of `name` from the suffix found after the old name.
+ * German: Lisas, Andreas'   English: Lisa's, James'
+ */
+export function possessive(name: string, suffix: string, style: PossessiveStyle, upper: boolean): string {
+  const apo = /’/.test(suffix) ? '’' : "'";
+  const s = upper ? 'S' : 's';
+  const sib = SIBILANT.test(name);
+  const lower = suffix.toLowerCase();
+  if (lower === apo + 's' || lower === "'s" || lower === '’s') {
+    // Apostrophe-s: keep it (English, or German writers who use it), except German after a sibilant.
+    return style === 'de' && sib ? name + apo : name + apo + s;
+  }
+  if (lower === 's') return style === 'de' && sib ? name + apo : name + s;
+  // A bare apostrophe after an old name ending in s.
+  if (sib) return name + apo;
+  return style === 'de' ? name + s : name + apo + s;
+}
+
 export function planRename(
   lines: string[],
   parse: ParseResult,
   oldName: string,
   newName: string,
   extraPrefixes: string[] = [],
+  style: PossessiveStyle = guessLanguage(lines),
 ): RenamePlan {
   const oldUpper = oldName.trim().toLocaleUpperCase();
   const newTrim = newName.trim();
@@ -56,15 +93,18 @@ export function planRename(
   const merge = characters.includes(newUpper) && newUpper !== oldUpper;
   const summary: RenameSummary = { cues: 0, action: 0, dialogue: 0, other: 0, total: 0, merge, newCue: newUpper };
   const changes: RenameChange[] = [];
-  if (!oldUpper || !newTrim || newUpper === oldUpper && newTrim === oldName) return { changes, summary };
+  if (!oldUpper || !newTrim || (newUpper === oldUpper && newTrim === oldName)) return { changes, summary };
 
-  // Longer names that contain the old name must not be touched (ANN inside ANNA is handled
-  // by word boundaries; LISA inside LISA MARIE needs explicit protection).
-  const longer = characters.filter((c) => c !== oldUpper && new RegExp(B + escapeRegex(oldUpper) + A, 'iu').test(c));
+  const oldPat = escapeRegex(oldUpper).replace(/ +/g, '\\s+');
+  // Other characters whose names contain the old name (LISA MARIE) or are its plain
+  // genitive form (ANDREA → ANDREAS) are never touched.
+  const longer = characters.filter((c) => c !== oldUpper && (new RegExp(B + oldPat + A, 'iu').test(c) || new RegExp('^' + oldPat + "s$", 'iu').test(c)));
   const protectRe = longer.length
     ? new RegExp(B + '(?:' + longer.sort((a, b) => b.length - a.length).map(escapeRegex).join('|') + ')' + A, 'giu')
     : null;
-  const nameRe = new RegExp(B + escapeRegex(oldUpper).replace(/ +/g, '\\s+') + A, 'giu');
+  // Name, optionally followed by a possessive/genitive ending: 's ’s s '
+  const nameRe = new RegExp(B + '(' + oldPat + ")((?:['’]s|s|['’])?)" + A, 'giu');
+  const oldSib = SIBILANT.test(oldUpper);
   const headingRe = headingRegex(extraPrefixes);
 
   for (let i = parse.titleEnd; i < lines.length; i++) {
@@ -75,7 +115,6 @@ export function planRename(
       summary.cues++;
       continue;
     }
-    // Mentions anywhere else.
     const protectedRanges: Array<[number, number]> = [];
     if (protectRe) {
       protectRe.lastIndex = 0;
@@ -84,10 +123,25 @@ export function planRename(
     }
     let count = 0;
     nameRe.lastIndex = 0;
-    const out = text.replace(nameRe, (match: string, offset: number) => {
+    const out = text.replace(nameRe, (match: string, base: string, suffix: string, offset: number) => {
       if (protectedRanges.some(([a, b]) => offset >= a && offset < b)) return match;
+      const renamed = matchCase(base, newTrim);
+      if (!suffix) {
+        count++;
+        return renamed;
+      }
+      const letters = base.replace(/[^\p{L}]/gu, '');
+      const isLower = letters === letters.toLocaleLowerCase();
+      // Endings only count for capitalized names ("marks" is a verb, not Mark's).
+      // A bare apostrophe only follows names ending in s.
+      if (isLower || (suffix.length === 1 && suffix !== 's' && !oldSib)) {
+        if (isLower && suffix) return match;
+        count++;
+        return renamed + suffix;
+      }
+      const upper = letters === letters.toLocaleUpperCase() && suffix.toUpperCase() === suffix && /S/.test(suffix);
       count++;
-      return matchCase(match, newTrim);
+      return possessive(renamed, suffix, style, upper || (letters.length > 1 && letters === letters.toLocaleUpperCase()));
     });
     if (count) {
       changes.push({ line: i, text: out });

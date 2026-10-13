@@ -1,0 +1,44 @@
+import os from 'os';
+import path from 'path';
+import { startHarness, sleep } from './util.mjs';
+const out = (n) => path.join(os.tmpdir(), `sw2-${n}.png`);
+const h = await startHarness();
+const { page } = h;
+const app = (fn, ...a) => page.evaluate(fn, ...a);
+await app(() => {
+  const a = window.__app;
+  const sc = a.scenes.filter((s) => s.kind === 'scene');
+  a.updateSceneRecord(sc[0], { color: '#E5706B', summary: 'Lisa alone in the lighthouse; Tom knocks.', status: 'done' });
+  a.updateSceneRecord(sc[1], { color: '#6FA8E8', summary: 'Tom at the harbour. The boat is gone.', status: 'revise' });
+  a.updateSceneRecord(sc[2], { color: '#7FC48D', summary: 'Lisa comes down. A tense exchange.' });
+  a.settings.editor.showPageBreaks = true;
+  a.applySettings();
+  const ed = a.editor; const i = ed.lines.findIndex((l) => l.text.startsWith('> THE END'));
+  ed.setSelection({ anchor: { line: i, ch: 0 }, head: { line: i, ch: 0 } });
+  ed.insertText(Array.from({ length: 40 }, (_, k) => `More action, paragraph ${k + 1}, describing the long night.`).join('\n\n') + '\n\n');
+  ed.scrollToLine(0, 'top');
+});
+await sleep(700);
+await page.screenshot({ path: out('script') });
+await app(() => { const ed = window.__app.editor; const m = ed.pageMarkers[0]; const i = ed.lines.findIndex((l) => l.key === m.key); ed.scrollToLine(i, 'center'); });
+await sleep(200);
+await page.screenshot({ path: out('pagebreak') });
+for (const style of ['tint', 'header', 'full']) {
+  await app((st) => { window.__app.settings.cards.colorStyle = st; }, style);
+  await page.keyboard.press('Control+Shift+O');
+  await sleep(300);
+  await page.screenshot({ path: out('cards-' + style) });
+  await page.keyboard.press('Escape');
+}
+await page.keyboard.press('Control+P');
+await page.click('.settings nav .row:has-text("Commands")');
+await sleep(150);
+await page.screenshot({ path: out('settings-cmds') });
+await page.keyboard.press('Escape');
+await page.keyboard.press('Control+E');
+await page.waitForSelector('.export-preview canvas', { timeout: 15000 });
+await app(() => document.querySelector('.export-side .scroll').scrollTop = 520);
+await sleep(300);
+await page.screenshot({ path: out('export') });
+console.log(JSON.stringify(h.errors.filter((e) => !e.includes('404'))));
+await h.stop();

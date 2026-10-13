@@ -2,7 +2,7 @@
 import { spawnSync } from 'child_process';
 import path from 'path';
 import { root } from './util.mjs';
-const suites = ['editor', 'scenes', 'session', 'input', 'cards'];
+const suites = ['editor', 'scenes', 'session', 'input', 'cards', 'feedback'];
 let failed = 0;
 for (const s of suites) {
   const r = spawnSync(process.execPath, [path.join(root, 'e2e', `${s}.e2e.mjs`)], { encoding: 'utf8' });

@@ -124,13 +124,16 @@ export class RightPane {
       this.body.append(h('div', { class: 'notice' }, 'Place the caret in a scene to add its summary, status, color and notes.'));
       return;
     }
-    const rec = this.app.sceneRecord(item)!;
+    // Always write to the live record (never a captured copy).
+    const live = () => this.app.sceneRecord(item)!;
+    const rec = live();
     const summary = h('textarea', { class: 'field', rows: 3, placeholder: 'One or two lines about the scene', 'aria-label': 'Scene summary', style: { minHeight: '60px' } });
     summary.value = rec.summary ?? '';
     summary.addEventListener('input', () => {
-      rec.summary = summary.value;
+      live().summary = summary.value;
       this.app.markMetaDirty();
       this.app.outline.render();
+      this.app.cards.render();
     });
     const status = h('select', { class: 'field', 'aria-label': 'Scene status' });
     for (const [k, label] of Object.entries(STATUS_LABELS)) status.append(h('option', { value: k }, label));
@@ -139,8 +142,9 @@ export class RightPane {
     const sw = h('div', { class: 'swatches' });
     const drawSwatches = () => {
       sw.textContent = '';
-      sw.append(h('button', { class: !rec.color ? 'on' : '', title: 'No color', style: { background: 'transparent' }, onclick: () => setColor(undefined) }));
-      for (const c of SCENE_COLORS) sw.append(h('button', { class: rec.color === c.value ? 'on' : '', title: c.name, style: { background: c.value }, onclick: () => setColor(c.value) }));
+      const cur = live().color;
+      sw.append(h('button', { class: !cur ? 'on' : '', title: 'No color', 'aria-label': 'No color', style: { background: 'transparent' }, onclick: () => setColor(undefined) }));
+      for (const c of SCENE_COLORS) sw.append(h('button', { class: cur === c.value ? 'on' : '', title: c.name, 'aria-label': c.name, style: { background: c.value }, onclick: () => setColor(c.value) }));
     };
     const setColor = (c: string | undefined) => {
       this.app.updateSceneRecord(item, { color: c });
@@ -150,7 +154,7 @@ export class RightPane {
     const notes = h('textarea', { class: 'field grow', placeholder: 'Notes for this scene', 'aria-label': 'Scene notes' });
     notes.value = rec.notes ?? '';
     notes.addEventListener('input', () => {
-      rec.notes = notes.value;
+      live().notes = notes.value;
       this.app.markMetaDirty();
     });
     this.body.append(

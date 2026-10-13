@@ -11,7 +11,7 @@ await app(() => window.__app.showRightTab('scene'));
 await app(() => { const a = window.__app; const s = a.scenes.find((x) => x.kind === 'scene'); a.goToScene(s); });
 await sleep(200);
 await page.screenshot({ path: out + 's-right.png' });
-await page.keyboard.press('Control+Shift+F');
+await page.keyboard.press('Control+F');
 await page.keyboard.type('lisa');
 await sleep(200);
 await page.screenshot({ path: out + 's-find.png' });

@@ -43,7 +43,11 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 - Typing a cue and pressing Enter starts dialogue immediately; a blank line ends it. Nothing is
   auto-completed, capitalized or rewritten.
 - Selection follows the text (dialogue selections do not paint to the column edge). The caret
-  blinks in the primary text color. A Fountain source mode shows the raw text.
+  blinks in the primary text color. The Source tab shows the raw Fountain text.
+- Scene numbers beside every heading (left, right or both; default both): a written `#12A#`
+  is shown as written, other scenes show their outline position.
+- Optional page break markers in Script and Source view, computed with the project's current
+  export settings (Settings → Editor → Page breaks).
 
 **Views and organization**
 - Script, Scene and Dialogue views over the same text (never copies). Scene view keeps each
@@ -59,8 +63,11 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 - Scene summaries, status, color and notes; project notes. Scene information follows heading
   edits and reordering, survives reopening and external reordering, and is set aside for review
   (never attached to the wrong scene) when a scene cannot be identified.
-- Whole-script character rename with casing preserved, longer names protected, merge warning,
-  one undo step.
+- Whole-script character rename with casing preserved, possessive forms handled for German
+  (Andreas Tasche → Lisas Tasche, Lisas → Andreas') and English (Andrea's → Lisa's), longer
+  names and characters named like a genitive protected, merge warning, one undo step.
+- Scene cards with sizes, four ways to show the scene color, characters, status and length in
+  pages and eighths; colored scenes are also tinted in the outline.
 
 **Files and safety**
 - Workspace folder with projects; loose `.fountain` files can be adopted into a project.
@@ -90,13 +97,23 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 **PDF export**
 - Export workspace with a preview rendered from the actual PDF, validated line capacity and
   real page counts (runtime estimate clearly marked as approximate).
-- A4/Letter, margins, Courier Prime or Courier, size, line and element spacing, all element
-  widths and indents, heading spacing and keep-with-next, explicit page breaks, no orphaned
-  headings/cues/parentheticals, sentence-aware action and dialogue splitting with minimum lines,
-  optional (MORE)/(CONT'D), new-page scene starts, title page layout (title font only for the
-  title), contact position, page and scene numbers, header, footer, draft date, label, watermark.
+- Page geometry in lines and characters (top margin and lines per page; left margin, action
+  width and every indent in characters), with the remaining margins and line capacity shown
+  live and checked against the paper size.
+- Settings grouped into Paper & font, Page layout, Elements, Scene headings, Page breaks, Title
+  page, Page numbers & furniture and Private material.
+- Script font: Courier Prime, Courier or any monospaced system font. Title font: any installed
+  font (Courier fonts first, then system fonts), measured with its real metrics so it centers
+  correctly. System fonts are embedded in the PDF.
+- Heading spacing and keep-with-next, explicit page breaks, no orphaned headings, cues or
+  parentheticals, sentence-aware splitting with minimum lines, optional (MORE)/(CONT'D),
+  new-page scene starts, scene numbers with a format, right-aligned or indented transitions,
+  bold cues, side-by-side or stacked dual dialogue, keeping extra blank lines, title page layout,
+  contact position, page numbers, header, footer, draft date, label, watermark.
 - Complete script, selected scenes, selected pages, each scene on a new page, a separate PDF per
-  scene, or scenes with a chosen character. Notes, sections and synopses excluded by default.
+  scene, scenes with a chosen character, or **dialogue only** (one character or all, with
+  optional scene headings and the action right before each speech). Notes, sections and
+  synopses are excluded by default.
 - Named presets per project and reset to defaults. Very long passages paginate without loss.
 
 ## Default shortcuts
@@ -106,16 +123,19 @@ in `resources/fonts` (see the README there). Without them the app uses Courier a
 | Action | Shortcut |
 | --- | --- |
 | Previous / next scene | ⌥/Alt + ← / → |
-| Script ⇄ Scene (editor focused) | Tab |
 | Title page | Mod+T |
 | New scene after the current one | Mod+N |
 | Export | Mod+E |
-| Search scenes / search in screenplay | Mod+F / Mod+Shift+F |
+| Search in screenplay / search scenes | Mod+F / Mod+Shift+F |
 | Settings / commands & shortcuts | Mod+P / Mod+K |
 | Minimal view | Mod+M |
 | Maximize / restore | Mod+Ö |
 | Save / quit | Mod+S / Mod+Q |
-| Script, Scene, Dialogue view | Mod+1, Mod+2, Mod+3 |
+| Script, Scene, Dialogue, Source view | Mod+1, Mod+2, Mod+3, Mod+4 |
+| Rename character | Mod+R |
+| New project / open workspace folder | Mod+Shift+N / Mod+O |
+| Import Fountain file / import project backup | Mod+I / Mod+Shift+I |
+| Back up project / rename project | Mod+Shift+S / Mod+Shift+R |
 | Move scene up / down | ⌥⇧/Alt+Shift + ↑ / ↓ |
 | Go to passage (from Scene or Dialogue view) | Mod+Enter |
 | Scene cards | Mod+Shift+O |
@@ -145,8 +165,8 @@ Distinguishing what was actually run from what was not:
 
 | Area | Status |
 | --- | --- |
-| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer, rename, scene matching, storage backend | 75 unit tests, run on Linux (Node 22) |
-| Renderer (editor, views, outline, dialogs, export preview) | 5 end-to-end suites (55 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
+| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, storage backend | 83 unit tests, run on Linux (Node 22) |
+| Renderer (editor, views, outline, dialogs, export preview) | 6 end-to-end suites (67 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
 | Typing latency | ≈4 ms per keystroke on a 6,200-line (≈130 page) script in Chromium |
 | Electron shell (window, menus, dialogs, IPC, close/quit, maximize, spellchecking) | **Written but not run** — Electron could not be installed in the build environment |
 | macOS, Windows | **Not tested** |

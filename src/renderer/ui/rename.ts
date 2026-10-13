@@ -4,7 +4,7 @@ import type { App } from '../app';
 import { h } from './dom';
 import { openDialog, toast } from './overlay';
 import { characterLabel, characterList } from '../../shared/fountain';
-import { planRename } from '../../shared/rename';
+import { PossessiveStyle, guessLanguage, planRename } from '../../shared/rename';
 
 export function openRename(app: App, preset?: string) {
   const parsed = app.editor.parsed;
@@ -18,16 +18,18 @@ export function openRename(app: App, preset?: string) {
   if (preset && chars.some((c) => c.name === preset)) select.value = preset;
   const input = h('input', { class: 'field', placeholder: 'New name', 'aria-label': 'New name', spellcheck: 'false' });
   const summary = h('div', { class: 'summary' });
+  const style = h('select', { class: 'field', 'aria-label': 'Possessive forms' }, h('option', { value: 'de' }, 'German (Lisas, Andreas’)'), h('option', { value: 'en' }, 'English (Lisa’s, James’)'));
+  style.value = guessLanguage(app.editor.lineTexts);
   let confirmMerge = false;
 
-  const plan = () => planRename(app.editor.lineTexts, app.editor.parsed, select.value, input.value, app.settings.editor.extraPrefixes);
+  const plan = () => planRename(app.editor.lineTexts, app.editor.parsed, select.value, input.value, app.settings.editor.extraPrefixes, style.value as PossessiveStyle);
 
   const update = () => {
     confirmMerge = false;
     summary.textContent = '';
     const name = input.value.trim();
     if (!name) {
-      summary.append('Cues, and mentions in action and dialogue, are renamed with matching capitalization.');
+      summary.append('Cues and every mention are renamed with matching capitalization, including possessive forms.');
       dlg.setButtons([{ label: 'Cancel' }, { label: 'Rename', primary: true, run: () => false }]);
       return;
     }
@@ -67,10 +69,11 @@ export function openRename(app: App, preset?: string) {
 
   const dlg = openDialog({
     title: 'Rename character',
-    body: [h('div', { class: 'form-row' }, h('label', null, 'Character'), select), h('div', { class: 'form-row' }, h('label', null, 'New name'), input), summary],
+    body: [h('div', { class: 'form-row' }, h('label', null, 'Character'), select), h('div', { class: 'form-row' }, h('label', null, 'New name'), input), h('div', { class: 'form-row' }, h('label', null, 'Possessive forms'), style), summary],
     initialFocus: input,
   });
   select.addEventListener('change', update);
   input.addEventListener('input', update);
+  style.addEventListener('change', update);
   update();
 }

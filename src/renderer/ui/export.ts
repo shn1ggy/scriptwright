@@ -4,11 +4,32 @@ import type { App } from '../app';
 import { bridge } from '../bridge';
 import { h, iconButton, debounce } from './dom';
 import { alertDialog, confirmDialog, promptDialog, pushEscape, toast } from './overlay';
-import { ExportScope, ExportSettings, PaperSize, defaultExportSettings, paperMargins } from '../../shared/types';
+import { ExportScope, ExportSettings, PaperSize, defaultExportSettings, normalizeExportSettings, paperLines } from '../../shared/types';
 import { characterLabel, characterList, titleFields } from '../../shared/fountain';
 import { capacity } from '../../shared/paginate';
 
-type ScopeKind = 'all' | 'scenes' | 'pages' | 'scenesNewPage' | 'separate' | 'character';
+type ScopeKind = 'all' | 'scenes' | 'pages' | 'scenesNewPage' | 'separate' | 'character' | 'dialogue';
+
+export function defaultPaper(): PaperSize {
+  return /^en-(US|CA)/.test(navigator.language) ? 'Letter' : 'A4';
+}
+
+/** The export settings currently stored for a project (or defaults). */
+export function projectExportSettings(app: App): ExportSettings {
+  return normalizeExportSettings(app.project?.meta.exportSettings, defaultPaper());
+}
+
+export interface FontEntry {
+  family: string;
+  mono: boolean;
+  advance: number;
+}
+let fontList: Promise<FontEntry[]> | null = null;
+/** System font families (loaded once). */
+export function loadFonts(): Promise<FontEntry[]> {
+  if (!fontList) fontList = bridge.call('listFonts').catch(() => [] as FontEntry[]);
+  return fontList;
+}
 
 let pdfjsPromise: Promise<any> | null = null;
 function loadPdfjs(): Promise<any> {
@@ -27,8 +48,10 @@ export function openExport(app: App) {
   const p = app.project;
   if (!p) return;
   const meta = p.meta;
-  const defaultPaper = /^en-US|en-CA/.test(navigator.language) ? 'Letter' : 'A4';
-  let s: ExportSettings = { ...defaultExportSettings(defaultPaper), ...(meta.exportSettings ?? {}) };
+  let s: ExportSettings = projectExportSettings(app);
+  let fonts: FontEntry[] = [];
+  let dialogueAction = false;
+  let dialogueHeadings = true;
   let scopeKind: ScopeKind = 'all';
   const selectedScenes = new Set<number>();
   let pages = '';
@@ -39,6 +62,7 @@ export function openExport(app: App) {
   const preview = h('div', { class: 'export-preview', 'aria-label': 'Preview' });
   const warnings = h('div', { class: 'warnings' });
   const cap = h('div', { class: 'capacity' });
+  const marginsInfo = h('div', { class: 'capacity' });
   const pageInfo = h('div', { class: 'muted', style: { fontSize: '12px' } });
   const exportBtn = h('button', { class: 'btn primary', onclick: () => doExport() }, 'Export PDF…');
   const presetSel = h('select', { class: 'field', 'aria-label': 'Preset' });
@@ -75,6 +99,7 @@ export function openExport(app: App) {
   function persist() {
     meta.exportSettings = s;
     app.markMetaDirty();
+    app.updatePageMarkers();
   }
 
   function renderPresets() {
@@ -86,7 +111,7 @@ export function openExport(app: App) {
   presetSel.addEventListener('change', () => {
     const pr = meta.exportPresets.find((x) => x.name === presetSel.value);
     if (!pr) return;
-    s = { ...defaultExportSettings(), ...pr.settings };
+    s = normalizeExportSettings(pr.settings, s.paper);
     build();
     refresh();
   });
@@ -143,6 +168,11 @@ export function openExport(app: App) {
     e.value = String(s[key]);
     e.addEventListener('change', () => {
       (s as any)[key] = e.value;
+      if (key === 'transitionAlign') {
+        const scroll = side.scrollTop;
+        build();
+        side.scrollTop = scroll;
+      }
       changed();
     });
     return e;
@@ -156,20 +186,44 @@ export function openExport(app: App) {
     return h('label', { class: 'check' }, c, label);
   };
 
-  /** Paper choice; margins that still match the old paper's defaults follow the new paper. */
+  /** Paper choice; lines per page follow the paper when they were still the default. */
   function paperSel() {
     const e = h('select', { class: 'field', 'aria-label': 'Paper' }, h('option', { value: 'Letter' }, 'US Letter'), h('option', { value: 'A4' }, 'A4'));
     e.value = s.paper;
     e.addEventListener('change', () => {
-      const old = paperMargins(s.paper);
-      const next = paperMargins(e.value as PaperSize);
-      const untouched = (Object.keys(old) as Array<keyof typeof old>).every((k) => s[k] === old[k]);
+      const untouched = s.linesPerPage === paperLines(s.paper);
       s.paper = e.value as PaperSize;
-      if (untouched) Object.assign(s, next);
+      if (untouched) s.linesPerPage = paperLines(s.paper);
       build();
       changed();
     });
     return e;
+  }
+
+  /** Font menu: Courier fonts first, then system fonts after a separator. */
+  function fontSel(key: 'font' | 'titleFont', monoOnly: boolean) {
+    const e = h('select', { class: 'field', 'aria-label': key === 'font' ? 'Script font' : 'Title font' });
+    const courier = h('optgroup', { label: 'Courier' }, h('option', { value: 'Courier Prime' }, 'Courier Prime'), h('option', { value: 'Courier' }, 'Courier (built into PDF)'));
+    for (const f of fonts) if (/courier/i.test(f.family) && f.family !== 'Courier Prime' && f.family !== 'Courier') courier.append(h('option', { value: f.family }, f.family));
+    e.append(courier);
+    const others = fonts.filter((f) => !/courier/i.test(f.family) && (!monoOnly || f.mono));
+    if (others.length) {
+      const g = h('optgroup', { label: monoOnly ? 'Monospaced system fonts' : 'System fonts' });
+      for (const f of others) g.append(h('option', { value: f.family }, f.family));
+      e.append(g);
+    }
+    if (![...e.querySelectorAll('option')].some((o) => (o as HTMLOptionElement).value === s[key])) e.append(h('option', { value: s[key] }, `${s[key]} (not installed)`));
+    e.value = s[key];
+    e.addEventListener('change', () => {
+      s[key] = e.value;
+      changed();
+    });
+    return e;
+  }
+
+  function advance(): number {
+    if (s.font === 'Courier' || s.font === 'Courier Prime') return 0.6;
+    return fonts.find((f) => f.family === s.font)?.advance ?? 0.6;
   }
 
   function build() {
@@ -184,6 +238,7 @@ export function openExport(app: App) {
       ['scenesNewPage', 'Each scene on a new page'],
       ['separate', 'Separate PDF for each scene'],
       ['character', 'Scenes with a character'],
+      ['dialogue', 'Dialogue only'],
     ])
       scopeSel.append(h('option', { value: v }, l));
     scopeSel.value = scopeKind;
@@ -230,6 +285,25 @@ export function openExport(app: App) {
           changed();
         });
         scopeExtra.append(row('Character', cs));
+      } else if (scopeKind === 'dialogue') {
+        const cs = h('select', { class: 'field', 'aria-label': 'Character' }, h('option', { value: '' }, 'All characters'));
+        for (const c of characterList(parsed)) cs.append(h('option', { value: c.name }, characterLabel(c)));
+        cs.value = character;
+        cs.addEventListener('change', () => {
+          character = cs.value;
+          changed();
+        });
+        const ha = h('input', { type: 'checkbox', checked: dialogueHeadings });
+        ha.addEventListener('change', () => {
+          dialogueHeadings = ha.checked;
+          changed();
+        });
+        const aa = h('input', { type: 'checkbox', checked: dialogueAction });
+        aa.addEventListener('change', () => {
+          dialogueAction = aa.checked;
+          changed();
+        });
+        scopeExtra.append(row('Character', cs), h('label', { class: 'check' }, ha, 'Scene headings'), h('label', { class: 'check' }, aa, 'Action right before each speech'));
       } else if (scopeKind === 'separate') {
         scopeExtra.append(h('div', { class: 'capacity' }, 'Each scene is written to its own PDF in a folder you choose. The preview shows all scenes.'));
       }
@@ -241,69 +315,100 @@ export function openExport(app: App) {
     });
     drawScopeExtra();
 
+    const unitRow = (label: string, control: Node, help?: string) => {
+      const r = row(label, control);
+      if (help) r.append(h('div', { class: 'help' }, help));
+      return r;
+    };
+    const section = (title: string, ...children: Array<Node | null>) => h('section', { class: 'ex-section' }, h('h3', null, title), ...children);
     side.append(
-      h('h3', null, 'Content'),
-      row('Export', scopeSel),
-      scopeExtra,
-      h('h3', null, 'Page'),
-      row('Paper', paperSel()),
-      row('Margin top', numIn('marginTop', 0.25, 3, 0.05, 'in')),
-      row('Margin bottom', numIn('marginBottom', 0.25, 3, 0.05, 'in')),
-      row('Margin left', numIn('marginLeft', 0.25, 3, 0.05, 'in')),
-      row('Margin right', numIn('marginRight', 0.25, 3, 0.05, 'in')),
-      row('Font', sel('font', [['Courier Prime', 'Courier Prime'], ['Courier', 'Courier']])),
-      row('Font size', numIn('fontSize', 8, 16, 0.5, 'pt')),
-      row('Lines per inch', numIn('linesPerInch', 4, 8, 0.5)),
-      h('h3', null, 'Elements'),
-      row('Element spacing', numIn('elementSpacing', 0, 3, 1, 'lines')),
-      row('Extra space before heading', numIn('headingSpacingBefore', 0, 3, 1, 'lines')),
-      row('Keep after heading', numIn('headingKeepLines', 1, 6, 1, 'lines')),
-      chk('boldHeadings', 'Bold scene headings'),
-      chk('underlineHeadings', 'Underline scene headings'),
-      row('Action width', numIn('actionWidth', 3, 8, 0.1, 'in')),
-      row('Character indent', numIn('characterIndent', 0, 5, 0.1, 'in')),
-      row('Dialogue indent', numIn('dialogueIndent', 0, 4, 0.1, 'in')),
-      row('Dialogue width', numIn('dialogueWidth', 1.5, 6, 0.1, 'in')),
-      row('Parenthetical indent', numIn('parentheticalIndent', 0, 4, 0.1, 'in')),
-      row('Parenthetical width', numIn('parentheticalWidth', 1, 5, 0.1, 'in')),
-      h('h3', null, 'Page breaks'),
-      row('Lines before a break', numIn('minLinesBeforeBreak', 1, 6, 1)),
-      row('Lines after a break', numIn('minLinesAfterBreak', 1, 6, 1)),
-      chk('splitDialogue', 'Split long dialogue across pages'),
-      chk('splitAction', 'Split long action across pages'),
-      chk('useMoreContd', 'Add (MORE) and (CONT’D) at dialogue breaks'),
-      row('MORE label', textIn('moreLabel')),
-      row('CONT’D label', textIn('contdLabel')),
-      chk('contdAfterAction', 'CONT’D when a character continues after action'),
-      chk('sceneStartsNewPage', 'Start every scene on a new page'),
-      h('h3', null, 'Title page'),
-      chk('titlePage', 'Include the title page'),
-      row('Title font', sel('titleFont', [['Courier Prime', 'Courier Prime'], ['Courier', 'Courier'], ['Helvetica', 'Helvetica'], ['Times', 'Times']])),
-      row('Title size', numIn('titleSize', 10, 36, 1, 'pt')),
-      chk('titleBold', 'Bold title'),
-      chk('titleUnderline', 'Underline title'),
-      chk('titleUppercase', 'Uppercase title'),
-      row('Title position', numIn('titlePosition', 0.15, 0.6, 0.01, '× page height')),
-      row('Contact', sel('contactPosition', [['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right']])),
-      h('div', { class: 'capacity' }, 'Only the title uses the title font; other title page details use 12 pt Courier.'),
-      h('h3', null, 'Numbers & page furniture'),
-      chk('pageNumbers', 'Page numbers'),
-      chk('pageNumberFirstPage', 'Number the first page'),
-      row('Number position', sel('pageNumberPosition', [['top-right', 'Top right'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right']])),
-      row('Number format', textIn('pageNumberFormat', '{n}.')),
-      row('Scene numbers', sel('sceneNumbers', [['off', 'Off'], ['left', 'Left'], ['right', 'Right'], ['both', 'Both sides']])),
-      chk('autoSceneNumbers', 'Number scenes without a #number# automatically'),
-      row('Header', textIn('header', 'e.g. {title}')),
-      row('Footer', textIn('footer', 'e.g. Page {page} of {pages}')),
-      row('Draft date', textIn('draftDate', '')),
-      row('Label', textIn('label', 'e.g. BLUE REVISION')),
-      row('Watermark', textIn('watermark', '')),
-      h('h3', null, 'Private material'),
-      chk('includeNotes', 'Include [[notes]]'),
-      chk('includeSections', 'Include # sections'),
-      chk('includeSynopses', 'Include = synopses'),
-      h('div', { class: 'capacity' }, 'Comments, highlights, cut material and inactive alternatives are never exported.'),
+      section('Content', row('Export', scopeSel), scopeExtra),
+      section(
+        'Paper & font',
+        row('Paper', paperSel()),
+        row('Script font', fontSel('font', true)),
+        row('Font size', numIn('fontSize', 8, 16, 0.5, 'pt')),
+        row('Line height', numIn('lineHeight', 8, 24, 0.5, 'pt')),
+      ),
+      section(
+        'Page layout',
+        row('Top margin', numIn('topMargin', 1, 20, 1, 'lines')),
+        row('Lines per page', numIn('linesPerPage', 20, 90, 1, 'lines')),
+        row('Left margin', numIn('leftMargin', 2, 40, 1, 'characters')),
+        row('Action width', numIn('actionWidth', 30, 100, 1, 'characters')),
+        marginsInfo,
+      ),
+      section(
+        'Elements',
+        h('div', { class: 'capacity' }, 'Indents count characters from the action column.'),
+        row('Character cue indent', numIn('characterIndent', 0, 60, 1, 'characters')),
+        row('Dialogue indent', numIn('dialogueIndent', 0, 40, 1, 'characters')),
+        row('Dialogue width', numIn('dialogueWidth', 10, 80, 1, 'characters')),
+        row('Parenthetical indent', numIn('parentheticalIndent', 0, 40, 1, 'characters')),
+        row('Parenthetical width', numIn('parentheticalWidth', 6, 60, 1, 'characters')),
+        row('Transitions', sel('transitionAlign', [['right', 'Right-aligned'], ['left', 'Indented']])),
+        s.transitionAlign === 'left' ? row('Transition indent', numIn('transitionIndent', 0, 80, 1, 'characters')) : null,
+        row('Between elements', numIn('elementSpacing', 0, 3, 1, 'blank lines')),
+        chk('preserveBlankLines', 'Keep extra blank lines from the screenplay'),
+        chk('boldCues', 'Bold character cues'),
+        row('Dual dialogue', sel('dualDialogue', [['side', 'Side by side'], ['stacked', 'One after the other']])),
+      ),
+      section(
+        'Scene headings',
+        chk('boldHeadings', 'Bold'),
+        chk('underlineHeadings', 'Underline'),
+        row('Space before', numIn('headingSpacingBefore', 0, 4, 1, 'extra lines')),
+        row('Keep with heading', numIn('headingKeepLines', 1, 6, 1, 'lines of text')),
+        chk('sceneStartsNewPage', 'Start every scene on a new page'),
+        row('Scene numbers', sel('sceneNumbers', [['off', 'Off'], ['left', 'Left'], ['right', 'Right'], ['both', 'Both sides']])),
+        row('Number format', textIn('sceneNumberFormat', '{n}')),
+        chk('autoSceneNumbers', 'Number scenes without a written #number#'),
+      ),
+      section(
+        'Page breaks',
+        row('Lines before a break', numIn('minLinesBeforeBreak', 1, 6, 1, 'at least')),
+        row('Lines after a break', numIn('minLinesAfterBreak', 1, 6, 1, 'at least')),
+        chk('splitDialogue', 'Split long dialogue across pages'),
+        chk('splitAction', 'Split long action across pages'),
+        chk('useMoreContd', 'Add (MORE) and (CONT’D) at dialogue breaks'),
+        row('MORE label', textIn('moreLabel')),
+        row('CONT’D label', textIn('contdLabel')),
+        chk('contdAfterAction', 'CONT’D when a character continues after action'),
+      ),
+      section(
+        'Title page',
+        chk('titlePage', 'Include the title page'),
+        row('Title font', fontSel('titleFont', false)),
+        row('Title size', numIn('titleSize', 8, 48, 1, 'pt')),
+        chk('titleBold', 'Bold title'),
+        chk('titleUnderline', 'Underline title'),
+        chk('titleUppercase', 'Uppercase title'),
+        row('Title starts at', numIn('titleLine', 4, 50, 1, 'line')),
+        row('Contact details', sel('contactPosition', [['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right']])),
+        h('div', { class: 'capacity' }, 'Only the title uses the title font; credit, author and contact use 12 pt Courier.'),
+      ),
+      section(
+        'Page numbers & furniture',
+        chk('pageNumbers', 'Page numbers'),
+        chk('pageNumberFirstPage', 'Number the first page'),
+        row('Position', sel('pageNumberPosition', [['top-right', 'Top right'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right']])),
+        row('Format', textIn('pageNumberFormat', '{n}.')),
+        row('Header', textIn('header', 'e.g. {title}')),
+        row('Footer', textIn('footer', 'e.g. Page {page} of {pages}')),
+        row('Draft date', textIn('draftDate', '')),
+        row('Label', textIn('label', 'e.g. BLUE REVISION')),
+        row('Watermark', textIn('watermark', '')),
+        h('div', { class: 'capacity' }, 'Placeholders: {title}, {page}, {pages}, {date}.'),
+      ),
+      section(
+        'Private material',
+        chk('includeNotes', 'Include [[notes]]'),
+        chk('includeSections', 'Include # sections'),
+        chk('includeSynopses', 'Include = synopses'),
+        h('div', { class: 'capacity' }, 'Comments, highlights, cut material and inactive alternatives are never exported.'),
+      ),
     );
+    void unitRow;
   }
 
   // Preview ------------------------------------------------------------------------------
@@ -320,6 +425,8 @@ export function openExport(app: App) {
         return { kind: 'scenesNewPage' };
       case 'character':
         return { kind: 'character', name: character };
+      case 'dialogue':
+        return { kind: 'dialogue', name: character, action: dialogueAction, headings: dialogueHeadings };
       default:
         return { kind: 'all' };
     }
@@ -339,8 +446,9 @@ export function openExport(app: App) {
   };
 
   function updateCapacity() {
-    const c = capacity(s);
+    const c = capacity(s, advance());
     cap.textContent = `${c.cap.linesPerPage} lines per page · action ${c.cap.actionChars} · dialogue ${c.cap.dialogueChars} · parenthetical ${c.cap.parentheticalChars} characters per line`;
+    marginsInfo.textContent = `The page holds ${c.cap.totalLines} lines × ${c.cap.totalChars} characters: ${c.cap.bottomMarginLines} lines remain at the bottom and ${c.cap.rightMarginChars} characters to the right of the action.`;
     warnings.textContent = c.warnings.join(' ');
   }
 
@@ -433,6 +541,15 @@ export function openExport(app: App) {
   }
 
   renderPresets();
+  loadFonts().then((f) => {
+    fonts = f;
+    if (root.isConnected) {
+      const scroll = side.scrollTop;
+      build();
+      side.scrollTop = scroll;
+      updateCapacity();
+    }
+  });
   build();
   updateCapacity();
   refresh();

@@ -17,7 +17,8 @@ import { RightPane } from './ui/rightpane';
 import { FindBar } from './ui/findbar';
 import { openPalette } from './ui/palette';
 import { openSettings } from './ui/settings';
-import { openExport } from './ui/export';
+import { FontEntry, loadFonts, openExport, projectExportSettings } from './ui/export';
+import { paginate } from '../shared/paginate';
 import { openRename } from './ui/rename';
 import { compareDialog } from './ui/compare';
 import { SceneCards } from './ui/cards';
@@ -111,7 +112,7 @@ export class App {
       b.title = t;
       b.setAttribute('aria-label', title);
     }
-    for (const [v, label] of [['script', 'Script'], ['scene', 'Scene'], ['dialogue', 'Dialogue']] as const) {
+    for (const [v, label] of [['script', 'Script'], ['scene', 'Scene'], ['dialogue', 'Dialogue'], ['source', 'Source']] as const) {
       const k = this.commands.label(`view.${v}`);
       this.tabs[v].title = k ? `${label} view (${k})` : `${label} view`;
     }
@@ -185,9 +186,9 @@ export class App {
       const b = h('button', { class: 'tab', tabindex: '-1', onclick: () => this.setView(v) }, label);
       return b;
     };
-    this.tabs = { script: mkTab('script', 'Script'), scene: mkTab('scene', 'Scene'), dialogue: mkTab('dialogue', 'Dialogue') };
+    this.tabs = { script: mkTab('script', 'Script'), scene: mkTab('scene', 'Scene'), dialogue: mkTab('dialogue', 'Dialogue'), source: mkTab('source', 'Source') };
     this.viewControls = h('div', { class: 'view-controls' });
-    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, this.tabs.script, this.tabs.scene, this.tabs.dialogue), this.viewControls);
+    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, this.tabs.script, this.tabs.scene, this.tabs.dialogue, this.tabs.source), this.viewControls);
 
     this.leftPane = h('div', { class: 'pane pane-left' });
     this.rightPaneEl = h('div', { class: 'pane pane-right' });
@@ -291,6 +292,7 @@ export class App {
     this.editor.restoreCaretOffset(offset);
     this.setupSpell();
     this.refreshDerived(true);
+    this.updatePageMarkers.flush?.();
     this.saveSettings();
   }
 
@@ -423,7 +425,6 @@ export class App {
     this.dialogueCharacter = session?.dialogueCharacter ?? '';
     this.dialogueScope = session?.dialogueScope ?? 'all';
     this.dialogueAction = session?.dialogueAction ?? false;
-    this.editor.setSource(!!session?.source);
     this.refreshDerived(true);
     this.setSaveState('saved');
     // Restore view and caret
@@ -436,6 +437,9 @@ export class App {
         else this.setView('script', { quiet: true });
       } else if (session.view === 'dialogue') {
         this.setView('dialogue', { quiet: true });
+      } else if (session.view === 'source' || session.source) {
+        this.setView('source', { quiet: true });
+        this.editor.scrollToLine(Math.min(session.scrollLine, this.editor.lines.length - 1), 'top', 0);
       } else {
         this.setView('script', { quiet: true });
         this.editor.scrollToLine(Math.min(session.scrollLine, this.editor.lines.length - 1), 'top', 0);
@@ -539,13 +543,12 @@ export class App {
     const s: ProjectSession = {
       view: this.view,
       caret: { line: head.line, ch: head.ch },
-      scrollLine: this.view === 'script' ? this.editor.topVisibleLine() : this.state.sessions[p.meta.id]?.scrollLine ?? 0,
+      scrollLine: this.isFullView() ? this.editor.topVisibleLine() : this.state.sessions[p.meta.id]?.scrollLine ?? 0,
       focusedSceneId: this.focus?.kind === 'scene' ? p.sceneIds.get(this.focus.key) : undefined,
       titleFocused: this.focus?.kind === 'title',
       dialogueCharacter: this.dialogueCharacter,
       dialogueScope: this.dialogueScope,
       dialogueAction: this.dialogueAction,
-      source: this.editor.source,
     };
     this.state.sessions[p.meta.id] = s;
   }
@@ -955,13 +958,54 @@ export class App {
   refreshDerived(force: boolean) {
     this.updateScenes();
     this.outline.render();
-    this.cards.render();
+    if (force) this.cards.render();
+    else this.cards.renderSoon();
     if (this.view === 'dialogue' && force) this.applyDialogueFilter(false);
     this.updateViewControls();
     clearTimeout(this.derivedTimer);
     this.derivedTimer = setTimeout(() => this.updateCounts(), force ? 0 : 250);
     this.findbar.onDocChange();
+    this.updatePageMarkers();
   }
+
+  private fonts: FontEntry[] | null = null;
+
+  /** Page break markers in Script/Source view, from the project's export settings. */
+  updatePageMarkers = debounce(() => {
+    const on = !!this.project && this.settings.editor.showPageBreaks && this.isFullView();
+    if (!on) {
+      this.editor.setPageMarkers([]);
+      return;
+    }
+    const s = projectExportSettings(this);
+    let adv = 0.6;
+    if (s.font !== 'Courier' && s.font !== 'Courier Prime') {
+      if (!this.fonts) {
+        loadFonts().then((f) => {
+          this.fonts = f;
+          this.updatePageMarkers();
+        });
+        return;
+      }
+      adv = this.fonts.find((f) => f.family === s.font)?.advance ?? 0.6;
+    }
+    const L = this.editor.lines;
+    const r = paginate(this.editor.lineTexts, this.editor.parsed, s, { kind: 'all' }, adv);
+    const pages = r.pages.filter((p) => !p.title);
+    const markers: Array<{ key: number; frac: number; label: string }> = [];
+    for (let i = 1; i < pages.length; i++) {
+      const prev = pages[i - 1].lines.filter((l) => l.kind !== 'more');
+      const lastSrc = prev.reduce((m, l) => Math.max(m, l.sourceLine), -1);
+      const rows = pages[i].lines.slice().sort((a, b) => a.row - b.row);
+      const first = rows.find((l) => l.kind !== 'more' && l.sourceLine >= lastSrc);
+      if (!first || !L[first.sourceLine]) continue;
+      const src = first.sourceLine;
+      const before = new Set(prev.filter((l) => l.sourceLine === src).map((l) => l.row)).size;
+      const after = new Set(rows.filter((l) => l.sourceLine === src).map((l) => l.row)).size;
+      markers.push({ key: L[src].key, frac: before ? before / (before + after) : 0, label: String(pages[i].number) });
+    }
+    this.editor.setPageMarkers(markers);
+  }, 350);
 
   private onSelectionChange() {
     this.outline.updateActive();
@@ -977,7 +1021,7 @@ export class App {
   private lastSelNonEmpty = false;
 
   private onScroll() {
-    if (this.view === 'script') {
+    if (this.isFullView()) {
       this.saveStateSoon();
       this.outline.updateActive();
     }
@@ -1100,14 +1144,12 @@ export class App {
     const out: SceneRecord[] = [];
     for (const s of this.scenes) {
       if (s.kind !== 'scene') continue;
-      const prev = byId.get(s.id);
-      out.push({
-        ...(prev ?? {}),
-        id: s.id,
-        heading: s.heading,
-        fingerprint: fingerprint(lines.slice(s.line + 1, s.end)),
-        order: s.order,
-      });
+      // Records are updated in place so references held by panes stay valid.
+      const rec: SceneRecord = byId.get(s.id) ?? { id: s.id, heading: '', fingerprint: '', order: 0 };
+      rec.heading = s.heading;
+      rec.fingerprint = fingerprint(lines.slice(s.line + 1, s.end));
+      rec.order = s.order;
+      out.push(rec);
     }
     p.meta.scenes = out;
   }
@@ -1160,44 +1202,70 @@ export class App {
   // ---------------------------------------------------------------------------------
   // Views
 
+  private fullViewReturn: { line: number; ch: number; key: number; offset: number } | null = null;
+
+  /** Script and Source show the whole screenplay. */
+  isFullView(v: ViewName = this.view) {
+    return v === 'script' || v === 'source';
+  }
+
+  /**
+   * Switches views. Whenever the caret is on screen, it stays at the same screen position in
+   * the new view (as far as the new view's content allows), so switching never jumps.
+   */
   setView(v: ViewName, opts: { quiet?: boolean } = {}) {
     if (!this.project) {
       this.view = v;
       this.updateChrome();
       return;
     }
+    const from = this.view;
+    const offset = !opts.quiet && this.editor.caretInView() ? this.editor.measureCaretOffset() : null;
+    if (from === 'scene') this.storeSceneContext();
+    // Remember where the caret sat in Script/Source view: a shorter view (a single scene)
+    // may not be able to show it at the same height, and returning should restore it exactly.
+    const head = this.editor.sel.head;
+    if (this.isFullView(from) && !this.isFullView(v) && offset !== null) this.fullViewReturn = { line: head.line, ch: head.ch, key: this.editor.lines[head.line].key, offset };
     if (v === 'scene') {
-      const item = this.view === 'script' ? this.readingScene() : this.activeScene() ?? this.readingScene();
-      if (item) this.enterScene(item);
-      else {
+      const item = this.isFullView(from) ? this.readingScene() : this.activeScene() ?? this.readingScene();
+      this.editor.setSource(false);
+      if (item) {
+        const caretInItem = this.editor.sel.head.line >= item.line && this.editor.sel.head.line < Math.max(item.end, item.line + 1);
+        this.enterScene(item, offset !== null && caretInItem ? { restoreContext: false, screenOffset: offset } : {});
+      } else {
         this.view = 'scene';
         this.focus = null;
         this.editor.setFilter(new Set(), 'scene');
       }
-    } else if (v === 'script') {
-      const from = this.view;
+    } else if (this.isFullView(v)) {
       const item = this.activeScene();
-      this.view = 'script';
+      this.view = v;
       this.focus = null;
       this.editor.setFilter(null, null);
-      if (from !== 'script' && item && !opts.quiet) {
-        // Follow the scene that was being edited: heading near the top, one line above.
-        this.editor.scrollToLine(item.line, 'top', 1);
+      this.editor.setSource(v === 'source');
+      if (from !== v && !opts.quiet) {
+        const ret = this.fullViewReturn;
+        const same = ret && ret.ch === head.ch && this.editor.lines[head.line]?.key === ret.key;
+        if (same && !this.isFullView(from)) this.editor.restoreCaretOffset(ret!.offset);
+        else if (offset !== null) this.editor.restoreCaretOffset(offset);
+        else if (item && !this.isFullView(from)) this.editor.scrollToLine(item.line, 'top', 1);
       }
     } else {
       this.view = 'dialogue';
       this.focus = null;
+      this.editor.setSource(false);
       this.dialogueSceneKey = this.activeScene()?.key ?? null;
-      this.applyDialogueFilter(true);
+      this.applyDialogueFilter(true, offset);
     }
     this.updateChrome();
     this.outline.updateActive();
+    this.updatePageMarkers();
     if (!opts.quiet) this.editor.focus();
     this.saveStateSoon();
   }
 
   /** Focuses one scene in Scene view, keeping per-scene caret and scroll context. */
-  enterScene(item: SceneItem, opts: { restoreContext?: boolean; caret?: Pos } = {}) {
+  enterScene(item: SceneItem, opts: { restoreContext?: boolean; caret?: Pos; screenOffset?: number | null } = {}) {
     const p = this.project;
     if (!p) return;
     this.storeSceneContext();
@@ -1236,7 +1304,10 @@ export class App {
       sel = cursor({ line, ch: line === item.line ? this.editor.lines[line].text.length : 0 });
     }
     this.editor.setSelection(sel, { scroll: false });
-    if (ctx && opts.restoreContext !== false && !opts.caret) this.editor.scrollTop = ctx.scrollTop;
+    if (opts.screenOffset != null) {
+      this.editor.scrollTop = 0;
+      this.editor.restoreCaretOffset(opts.screenOffset);
+    } else if (ctx && opts.restoreContext !== false && !opts.caret) this.editor.scrollTop = ctx.scrollTop;
     else {
       this.editor.scrollTop = 0;
       this.editor.scrollToCaret('nearest');
@@ -1276,7 +1347,7 @@ export class App {
 
   toggleScriptScene() {
     if (!this.project) return;
-    if (this.view === 'script') this.setView('scene');
+    if (this.isFullView()) this.setView('scene');
     else this.setView('script');
   }
 
@@ -1335,7 +1406,7 @@ export class App {
   // ---------------------------------------------------------------------------------
   // Dialogue view
 
-  applyDialogueFilter(resetCaret: boolean) {
+  applyDialogueFilter(resetCaret: boolean, screenOffset: number | null = null) {
     const parsed = this.editor.parsed;
     const L = this.editor.lines;
     const keys = new Set<number>();
@@ -1372,6 +1443,9 @@ export class App {
       if (!keys.has(L[head]?.key)) {
         const first = this.editor.displayedLines.find((i) => parsed.lines[i].type === 'dialogue') ?? this.editor.displayedLines[0];
         if (first !== undefined) this.editor.setSelection(cursor({ line: first, ch: L[first].text.length }), { scroll: 'top' });
+      } else if (screenOffset !== null) {
+        this.editor.scrollTop = 0;
+        this.editor.restoreCaretOffset(screenOffset);
       } else this.editor.scrollToCaret('center');
     }
     this.updateViewControls();
@@ -1393,14 +1467,20 @@ export class App {
   }
 
   goToPassage() {
-    if (this.view === 'script') return;
+    if (this.isFullView()) return;
     const caret = this.editor.sel.head;
+    const offset = this.editor.caretInView() ? this.editor.measureCaretOffset() : null;
+    if (this.view === 'scene') this.storeSceneContext();
     this.view = 'script';
     this.focus = null;
     this.editor.setFilter(null, null);
     this.editor.setSelection(cursor(caret), { scroll: false });
-    this.editor.scrollToCaret('center');
+    const ret = this.fullViewReturn;
+    if (ret && ret.ch === caret.ch && this.editor.lines[caret.line]?.key === ret.key) this.editor.restoreCaretOffset(ret.offset);
+    else if (offset !== null) this.editor.restoreCaretOffset(offset);
+    else this.editor.scrollToCaret('center');
     this.updateChrome();
+    this.updatePageMarkers();
     this.outline.updateActive();
     this.editor.focus();
   }
@@ -1594,7 +1674,6 @@ export class App {
       if (!this.dialogueAction) c.append(h('span', { class: 'view-note', title: 'Action lines are not shown in this view' }, 'Action hidden'));
       c.append(h('button', { class: 'btn sm', title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, 'Go to passage'));
     }
-    if (this.editor.source) c.append(h('span', { class: 'view-note', style: { color: 'var(--text-2)' } }, 'Fountain source'));
   }
 
   private updateStatusScene() {
@@ -1609,7 +1688,7 @@ export class App {
     if (a?.kind === 'scene') this.statusScene.textContent = `Scene ${a.order} of ${list.length}`;
     else if (a?.kind === 'title') this.statusScene.textContent = `Title page · ${list.length} scenes`;
     else this.statusScene.textContent = `${list.length} scenes`;
-    this.statusView.textContent = this.editor.source ? 'Source' : '';
+    this.statusView.textContent = '';
   }
 
   updateCounts() {
@@ -1746,7 +1825,7 @@ export class App {
     if (pl?.type === 'character' && pl.cue) {
       items.push({ sep: true }, { label: `Rename ${pl.cue}…`, run: () => openRename(this, pl.cue) });
     }
-    if (this.view !== 'script') items.push({ sep: true }, { label: 'Go to passage in Script', kbd: this.commands.label('dialogue.goToPassage'), run: () => this.goToPassage() });
+    if (!this.isFullView()) items.push({ sep: true }, { label: 'Go to passage in Script', kbd: this.commands.label('dialogue.goToPassage'), run: () => this.goToPassage() });
     openMenu(items, { x: e.clientX, y: e.clientY });
   }
 
@@ -1789,12 +1868,12 @@ export class App {
       if (this.saveState === 'saved') toast('Saved.');
     }, { inFields: true, enabled: hasProject, menu: 'File' });
     reg('file.export', 'Export PDF…', 'File', ['Mod+E'], () => openExport(this), { inFields: true, enabled: hasProject, menu: 'File' });
-    reg('project.new', 'New Project…', 'File', [], () => this.newProject(), { menu: 'File' });
-    reg('project.openWorkspace', 'Open Workspace Folder…', 'File', [], () => this.chooseWorkspace(), { menu: 'File' });
-    reg('project.importFountain', 'Import Fountain File…', 'File', [], () => this.importFountain(), { menu: 'File' });
-    reg('project.backup', 'Back Up Project…', 'File', [], () => this.backupProject(), { enabled: hasProject, menu: 'File' });
-    reg('project.importBackup', 'Import Project Backup…', 'File', [], () => this.importBackup(), { menu: 'File' });
-    reg('project.rename', 'Rename Project…', 'File', [], () => this.renameProject(), { enabled: hasProject, menu: 'File' });
+    reg('project.new', 'New Project…', 'File', ['Mod+Shift+N'], () => this.newProject(), { menu: 'File' });
+    reg('project.openWorkspace', 'Open Workspace Folder…', 'File', ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
+    reg('project.importFountain', 'Import Fountain File…', 'File', ['Mod+I'], () => this.importFountain(), { menu: 'File' });
+    reg('project.backup', 'Back Up Project…', 'File', ['Mod+Shift+S'], () => this.backupProject(), { enabled: hasProject, menu: 'File' });
+    reg('project.importBackup', 'Import Project Backup…', 'File', ['Mod+Shift+I'], () => this.importBackup(), { menu: 'File' });
+    reg('project.rename', 'Rename Project…', 'File', ['Mod+Shift+R'], () => this.renameProject(), { enabled: hasProject, menu: 'File' });
     reg('project.close', 'Close Project', 'File', [], () => this.closeProject().then(() => this.updateWelcome()), { enabled: hasProject, menu: 'File' });
     if (bridge.isElectron) reg('project.reveal', 'Show Project Folder', 'File', [], () => this.revealProject(), { enabled: hasProject, menu: 'File' });
     reg('project.reviewCopies', 'Review Other Screenplay Copies…', 'File', [], () => this.reviewConflictCopies(), { enabled: () => !!this.project?.conflicts.length });
@@ -1802,18 +1881,18 @@ export class App {
     reg('edit.undo', 'Undo', 'Edit', [], () => this.undoRedo('undo'), { inFields: true });
     reg('edit.redo', 'Redo', 'Edit', [], () => this.undoRedo('redo'), { inFields: true });
     reg('edit.selectAll', 'Select All', 'Edit', [], () => this.selectAll(), { inFields: true });
-    reg('search.script', 'Search in Screenplay', 'Search', ['Mod+Shift+F'], () => this.findbar.open(), { inFields: true, enabled: hasProject, menu: 'Edit' });
-    reg('search.scenes', 'Search Scenes', 'Search', ['Mod+F'], () => this.outline.focusSearch(), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('search.script', 'Search in Screenplay', 'Search', ['Mod+F'], () => this.findbar.open(), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('search.scenes', 'Search Scenes', 'Search', ['Mod+Shift+F'], () => this.outline.focusSearch(), { inFields: true, enabled: hasProject, menu: 'Edit' });
     reg('search.next', 'Find Next', 'Search', ['F3', 'Mod+G'], () => this.findbar.step(1), { enabled: () => this.findbar.hasQuery() });
     reg('search.prev', 'Find Previous', 'Search', ['Shift+F3', 'Mod+Shift+G'], () => this.findbar.step(-1), { enabled: () => this.findbar.hasQuery() });
-    reg('character.rename', 'Rename Character…', 'Edit', [], () => openRename(this), { enabled: hasProject, menu: 'Edit' });
+    reg('character.rename', 'Rename Character…', 'Edit', ['Mod+R'], () => openRename(this), { inFields: true, enabled: hasProject, menu: 'Edit' });
 
-    reg('view.toggleScriptScene', 'Switch Script / Scene', 'View', ['Tab'], () => this.toggleScriptScene(), { editorOnly: true, enabled: hasProject, menu: 'View' });
+    reg('view.toggleScriptScene', 'Switch Script / Scene', 'View', [], () => this.toggleScriptScene(), { enabled: hasProject, menu: 'View' });
     reg('view.script', 'Script View', 'View', ['Mod+1'], () => this.setView('script'), { enabled: hasProject, menu: 'View' });
     reg('view.scene', 'Scene View', 'View', ['Mod+2'], () => this.setView('scene'), { enabled: hasProject, menu: 'View' });
     reg('view.dialogue', 'Dialogue View', 'View', ['Mod+3'], () => this.setView('dialogue'), { enabled: hasProject, menu: 'View' });
     reg('view.titlePage', 'Title Page', 'View', ['Mod+T'], () => this.toggleTitlePage(), { inFields: true, enabled: hasProject, menu: 'View' });
-    reg('view.source', 'Show Fountain Source', 'View', [], () => this.toggleSource(), { enabled: hasProject, menu: 'View' });
+    reg('view.source', 'Source View', 'View', ['Mod+4'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
     reg('view.minimal', 'Minimal View', 'View', ['Mod+M'], () => this.toggleMinimal(), { inFields: true, menu: 'View' });
     reg('view.toggleMaximize', 'Maximize / Restore Window', 'View', ['Mod+Ö'], () => bridge.window('toggleMaximize'), { inFields: true, menu: 'View' });
     reg('view.leftPane', 'Toggle Scene Pane', 'View', ['Mod+Alt+1'], () => this.togglePane('left'), { inFields: true, menu: 'View' });
@@ -1840,7 +1919,7 @@ export class App {
       const a = this.activeScene();
       if (a) this.moveSceneBy(a, 1);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
-    reg('dialogue.goToPassage', 'Go to Passage in Script', 'Scenes', ['Mod+Enter'], () => this.goToPassage(), { enabled: () => this.view !== 'script', menu: 'Scene' });
+    reg('dialogue.goToPassage', 'Go to Passage in Script', 'Scenes', ['Mod+Enter'], () => this.goToPassage(), { enabled: () => !this.isFullView(), menu: 'Scene' });
     reg('scene.cards', 'Scene Cards', 'Scenes', ['Mod+Shift+O'], () => this.cards.toggle(), { inFields: true, enabled: hasProject, menu: 'Scene' });
     reg('scene.notes', 'Scene Notes', 'Scenes', [], () => this.showRightTab('scene'), { enabled: hasProject, menu: 'Scene' });
     reg('project.notes', 'Project Notes', 'Scenes', [], () => this.showRightTab('notes'), { enabled: hasProject, menu: 'Scene' });
@@ -1880,11 +1959,6 @@ export class App {
     if (this.minimal) this.toggleMinimal();
   }
 
-  toggleSource() {
-    this.editor.setSource(!this.editor.source);
-    this.updateChrome();
-    this.saveStateSoon();
-  }
 
   toggleMinimal() {
     const offset = this.editor.measureCaretOffset();

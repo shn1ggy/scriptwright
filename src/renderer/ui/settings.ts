@@ -5,6 +5,7 @@ import { bridge } from '../bridge';
 import { h } from './dom';
 import { openDialog } from './overlay';
 import { CommandList } from './palette';
+import { loadFonts } from './export';
 import { DEFAULT_DARK, DEFAULT_LIGHT, ThemeColors } from '../../shared/types';
 import { contrast, hsbToRgb, rgbToHex } from '../theme';
 
@@ -81,8 +82,19 @@ export function openSettings(app: App, section: Section = 'editor') {
   function editor() {
     const e = app.settings.editor;
     const font = h('select', { class: 'field', 'aria-label': 'Font' });
-    for (const f of ['Courier Prime', 'Courier New', 'Courier', 'monospace']) font.append(h('option', { value: f }, f));
+    const courier = h('optgroup', { label: 'Courier' });
+    for (const f of ['Courier Prime', 'Courier New', 'Courier']) courier.append(h('option', { value: f }, f));
+    font.append(courier);
+    if (!['Courier Prime', 'Courier New', 'Courier'].includes(e.fontFamily)) font.append(h('option', { value: e.fontFamily }, e.fontFamily));
     font.value = e.fontFamily;
+    loadFonts().then((list) => {
+      const mono = list.filter((f) => f.mono && !/courier/i.test(f.family));
+      if (!mono.length || !font.isConnected) return;
+      const g = h('optgroup', { label: 'Monospaced system fonts' });
+      for (const f of mono) if (f.family !== e.fontFamily) g.append(h('option', { value: f.family }, f.family));
+      font.append(g);
+      font.value = e.fontFamily;
+    });
     font.addEventListener('change', () => {
       e.fontFamily = font.value;
       changed();
@@ -123,7 +135,16 @@ export function openSettings(app: App, section: Section = 'editor') {
       row('Default scene heading', heading),
       row('After a heading', check(e.blankAfterHeading, (v) => (e.blankAfterHeading = v), 'Add a blank line')),
       row('Additional prefixes', prefixes, 'Recognized as scene headings in addition to INT, EXT, EST, I/E.'),
-      row('Scene numbers', check(e.showSceneNumbers, (v) => (e.showSceneNumbers = v), 'Show #12# numbers in the margin')),
+      row('Scene numbers', (() => {
+        const sel = h('select', { class: 'field', 'aria-label': 'Scene numbers' }, h('option', { value: 'both' }, 'Both sides'), h('option', { value: 'left' }, 'Left'), h('option', { value: 'right' }, 'Right'), h('option', { value: 'off' }, 'Off'));
+        sel.value = e.sceneNumbers;
+        sel.addEventListener('change', () => {
+          e.sceneNumbers = sel.value as typeof e.sceneNumbers;
+          changed();
+        });
+        return sel;
+      })(), 'Written numbers such as #12A# are shown as written; other scenes show their position in the outline.'),
+      row('Page breaks', check(e.showPageBreaks, (v) => (e.showPageBreaks = v), 'Show where pages end with the current export settings')),
       h('h3', null, 'Writing'),
       row('Typewriter scrolling', check(e.typewriter, (v) => (e.typewriter = v), 'Keep the caret line near the middle')),
       row('Spellchecking', check(e.spellcheck, (v) => (e.spellcheck = v), bridge.spell ? 'Check spelling' : 'Available in the desktop app')),
@@ -214,7 +235,7 @@ export function openSettings(app: App, section: Section = 'editor') {
     cmdList.el.style.border = '1px solid var(--line)';
     cmdList.el.style.borderRadius = '4px';
     cmdList.el.style.minHeight = '360px';
-    content.append(h('div', { class: 'notice' }, 'Shortcuts apply immediately and are saved with your settings. Tab switches Script and Scene only while the editor has focus.'), cmdList.el);
+    content.append(h('div', { class: 'notice' }, 'Shortcuts apply immediately and are saved with your settings.'), cmdList.el);
   }
 
   function saving() {

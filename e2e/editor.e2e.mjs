@@ -170,9 +170,11 @@ await check('autosave writes the screenplay to disk', async () => {
   assert(st === 'Saved', st);
 });
 
-await check('Tab switches to Scene view with the reading scene and a consistent inset', async () => {
+await check('Mod+2 switches to Scene view with the reading scene and a consistent inset; Tab does not switch', async () => {
   // Caret is in scene 4 (boathouse)
   await page.keyboard.press('Tab');
+  assert((await app(() => window.__app.view)) === 'script', 'Tab switched views');
+  await page.keyboard.press('Control+2');
   const v = await app(() => window.__app.view);
   assert(v === 'scene', v);
   const first = await app(() => {
@@ -204,18 +206,27 @@ await check('typing a new heading in Scene view keeps the text in the pane and a
   assert(active === 'EXT. CLIFF - NIGHT', 'active ' + active);
 });
 
-await check('Scene → Script follows the edited scene with its heading near the top', async () => {
-  await page.keyboard.press('Tab');
+const caretY = () => app(() => window.__app.editor.coordsAtPos(window.__app.editor.sel.head).top);
+
+await check('Scene → Script keeps the caret at the same screen position', async () => {
+  const before = await caretY();
+  await page.keyboard.press('Control+1');
   await sleep(50);
-  const r = await app(() => {
-    const ed = window.__app.editor;
-    const a = window.__app.activeScene();
-    const v = ed.views.get(ed.lines[a.line].key).el;
-    const sc = document.querySelector('.ed-scroller');
-    const top = v.getBoundingClientRect().top - sc.getBoundingClientRect().top;
-    return { top, lh: ed.settings.lineHeight, heading: a.heading, max: sc.scrollHeight - sc.clientHeight, st: sc.scrollTop };
-  });
-  assert(Math.abs(r.top - r.lh) < 2 || Math.abs(r.st - r.max) < 2, JSON.stringify(r));
+  const after = await caretY();
+  assert(Math.abs(after - before) < 2, `${before} -> ${after}`);
+});
+
+await check('Script → Scene → Script round trip does not move the caret on screen', async () => {
+  await app(() => { const ed = window.__app.editor; const i = ed.lines.findIndex((l) => l.text === 'Waves break over the pier. TOM (40s) shields his face, a canvas bag over one shoulder.'); ed.setSelection({ anchor: { line: i, ch: 3 }, head: { line: i, ch: 3 } }); ed.scrollToLine(i, 'center'); });
+  await sleep(50);
+  const y0 = await caretY();
+  await page.keyboard.press('Control+2');
+  await sleep(50);
+  await page.keyboard.press('Control+1');
+  await sleep(50);
+  const y2 = await caretY();
+  assert(Math.abs(y2 - y0) < 2, `${y0} -> ${y2}`);
+  await page.keyboard.press('Control+End');
 });
 
 await check('Dialogue view filters by character, marks hidden action and edits the original', async () => {

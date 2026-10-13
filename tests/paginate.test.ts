@@ -5,7 +5,7 @@ import { paginate, wrap, parsePageRanges } from '../src/shared/paginate';
 import { defaultExportSettings } from '../src/shared/types';
 import { renderPdf } from '../src/main/pdfexport';
 
-const S = () => ({ ...defaultExportSettings('Letter'), font: 'Courier' as const, titleFont: 'Courier' as const });
+const S = () => ({ ...defaultExportSettings('Letter'), font: 'Courier', titleFont: 'Courier' });
 const pag = (src: string, over = {}, scope?: any) => {
   const lines = src.split('\n');
   return paginate(lines, parse(lines), { ...S(), ...over }, scope);
@@ -32,8 +32,8 @@ test('element positions follow screenplay conventions', () => {
   assert.deepEqual(kinds, [
     ['heading', 0, 0],
     ['action', 0, 2],
-    ['character', 20, 4],
-    ['parenthetical', 15, 5],
+    ['character', 22, 4],
+    ['parenthetical', 16, 5],
     ['dialogue', 10, 6],
     ['transition', 53, 8],
   ]);
@@ -129,7 +129,7 @@ test('title page is separate and numbered pages start at 1', () => {
 });
 
 test('width validation warns when elements exceed the printable width', () => {
-  const r = pag('x', { actionWidth: 7 });
+  const r = pag('x', { actionWidth: 80 });
   assert.ok(r.warnings.some((w) => w.includes('Action')));
 });
 
@@ -180,4 +180,51 @@ test('title page values are printed without markers but keep e-mail underscores'
   assert.equal(cleanTitleValue('_Underlined_ title'), 'Underlined title');
   assert.equal(cleanTitleValue('first_last@example.com'), 'first_last@example.com');
   assert.equal(cleanTitleValue('> Centered <'), 'Centered');
+});
+
+test('dialogue-only scope: one character, with or without headings and action', () => {
+  const src = 'INT. A - DAY\n\nShe enters.\n\nLISA\nHi.\n\nTOM\nHey.\n\nINT. B - DAY\n\nLISA\nBye.';
+  const lines = src.split('\n');
+  const p = parse(lines);
+  const text = (scope: any) => paginate(lines, p, S(), scope).pages.flatMap(pageText).map((l: string) => l.trim()).join('|');
+  assert.equal(text({ kind: 'dialogue', name: 'LISA', action: false, headings: false }), 'LISA|Hi.|LISA|Bye.');
+  assert.equal(text({ kind: 'dialogue', name: 'LISA', action: true, headings: true }), 'INT. A - DAY|She enters.|LISA|Hi.|INT. B - DAY|LISA|Bye.');
+  assert.ok(text({ kind: 'dialogue', name: '', action: false, headings: false }).includes('TOM'));
+});
+
+test('geometry in lines and characters, with warnings', () => {
+  const r = pag('x', { linesPerPage: 70 });
+  assert.ok(r.capacity.linesPerPage < 70);
+  assert.ok(r.warnings.length);
+  const a4 = paginate(['x'], parse(['x']), defaultExportSettings('A4'));
+  assert.equal(a4.capacity.linesPerPage, 57);
+  assert.ok(a4.capacity.bottomMarginLines >= 6);
+  assert.deepEqual(a4.warnings, []);
+});
+
+test('options: left transitions, bold cues, stacked dual dialogue, scene number format', () => {
+  const r = pag('INT. A - DAY\n\nBRICK\nScrew.\n\nSTEEL ^\nScrew.\n\nCUT TO:', { transitionAlign: 'left', boldCues: true, dualDialogue: 'stacked', sceneNumberFormat: '{n}.' });
+  const p = r.pages[0];
+  assert.equal(p.lines.find((l) => l.kind === 'transition')!.col, 45);
+  assert.equal(p.lines.find((l) => l.kind === 'character')!.runs[0].style & 1, 1);
+  assert.equal(p.lines.filter((l) => l.kind === 'character').length, 2);
+  assert.ok(new Set(p.lines.map((l) => l.row)).size === p.lines.length, 'stacked dual should not share rows');
+  assert.equal(p.lines.find((l) => l.kind === 'heading')!.sceneNumber, '1.');
+});
+
+test('system fonts are found and a title in a proportional font is centered', async () => {
+  const { listFontFamilies } = await import('../src/main/fonts');
+  const fams = listFontFamilies(undefined);
+  const sans = fams.find((f) => f.family === 'DejaVu Sans');
+  if (!sans) return;
+  assert.ok(fams.find((f) => f.family === 'DejaVu Sans Mono')!.mono);
+  const lines = 'Title: Wide Wonder\n\nINT. A - DAY'.split('\n');
+  const s = { ...S(), titleFont: 'DejaVu Sans', titleSize: 24 };
+  const out = renderPdf(paginate(lines, parse(lines), s), s, { families: () => fams });
+  const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(out.pdf), verbosity: 0 }).promise;
+  const tc = await (await doc.getPage(1)).getTextContent();
+  const item = tc.items.find((i: any) => i.str.includes('WIDE WONDER'));
+  const center = item.transform[4] + item.width / 2;
+  assert.ok(Math.abs(center - 306) < 2, `title center ${center}`);
 });

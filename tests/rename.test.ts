@@ -60,5 +60,46 @@ test('merge with existing character is reported', () => {
 test('German names', () => {
   const src = '\nJÖRG\nHallo.\n\nAction: Jörg lacht. Jörgs Hut.';
   const { text } = run(src, 'JÖRG', 'Jürgen');
-  assert.equal(text, '\nJÜRGEN\nHallo.\n\nAction: Jürgen lacht. Jörgs Hut.');
+  assert.equal(text, '\nJÜRGEN\nHallo.\n\nAction: Jürgen lacht. Jürgens Hut.');
+});
+
+test('German genitive forms', () => {
+  const de = (src: string, a: string, b: string) => {
+    const lines = src.split('\n');
+    const plan = planRename(lines, parse(lines), a, b, [], 'de');
+    const out = lines.slice();
+    for (const c of plan.changes) out[c.line] = c.text;
+    return out.join('\n');
+  };
+  assert.equal(de('\nANDREA\nHallo.\n\nAndreas Tasche liegt da. Das ist Andrea.', 'ANDREA', 'Lisa'), '\nLISA\nHallo.\n\nLisas Tasche liegt da. Das ist Lisa.');
+  assert.equal(de('\nLISA\nHallo.\n\nLisas Tasche.', 'LISA', 'Andreas'), '\nANDREAS\nHallo.\n\nAndreas\' Tasche.');
+  assert.equal(de('\nANDREAS\nHallo.\n\nAndreas\' Tasche.', 'ANDREAS', 'Lisa'), '\nLISA\nHallo.\n\nLisas Tasche.');
+  assert.equal(de('\nLISA\nHallo.\n\nLISAS TASCHE.', 'LISA', 'Anna'), '\nANNA\nHallo.\n\nANNAS TASCHE.');
+});
+
+test('English possessive forms', () => {
+  const en = (src: string, a: string, b: string) => {
+    const lines = src.split('\n');
+    const plan = planRename(lines, parse(lines), a, b, [], 'en');
+    const out = lines.slice();
+    for (const c of plan.changes) out[c.line] = c.text;
+    return out.join('\n');
+  };
+  assert.equal(en("\nANDREA\nHi.\n\nAndrea's bag. Andrea’s coat.", 'ANDREA', 'Lisa'), "\nLISA\nHi.\n\nLisa's bag. Lisa’s coat.");
+  assert.equal(en("\nJAMES\nHi.\n\nJames' bag.", 'JAMES', 'Lisa'), "\nLISA\nHi.\n\nLisa's bag.");
+  assert.equal(en('\nMARK\nHi.\n\nHe marks the spot. Marks on the wall.', 'MARK', 'Paul'), '\nPAUL\nHi.\n\nHe marks the spot. Pauls on the wall.');
+});
+
+test('a character named like the genitive is protected', () => {
+  const lines = '\nANDREA\nHi.\n\nANDREAS\nHey.\n\nAndrea and Andreas talk.'.split('\n');
+  const plan = planRename(lines, parse(lines), 'ANDREA', 'Lisa', [], 'de');
+  const out = lines.slice();
+  for (const c of plan.changes) out[c.line] = c.text;
+  assert.equal(out.join('\n'), '\nLISA\nHi.\n\nANDREAS\nHey.\n\nLisa and Andreas talk.');
+});
+
+test('language guess', async () => {
+  const { guessLanguage } = await import('../src/shared/rename');
+  assert.equal(guessLanguage(['INNEN. KÜCHE - NACHT', 'Sie sitzt und isst nicht.']), 'de');
+  assert.equal(guessLanguage(['INT. KITCHEN - NIGHT', 'She sits and does not eat.']), 'en');
 });

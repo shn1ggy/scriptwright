@@ -13,8 +13,10 @@ export interface EditorSettings {
   spellcheck: boolean;
   spellLanguages: string[];
   typewriter: boolean;
-  /** Show scene numbers (#12#) in the margin. */
-  showSceneNumbers: boolean;
+  /** Scene numbers beside headings: written #12A# numbers, otherwise the outline position. */
+  sceneNumbers: 'off' | 'left' | 'right' | 'both';
+  /** Show where pages break with the current export settings (Script and Source view). */
+  showPageBreaks: boolean;
 }
 
 export interface Hsb {
@@ -50,6 +52,19 @@ export interface Settings {
   saving: SavingSettings;
   /** command id → list of key combos ([] = explicitly cleared). Missing = default. */
   keymap: Record<string, string[]>;
+  cards: CardSettings;
+}
+
+export interface CardSettings {
+  size: 'small' | 'medium' | 'large';
+  /** How a scene's color shows on its card. */
+  colorStyle: 'stripe' | 'tint' | 'header' | 'full';
+  showSummary: boolean;
+  showStatus: boolean;
+  showCharacters: boolean;
+  showLength: boolean;
+  /** Tint outline rows with the scene color. */
+  tintOutline: boolean;
 }
 
 export const DEFAULT_DARK: ThemeColors = {
@@ -84,11 +99,13 @@ export function defaultSettings(): Settings {
       spellcheck: false,
       spellLanguages: ['de-DE', 'en-US'],
       typewriter: false,
-      showSceneNumbers: true,
+      sceneNumbers: 'both',
+      showPageBreaks: false,
     },
     appearance: { theme: 'dark', dark: { ...DEFAULT_DARK, background: { ...DEFAULT_DARK.background } }, light: { ...DEFAULT_LIGHT, background: { ...DEFAULT_LIGHT.background } } },
     saving: { autosaveDelayMs: 800, snapshotIntervalMin: 10 },
     keymap: {},
+    cards: { size: 'medium', colorStyle: 'tint', showSummary: true, showStatus: true, showCharacters: true, showLength: true, tintOutline: true },
   };
 }
 
@@ -165,120 +182,139 @@ export function emptyMeta(id: string): ProjectMeta {
 // Export
 
 export type PaperSize = 'A4' | 'Letter';
-export type ExportFont = 'Courier' | 'Courier Prime';
+/** 'Courier Prime' (bundled), 'Courier' (built into PDF) or a system font family name. */
+export type ExportFont = string;
 
+/**
+ * Export settings. Page geometry is measured in lines (vertical) and characters (horizontal)
+ * of the script font, since screenplays are set in a monospaced font.
+ */
 export interface ExportSettings {
   paper: PaperSize;
-  /** Margins in inches. */
-  marginTop: number;
-  marginBottom: number;
-  marginLeft: number;
-  marginRight: number;
   font: ExportFont;
   fontSize: number;
-  /** Lines per inch (6 = standard single spacing at 12pt). */
-  linesPerInch: number;
-  /** Blank lines between elements. */
-  elementSpacing: number;
-  /** Blank lines before a scene heading (in addition to nothing). */
-  headingSpacingBefore: number;
-  /** Lines of following content kept on the same page as a heading. */
-  headingKeepLines: number;
-  boldHeadings: boolean;
-  underlineHeadings: boolean;
-  // Element geometry, inches measured from the left margin
+  /** Line height in points (12 = classic single spacing for 12 pt Courier). */
+  lineHeight: number;
+  // Page layout ------------------------------------------------------------------
+  /** Blank lines above the first text line. */
+  topMargin: number;
+  /** Text lines per page. */
+  linesPerPage: number;
+  /** Characters from the page edge to the action column. */
+  leftMargin: number;
+  // Elements (characters from the action column) ---------------------------------
+  actionWidth: number;
   characterIndent: number;
   dialogueIndent: number;
   dialogueWidth: number;
   parentheticalIndent: number;
   parentheticalWidth: number;
-  actionWidth: number;
-  // Page breaking
+  transitionAlign: 'right' | 'left';
+  transitionIndent: number;
+  /** Blank lines between elements. */
+  elementSpacing: number;
+  /** Keep runs of several blank lines from the screenplay. */
+  preserveBlankLines: boolean;
+  boldCues: boolean;
+  dualDialogue: 'side' | 'stacked';
+  // Scene headings ------------------------------------------------------------------
+  headingSpacingBefore: number;
+  headingKeepLines: number;
+  boldHeadings: boolean;
+  underlineHeadings: boolean;
+  sceneStartsNewPage: boolean;
+  sceneNumbers: 'off' | 'left' | 'right' | 'both';
+  autoSceneNumbers: boolean;
+  sceneNumberFormat: string; // e.g. "{n}" or "{n}."
+  // Page breaks ---------------------------------------------------------------------
   minLinesBeforeBreak: number;
   minLinesAfterBreak: number;
   splitDialogue: boolean;
   splitAction: boolean;
+  useMoreContd: boolean;
   moreLabel: string;
   contdLabel: string;
-  useMoreContd: boolean;
-  /** Add (CONT'D) when the same character speaks again after only action in the same scene. */
   contdAfterAction: boolean;
-  sceneStartsNewPage: boolean;
-  // Title page
+  // Title page ------------------------------------------------------------------------
   titlePage: boolean;
-  titleFont: ExportFont | 'Helvetica' | 'Times';
+  titleFont: ExportFont;
   titleSize: number;
   titleBold: boolean;
   titleUnderline: boolean;
   titleUppercase: boolean;
-  /** Vertical position of the title block, fraction of page height from the top. */
-  titlePosition: number;
+  /** Line (from the top of the page) where the title starts. */
+  titleLine: number;
   contactPosition: 'bottom-left' | 'bottom-right';
-  // Numbering & page furniture
+  // Page furniture ------------------------------------------------------------------
   pageNumbers: boolean;
   pageNumberFirstPage: boolean;
   pageNumberPosition: 'top-right' | 'bottom-center' | 'bottom-right';
-  pageNumberFormat: string; // e.g. "{n}."
-  sceneNumbers: 'off' | 'left' | 'right' | 'both';
-  /** Number scenes automatically when they have no #n# number. */
-  autoSceneNumbers: boolean;
+  pageNumberFormat: string;
   header: string;
   footer: string;
   draftDate: string;
   label: string;
   watermark: string;
-  // Content
+  // Content -----------------------------------------------------------------------------
   includeNotes: boolean;
   includeSections: boolean;
   includeSynopses: boolean;
 }
 
-/** Margins that give the classic 6-inch action line on each paper size. */
-export function paperMargins(paper: PaperSize) {
-  return paper === 'A4' ? { marginTop: 1, marginBottom: 1, marginLeft: 1.5, marginRight: 0.75 } : { marginTop: 1, marginBottom: 1, marginLeft: 1.5, marginRight: 1 };
+/** Lines per page that fill the paper with equal top and bottom margins. */
+export function paperLines(paper: PaperSize): number {
+  return paper === 'A4' ? 57 : 54;
 }
 
 export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettings {
   return {
     paper,
-    ...paperMargins(paper),
     font: 'Courier Prime',
     fontSize: 12,
-    linesPerInch: 6,
+    lineHeight: 12,
+    topMargin: 6,
+    linesPerPage: paperLines(paper),
+    leftMargin: 15,
+    actionWidth: 60,
+    characterIndent: 22,
+    dialogueIndent: 10,
+    dialogueWidth: 35,
+    parentheticalIndent: 16,
+    parentheticalWidth: 25,
+    transitionAlign: 'right',
+    transitionIndent: 45,
     elementSpacing: 1,
+    preserveBlankLines: false,
+    boldCues: false,
+    dualDialogue: 'side',
     headingSpacingBefore: 1,
     headingKeepLines: 2,
     boldHeadings: true,
     underlineHeadings: false,
-    characterIndent: 2.0,
-    dialogueIndent: 1.0,
-    dialogueWidth: 3.5,
-    parentheticalIndent: 1.5,
-    parentheticalWidth: 2.5,
-    actionWidth: 6.0,
+    sceneStartsNewPage: false,
+    sceneNumbers: 'off',
+    autoSceneNumbers: true,
+    sceneNumberFormat: '{n}',
     minLinesBeforeBreak: 2,
     minLinesAfterBreak: 2,
     splitDialogue: true,
     splitAction: true,
+    useMoreContd: true,
     moreLabel: '(MORE)',
     contdLabel: "(CONT'D)",
-    useMoreContd: true,
     contdAfterAction: false,
-    sceneStartsNewPage: false,
     titlePage: true,
     titleFont: 'Courier Prime',
     titleSize: 12,
     titleBold: false,
     titleUnderline: true,
     titleUppercase: true,
-    titlePosition: 0.36,
+    titleLine: 22,
     contactPosition: 'bottom-left',
     pageNumbers: true,
     pageNumberFirstPage: false,
     pageNumberPosition: 'top-right',
     pageNumberFormat: '{n}.',
-    sceneNumbers: 'off',
-    autoSceneNumbers: true,
     header: '',
     footer: '',
     draftDate: '',
@@ -288,6 +324,19 @@ export function defaultExportSettings(paper: PaperSize = 'Letter'): ExportSettin
     includeSections: false,
     includeSynopses: false,
   };
+}
+
+/** Stored settings over defaults; settings from older versions (inch-based) are ignored. */
+export function normalizeExportSettings(stored: Partial<ExportSettings> | undefined, paper: PaperSize): ExportSettings {
+  const d = defaultExportSettings((stored?.paper as PaperSize) ?? paper);
+  if (!stored) return d;
+  const out: any = { ...d };
+  for (const k of Object.keys(d) as Array<keyof ExportSettings>) {
+    const v = (stored as any)[k];
+    if (v !== undefined && typeof v === typeof (d as any)[k]) out[k] = v;
+  }
+  if (out.titleFont === 'Helvetica' || out.titleFont === 'Times') out.titleFont = 'Courier Prime';
+  return out as ExportSettings;
 }
 
 export interface ExportPreset {
@@ -300,7 +349,8 @@ export type ExportScope =
   | { kind: 'scenes'; sceneLines: number[] }
   | { kind: 'pages'; pages: string }
   | { kind: 'scenesNewPage' }
-  | { kind: 'character'; name: string };
+  | { kind: 'character'; name: string }
+  | { kind: 'dialogue'; name: string; action: boolean; headings: boolean };
 
 export interface PaperDims {
   width: number;
@@ -314,7 +364,7 @@ export function paperDims(p: PaperSize): PaperDims {
 // ---------------------------------------------------------------------------------------
 // App state (session restore)
 
-export type ViewName = 'script' | 'scene' | 'dialogue';
+export type ViewName = 'script' | 'scene' | 'dialogue' | 'source';
 
 export interface ProjectSession {
   view: ViewName;

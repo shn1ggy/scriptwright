@@ -41,6 +41,7 @@ export function createApi(b: Backend) {
       b.exportScenePdfs(text, s, folder, info),
     writeFile: (file: string, data: Uint8Array | string) => b.writeFile(file, typeof data === 'string' ? data : Buffer.from(data)),
     fontsAvailable: () => b.fontsAvailable(),
+    listFonts: () => b.listFonts(),
   };
 }
 

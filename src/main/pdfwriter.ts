@@ -37,6 +37,8 @@ export interface TtfInfo {
   /** Width (1/1000 em) for WinAnsi codes 32..255. */
   widths: number[];
   postscriptName: string;
+  /** OpenType with CFF outlines (embedded as FontFile3). */
+  cff: boolean;
 }
 
 export function parseTtf(data: Buffer): TtfInfo {
@@ -147,6 +149,7 @@ export function parseTtf(data: Buffer): TtfInfo {
     fixedPitch,
     widths,
     postscriptName,
+    cff: data.toString('latin1', 0, 4) === 'OTTO' || tables.has('CFF '),
   };
 }
 
@@ -161,7 +164,7 @@ interface PageData {
 }
 
 export class PdfDocument {
-  private fonts = new Map<string, FontRef>();
+  fonts = new Map<string, FontRef>();
   private pages: PageData[] = [];
   private current: PageData | null = null;
   /** Characters that could not be encoded (replaced with ?). */
@@ -175,6 +178,19 @@ export class PdfDocument {
   addPage(width: number, height: number) {
     this.current = { width, height, ops: [], fonts: new Set(), gs: false };
     this.pages.push(this.current);
+  }
+
+  /** Width of `text` in points (unencodable characters measure as "?"). */
+  measure(alias: string, text: string, size: number): number {
+    const ref = this.fonts.get(alias);
+    let units = 0;
+    for (const ch of text) {
+      let code = winAnsiCode(ch.codePointAt(0)!);
+      if (code < 0) code = 0x3f;
+      if (!ref || ref.kind === 'standard') units += STANDARD_WIDTHS[(ref as any)?.name]?.(code) ?? 600;
+      else units += ref.info.widths[code - 32] ?? 500;
+    }
+    return (units * size) / 1000;
   }
 
   get pageCount() {
@@ -256,16 +272,16 @@ export class PdfDocument {
       } else {
         const fi = ref.info;
         const fileN = alloc();
-        set(fileN, stream(`/Length1 ${fi.data.length}`, fi.data));
+        set(fileN, fi.cff ? stream('/Subtype /OpenType', fi.data) : stream(`/Length1 ${fi.data.length}`, fi.data));
         const descN = alloc();
         const flags = (fi.fixedPitch ? 1 : 0) | 32 | (fi.italicAngle !== 0 ? 64 : 0);
         set(
           descN,
-          `<< /Type /FontDescriptor /FontName /${fi.postscriptName} /Flags ${flags} /FontBBox [${fi.bbox.join(' ')}] /ItalicAngle ${fmt(fi.italicAngle)} /Ascent ${fi.ascent} /Descent ${fi.descent} /CapHeight ${fi.capHeight} /StemV 80 /FontFile2 ${fileN} 0 R >>`,
+          `<< /Type /FontDescriptor /FontName /${fi.postscriptName} /Flags ${flags} /FontBBox [${fi.bbox.join(' ')}] /ItalicAngle ${fmt(fi.italicAngle)} /Ascent ${fi.ascent} /Descent ${fi.descent} /CapHeight ${fi.capHeight} /StemV 80 /${fi.cff ? 'FontFile3' : 'FontFile2'} ${fileN} 0 R >>`,
         );
         set(
           n,
-          `<< /Type /Font /Subtype /TrueType /BaseFont /${fi.postscriptName} /FirstChar 32 /LastChar 255 /Widths [${fi.widths.join(' ')}] /Encoding /WinAnsiEncoding /FontDescriptor ${descN} 0 R >>`,
+          `<< /Type /Font /Subtype /${fi.cff ? 'Type1' : 'TrueType'} /BaseFont /${fi.postscriptName} /FirstChar 32 /LastChar 255 /Widths [${fi.widths.join(' ')}] /Encoding /WinAnsiEncoding /FontDescriptor ${descN} 0 R >>`,
         );
       }
     }
@@ -309,6 +325,9 @@ export class PdfDocument {
     return Buffer.concat(chunks);
   }
 }
+
+/** Built-in fonts used here are all Courier (fixed 600 units). */
+const STANDARD_WIDTHS: Record<string, (code: number) => number> = {};
 
 function pad(n: number) {
   return String(n).padStart(2, '0');

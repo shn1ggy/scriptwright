@@ -67,6 +67,12 @@ export class OutlinePane {
     );
   }
 
+  /** Re-renders even when the scenes did not change (display settings changed). */
+  refresh() {
+    this.lastSig = '';
+    this.render();
+  }
+
   focusSearch() {
     if (!this.app.state.layout.leftVisible) this.app.togglePane('left');
     this.search.focus();
@@ -148,6 +154,10 @@ export class OutlinePane {
           if (src) this.app.moveScene(src, it, after);
         });
       }
+      if (it.record?.color && this.app.settings.cards.tintOutline) {
+        row.classList.add('tinted');
+        row.style.setProperty('--scene', it.record.color);
+      }
       this.rows.set(it.id, row);
       this.list.append(row);
     }
@@ -169,7 +179,7 @@ export class OutlinePane {
   updateActive() {
     const active = this.app.view === 'scene' ? this.app.activeScene() ?? this.app.focusedItem() : this.app.activeScene();
     // In Script view the scene at the reading position gets a quieter marker.
-    const reading = this.app.view === 'script' && this.app.project ? this.app.sceneAt(this.app.editor.topVisibleLine()) : undefined;
+    const reading = this.app.isFullView() && this.app.project ? this.app.sceneAt(this.app.editor.topVisibleLine()) : undefined;
     for (const [id, row] of this.rows) {
       row.classList.toggle('reading', !!reading && reading.id === id && (!active || active.id !== id));
       const on = !!active && active.id === id;

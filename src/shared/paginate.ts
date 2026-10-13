@@ -71,6 +71,21 @@ export interface Capacity {
   dialogueChars: number;
   parentheticalChars: number;
   characterCol: number;
+  dialogueCol: number;
+  parentheticalCol: number;
+  /** Points per character and per line. */
+  charWidth: number;
+  lineHeight: number;
+  /** Left edge of the action column, top of the first text line, bottom of the text area (points). */
+  left: number;
+  top: number;
+  textBottom: number;
+  pageWidth: number;
+  pageHeight: number;
+  totalLines: number;
+  totalChars: number;
+  bottomMarginLines: number;
+  rightMarginChars: number;
 }
 
 export interface PaginationResult {
@@ -240,37 +255,59 @@ function sentenceEnds(text: string): number[] {
   return out;
 }
 
-export function capacity(s: ExportSettings): { cap: Capacity; warnings: string[] } {
+/**
+ * Page geometry in points from the settings (which are in lines and characters).
+ * `advanceEm` is the script font's character width (0.6 for Courier).
+ */
+export function capacity(s: ExportSettings, advanceEm = 0.6): { cap: Capacity; warnings: string[] } {
   const dims = paperDims(s.paper);
-  const charW = s.fontSize * 0.6;
-  const cellsPerInch = 72 / charW;
-  const printableIn = dims.width / 72 - s.marginLeft - s.marginRight;
+  const charW = s.fontSize * advanceEm;
+  const lineH = Math.max(4, s.lineHeight);
   const warnings: string[] = [];
-  const lpp = Math.floor((dims.height / 72 - s.marginTop - s.marginBottom) * s.linesPerInch + 1e-6);
-  if (lpp < 10) warnings.push(`Only ${lpp} lines fit on a page; check margins and line spacing.`);
+  const totalLines = Math.floor(dims.height / lineH + 1e-6);
+  const totalChars = Math.floor(dims.width / charW + 1e-6);
+  let lpp = Math.max(1, Math.round(s.linesPerPage));
+  const bottomLines = totalLines - s.topMargin - lpp;
+  if (bottomLines < 1) {
+    lpp = Math.max(1, totalLines - s.topMargin - 1);
+    warnings.push(`${s.linesPerPage} lines do not fit below a ${s.topMargin}-line top margin; ${lpp} lines are used.`);
+  } else if (bottomLines < 3) warnings.push(`Only ${bottomLines} line${bottomLines === 1 ? '' : 's'} remain below the text for page numbers and footers.`);
   const check = (name: string, indent: number, width: number) => {
-    const over = indent + width - printableIn;
-    if (over > 0.005) warnings.push(`${name} extends ${over.toFixed(2)} in past the right margin.`);
+    const right = totalChars - s.leftMargin - indent - width;
+    if (right < 0) warnings.push(`${name} extends ${-right} character${right === -1 ? '' : 's'} past the edge of the page.`);
+    else if (right < 4) warnings.push(`${name} leaves only ${right} character${right === 1 ? '' : 's'} of right margin.`);
   };
   check('Action', 0, s.actionWidth);
   check('Dialogue', s.dialogueIndent, s.dialogueWidth);
   check('Parenthetical', s.parentheticalIndent, s.parentheticalWidth);
   if (s.characterIndent >= s.actionWidth) warnings.push('Character indent is wider than the action width.');
   const cap: Capacity = {
-    linesPerPage: Math.max(1, lpp),
-    actionChars: Math.max(10, Math.floor(s.actionWidth * cellsPerInch + 1e-6)),
-    dialogueChars: Math.max(8, Math.floor(s.dialogueWidth * cellsPerInch + 1e-6)),
-    parentheticalChars: Math.max(6, Math.floor(s.parentheticalWidth * cellsPerInch + 1e-6)),
-    characterCol: Math.round(s.characterIndent * cellsPerInch),
+    linesPerPage: lpp,
+    actionChars: Math.max(10, Math.round(s.actionWidth)),
+    dialogueChars: Math.max(8, Math.round(s.dialogueWidth)),
+    parentheticalChars: Math.max(6, Math.round(s.parentheticalWidth)),
+    characterCol: Math.max(0, Math.round(s.characterIndent)),
+    dialogueCol: Math.max(0, Math.round(s.dialogueIndent)),
+    parentheticalCol: Math.max(0, Math.round(s.parentheticalIndent)),
+    charWidth: charW,
+    lineHeight: lineH,
+    left: s.leftMargin * charW,
+    top: s.topMargin * lineH,
+    textBottom: (s.topMargin + lpp) * lineH,
+    pageWidth: dims.width,
+    pageHeight: dims.height,
+    totalLines,
+    totalChars,
+    bottomMarginLines: totalLines - s.topMargin - lpp,
+    rightMarginChars: totalChars - s.leftMargin - s.actionWidth,
   };
   return { cap, warnings };
 }
 
-export function paginate(lines: string[], parse: ParseResult, s: ExportSettings, scope: ExportScope = { kind: 'all' }): PaginationResult {
-  const { cap, warnings } = capacity(s);
-  const cellsPerInch = 72 / (s.fontSize * 0.6);
-  const dialCol = Math.round(s.dialogueIndent * cellsPerInch);
-  const parCol = Math.round(s.parentheticalIndent * cellsPerInch);
+export function paginate(lines: string[], parse: ParseResult, s: ExportSettings, scope: ExportScope = { kind: 'all' }, advanceEm = 0.6): PaginationResult {
+  const { cap, warnings } = capacity(s, advanceEm);
+  const dialCol = cap.dialogueCol;
+  const parCol = cap.parentheticalCol;
   const units: Unit[] = [];
 
   // Which scenes are included
@@ -285,6 +322,24 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
     const name = scope.name.toUpperCase();
     for (const b of parse.blocks) if (b.cue === name && sceneOfLine[b.cueLine] >= 0) set.add(sceneOfLine[b.cueLine]);
     includeLine = (l) => set.has(sceneOfLine[l]);
+  } else if (scope.kind === 'dialogue') {
+    // Dialogue only: the blocks (of one character or all), optionally with scene headings
+    // and the action paragraph right before each block.
+    const keep = new Uint8Array(lines.length);
+    const name = scope.name.toUpperCase();
+    for (const b of parse.blocks) {
+      if (name && b.cue !== name) continue;
+      for (let k = b.cueLine; k < b.end; k++) keep[k] = 1;
+      if (scope.headings && sceneOfLine[b.cueLine] >= 0) keep[sceneOfLine[b.cueLine]] = 1;
+      if (scope.action) {
+        let j = b.cueLine - 1;
+        while (j >= 0 && parse.lines[j].type === 'blank') j--;
+        const end = j;
+        while (j >= 0 && parse.lines[j].type === 'action') j--;
+        for (let k = j + 1; k <= end; k++) keep[k] = 1;
+      }
+    }
+    includeLine = (l) => keep[l] === 1;
   }
   const newPageScenes = s.sceneStartsNewPage || scope.kind === 'scenesNewPage';
 
@@ -293,8 +348,8 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
   let auto = 0;
   for (const sc of parse.scenes) {
     auto++;
-    if (sc.sceneNumber) sceneNum.set(sc.line, sc.sceneNumber);
-    else if (s.autoSceneNumbers) sceneNum.set(sc.line, String(auto));
+    const n = sc.sceneNumber ?? (s.autoSceneNumbers ? String(auto) : null);
+    if (n) sceneNum.set(sc.line, (s.sceneNumberFormat || '{n}').replace('{n}', n));
   }
 
   const trimRaw = (st: { text: string; styles: number[] }, source: number): Raw => {
@@ -307,7 +362,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
   let blankRun = 0;
   let lastCue = null as { cue: string; scene: number; sawAction: boolean } | null;
   const pushUnit = (u: Unit) => {
-    if (blankRun > 1 && units.length) u.spaceBefore += blankRun - 1;
+    if (s.preserveBlankLines && blankRun > 1 && units.length) u.spaceBefore += blankRun - 1;
     units.push(u);
     blankRun = 0;
   };
@@ -373,7 +428,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
       let j = i + 1;
       while (j < lines.length && parse.lines[j].block === block && parse.lines[j].type !== 'character') j++;
       const left = buildDialogue(i, j, scene);
-      if (pl.dual === 'left') {
+      if (pl.dual === 'left' && s.dualDialogue === 'side') {
         let k = j;
         while (k < lines.length && parse.lines[k].type === 'blank') k++;
         if (k < lines.length && parse.lines[k].type === 'character' && parse.lines[k].dual === 'right' && includeLine(k)) {
@@ -393,7 +448,11 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
     if (t === 'transition') {
       const raw = trimRaw(styledText(lines[i], pl.flags), i);
       raw.text = raw.text.toUpperCase();
-      pushUnit(unit('other', [para('transition', [raw], cap.actionChars, 0, { align: 'right', alignWidth: cap.actionChars })], scene, i));
+      const tp =
+        s.transitionAlign === 'left'
+          ? para('transition', [raw], Math.max(8, cap.actionChars - s.transitionIndent), Math.min(s.transitionIndent, cap.actionChars - 8))
+          : para('transition', [raw], cap.actionChars, 0, { align: 'right', alignWidth: cap.actionChars });
+      pushUnit(unit('other', [tp], scene, i));
       i++;
       continue;
     }
@@ -454,7 +513,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
     }
     lastCue = { cue: pl.cue ?? '', scene, sawAction: false };
     const out: Para[] = [
-      para('character', [{ text: cueText, styles: new Array(cueText.length).fill(0), source: cueLine }], cap.actionChars - cap.characterCol, cap.characterCol),
+      para('character', [{ text: cueText, styles: new Array(cueText.length).fill(0), source: cueLine }], cap.actionChars - cap.characterCol, cap.characterCol, { extra: s.boldCues ? S_BOLD : 0 }),
     ];
     let k = cueLine + 1;
     while (k < end) {
@@ -704,7 +763,7 @@ export function paginate(lines: string[], parse: ParseResult, s: ExportSettings,
   }
 
   const out: Page[] = [];
-  if (s.titlePage && parse.titleEnd > 0 && scope.kind !== 'pages') out.push(buildTitlePage(lines, parse, s));
+  if (s.titlePage && parse.titleEnd > 0 && scope.kind !== 'pages') out.push(buildTitlePage(lines, parse, s, cap));
   out.push(...result);
   return { pages: out, capacity: cap, warnings, bodyPageCount: result.length };
 }
@@ -734,13 +793,12 @@ export function parsePageRanges(spec: string, max: number): Set<number> {
   return set;
 }
 
-function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings): Page {
+function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings, cap: Capacity): Page {
   const fields = titleFields(lines, parse);
-  const dims = paperDims(s.paper);
   const get = (...keys: string[]) => fields.filter((f) => keys.includes(f.key)).map((f) => strip(f.value));
   const items: TitleItem[] = [];
-  const lh = 72 / s.linesPerInch;
-  let y = dims.height * s.titlePosition;
+  const lh = cap.lineHeight;
+  let y = s.titleLine * lh;
   const titles = get('title');
   for (const t of titles) {
     for (const part of t.split('\n')) {
@@ -765,7 +823,7 @@ function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings):
   const titleDates = get('draft date', 'date');
   // The export draft date is used on the title page only when the title page has none.
   const other = [...(titleDates.length ? titleDates : s.draftDate ? [s.draftDate] : []), ...get('revision', 'copyright', 'notes')];
-  const bottom = dims.height - s.marginBottom * 72;
+  const bottom = cap.textBottom;
   const place = (vals: string[], align: 'left' | 'right') => {
     const linesOut = vals.flatMap((v) => v.split('\n'));
     let yy = bottom - (linesOut.length - 1) * lh;
