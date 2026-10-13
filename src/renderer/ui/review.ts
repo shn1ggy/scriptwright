@@ -25,11 +25,23 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
   // Comments ---------------------------------------------------------------------------
   const open = m.comments.filter((c) => !c.detached && !c.resolved);
   const resolved = m.comments.filter((c) => !c.detached && c.resolved);
-  const showRes = h('input', { type: 'checkbox', checked: ann.showResolved });
-  showRes.addEventListener('change', () => {
-    ann.showResolved = showRes.checked;
-    ann.refresh();
-  });
+  // Open and resolved comments are two views of the list. Resolving a comment keeps it
+  // (with its replies) but takes it out of the way; the Resolved view shows them again.
+  const seg = (label: string, on: boolean, run: () => void) => h('button', { class: `seg-btn${on ? ' on' : ''}`, 'aria-pressed': String(on), onclick: run }, label);
+  const switcher = h(
+    'span',
+    { class: 'seg', role: 'group', 'aria-label': 'Show comments' },
+    seg(`Open ${open.length}`, !ann.showResolved, () => {
+      ann.showResolved = false;
+      ann.refresh();
+      rerender();
+    }),
+    seg(`Resolved ${resolved.length}`, ann.showResolved, () => {
+      ann.showResolved = true;
+      ann.refresh();
+      rerender();
+    }),
+  );
   const secComments = h('div', { class: 'rv-section' });
   body.append(secComments);
   secComments.append(
@@ -37,13 +49,22 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
       'div',
       { class: 'rv-head' },
       h('span', { class: 'rv-swatch comment' }),
-      h('span', null, `Comments (${open.length})`),
+      h('span', null, 'Comments'),
       h('span', { class: 'spacer' }),
-      h('label', { class: 'rv-toggle' }, showRes, `Resolved (${resolved.length})`),
+      switcher,
     ),
   );
-  const comments = [...open, ...(ann.showResolved ? resolved : [])];
-  if (!comments.length) secComments.append(h('div', { class: 'notice' }, `Select text and choose Comment (${app.commands.label('edit.comment') || 'context menu'}) to add one.`));
+  const comments = ann.showResolved ? resolved : open;
+  if (!comments.length)
+    secComments.append(
+      h(
+        'div',
+        { class: 'notice' },
+        ann.showResolved
+          ? 'No resolved comments. Resolving a comment keeps it here, out of the way of the open ones.'
+          : `Select text and choose Comment (${app.commands.label('edit.comment') || 'context menu'}) to add one.`,
+      ),
+    );
   for (const c of comments) secComments.append(commentCard(app, c, rerender));
 
   // Alternatives -----------------------------------------------------------------------
@@ -153,7 +174,7 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
       }
     });
   });
-  const reply = h('input', { class: 'field sm', placeholder: 'Reply', 'aria-label': 'Reply' });
+  const reply = h('input', { class: 'field', placeholder: 'Reply', 'aria-label': 'Reply' });
   reply.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && reply.value.trim()) {
       c.replies.push({ id: uid(), text: reply.value.trim(), created: new Date().toISOString() });
@@ -179,6 +200,14 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
           app.markMetaDirty();
           ann.refresh();
           rerender();
+          if (c.resolved)
+            toast('Comment resolved. It is kept under Resolved.', {
+              actions: [{ label: 'Show resolved', run: () => {
+                ann.showResolved = true;
+                ann.refresh();
+                rerender();
+              } }],
+            });
         },
       }, c.resolved ? 'Reopen' : 'Resolve'),
       h('button', {

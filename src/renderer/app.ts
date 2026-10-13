@@ -17,7 +17,7 @@ import { RightPane } from './ui/rightpane';
 import { FindBar } from './ui/findbar';
 import { openPalette } from './ui/palette';
 import { openSettings } from './ui/settings';
-import { FontEntry, loadFonts, openExport, projectExportSettings } from './ui/export';
+import { ExportPreset, FontEntry, loadFonts, openExport, projectExportSettings } from './ui/export';
 import { paginate } from '../shared/paginate';
 import { openRename } from './ui/rename';
 import { compareDialog } from './ui/compare';
@@ -225,7 +225,6 @@ export class App {
       this.titleEl,
       this.subEl,
       h('span', { class: 'spacer' }),
-      tb('command', 'Commands & shortcuts', 'app.commands'),
       this.rightToggle,
     );
     const mkTab = (v: ViewName, label: string) => {
@@ -259,7 +258,14 @@ export class App {
     this.statusCount = h('span', { class: 'count' });
     this.statusScene = h('span');
     this.statusView = h('span');
-    const status = h('div', { class: 'statusbar' }, this.statusSave, this.statusCount, h('span', { class: 'spacer' }), this.statusView, this.statusScene);
+    // Scene view: previous/next scene live in the status bar, beside "Scene 4 of 38".
+    this.statusNav = h(
+      'span',
+      { class: 'status-nav hidden' },
+      iconButton('left', 'Previous scene', () => this.stepScene(-1)),
+      iconButton('right', 'Next scene', () => this.stepScene(1)),
+    );
+    const status = h('div', { class: 'statusbar' }, this.statusSave, this.statusCount, h('span', { class: 'spacer' }), this.statusView, this.statusScene, this.statusNav);
 
     this.root = h('div', { id: 'app' }, titlebar, viewbar, main, status);
     document.body.append(this.root);
@@ -448,7 +454,12 @@ export class App {
     const name = ws ? ws.split(/[\\/]/).filter(Boolean).pop() ?? ws : 'No workspace';
     const btn = h('button', { class: 'ws-switch', title: ws ? `Workspace: ${ws}\nSwitch or create workspaces` : 'Open or create a workspace' }, h('span', { class: 'ws-icon' }, icon('folder')), h('span', { class: 'ws-name' }, name), icon('chevronDown'));
     btn.addEventListener('click', () => this.workspaceMenu(btn));
-    this.workspaceBar.replaceChildren(btn, h('span', { class: 'spacer' }), iconButton('settings', `Settings (${this.commands.label('app.settings')})`, () => this.run('app.settings')));
+    this.workspaceBar.replaceChildren(
+      btn,
+      h('span', { class: 'spacer' }),
+      iconButton('command', `Commands & shortcuts (${this.commands.label('app.commands')})`, () => this.run('app.commands')),
+      iconButton('settings', `Settings (${this.commands.label('app.settings')})`, () => this.run('app.settings')),
+    );
   }
 
   async archiveProject(rel: string, archive: boolean) {
@@ -1220,6 +1231,12 @@ export class App {
   }, 350);
 
   private onSelectionChange() {
+    // A scene clicked in the list stays marked only until writing moves to another scene.
+    const act = this.activeScene();
+    if (act && act.id !== this.lastActiveSceneId) {
+      this.lastActiveSceneId = act.id;
+      if (this.sceneSel.size === 1 && !this.sceneSel.has(act.id)) this.setSceneSelection([], null);
+    }
     this.outline.updateActive();
     this.updateStatusScene();
     if (!selEmpty(this.editor.sel) || this.lastSelNonEmpty) {
@@ -1231,6 +1248,7 @@ export class App {
     this.saveStateSoon();
   }
   private lastSelNonEmpty = false;
+  private lastActiveSceneId: string | null = null;
 
   private onScroll() {
     if (this.isFullView()) {
@@ -1442,7 +1460,7 @@ export class App {
     let offset = !opts.quiet && this.editor.caretInView() ? this.editor.measureCaretOffset() : null;
     // Scene and Dialogue have a header row above the text: keep the caret at the same height
     // on screen by showing/hiding it now and correcting the measured offset.
-    const headH = (x: ViewName) => (x === 'scene' || x === 'dialogue' ? VIEW_HEAD_H : 0);
+    const headH = (x: ViewName) => (x === 'dialogue' ? VIEW_HEAD_H : 0);
     if (offset !== null) offset += headH(from) - headH(v);
     this.center.classList.toggle('has-view-head', headH(v) > 0);
     if (from === 'scene') this.storeSceneContext();
@@ -1831,7 +1849,7 @@ export class App {
   // ---------------------------------------------------------------------------------
   // Panels (Cards, Characters)
 
-  openPanel(p: PanelName) {
+  openPanel(p: PanelName, preset: ExportPreset = {}) {
     if (!this.project) return;
     if (this.panel === p) return;
     if (this.panel) this.closePanel(false);
@@ -1839,7 +1857,7 @@ export class App {
     if (p === 'export') {
       // Export covers both panes as well; it starts below the tab bar like every tab.
       this.flush();
-      this.exportHandle = openExport(this, this.mainEl);
+      this.exportHandle = openExport(this, this.mainEl, preset);
       if (!this.exportHandle) return;
     }
     this.panel = p;
@@ -2116,55 +2134,72 @@ export class App {
   }
 
   private viewHeadScene: HTMLElement | null = null;
+  private statusNav!: HTMLElement;
 
   updateViewControls() {
     const c = this.viewControls;
     c.textContent = '';
     this.viewHeadScene = null;
-    const show = !!this.project && !this.panel && (this.view === 'scene' || this.view === 'dialogue');
+    const showNav = !!this.project && !this.panel && this.view === 'scene';
+    this.statusNav.classList.toggle('hidden', !showNav);
+    if (showNav) {
+      const [prev, next] = Array.from(this.statusNav.children) as HTMLElement[];
+      prev.title = `Previous scene (${this.commands.label('scene.prev')})`;
+      next.title = `Next scene (${this.commands.label('scene.next')})`;
+    }
+    // Only Dialogue view has a header row (title, info and its options), like Cards and Characters.
+    const show = !!this.project && !this.panel && this.view === 'dialogue';
     c.classList.toggle('hidden', !show);
     this.center.classList.toggle('has-view-head', show);
     if (!show) return;
-    if (this.view === 'scene') {
-      this.viewHeadScene = h('span', { class: 'view-head-label' });
-      c.append(
-        iconButton('left', `Previous scene (${this.commands.label('scene.prev')})`, () => this.stepScene(-1)),
-        iconButton('right', `Next scene (${this.commands.label('scene.next')})`, () => this.stepScene(1)),
-        this.viewHeadScene,
-      );
-      this.updateViewHeadScene();
-    } else if (this.view === 'dialogue') {
-      const chars = characterList(this.editor.parsed);
-      const sel = h('select', { class: 'field sm', 'aria-label': 'Character', title: 'Character' }, h('option', { value: '' }, 'All characters'));
-      for (const ch of chars) sel.append(h('option', { value: ch.name }, characterLabel(ch)));
-      if (this.dialogueCharacter && !chars.some((c2) => c2.name === this.dialogueCharacter)) sel.append(h('option', { value: this.dialogueCharacter }, `${this.dialogueCharacter} (0 speeches)`));
-      sel.value = this.dialogueCharacter;
-      sel.addEventListener('change', () => {
-        this.dialogueCharacter = sel.value;
-        this.applyDialogueFilter(true);
-        this.editor.focus();
-        this.saveStateSoon();
-      });
-      const scope = h('select', { class: 'field sm', 'aria-label': 'Scope' }, h('option', { value: 'all' }, 'Whole screenplay'), h('option', { value: 'scene' }, 'Current scene'));
-      scope.value = this.dialogueScope;
-      scope.addEventListener('change', () => {
-        this.dialogueScope = scope.value as any;
-        this.dialogueSceneKey = this.activeScene()?.key ?? this.dialogueSceneKey;
-        this.applyDialogueFilter(true);
-        this.editor.focus();
-        this.saveStateSoon();
-      });
-      const action = h('input', { type: 'checkbox', checked: this.dialogueAction });
-      action.addEventListener('change', () => {
-        this.dialogueAction = action.checked;
-        this.applyDialogueFilter(false);
-        this.editor.focus();
-        this.saveStateSoon();
-      });
-      c.append(sel, scope, h('label', null, action, h('span', null, 'Nearby action')));
-      c.append(h('span', { class: 'spacer' }));
-      c.append(h('button', { class: 'btn sm', title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, 'Go to passage in Script'));
-    }
+    const chars = characterList(this.editor.parsed);
+    const total = chars.reduce((n, x) => n + x.cues, 0);
+    const who = chars.find((x) => x.name === this.dialogueCharacter);
+    const info = this.dialogueCharacter
+      ? `${who?.cues ?? 0} ${who?.cues === 1 ? 'speech' : 'speeches'}${this.dialogueScope === 'scene' ? ' in this scene' : ''}`
+      : `${chars.length} characters · ${total} speeches`;
+    const sel = h('select', { class: 'field', 'aria-label': 'Character', title: 'Character' }, h('option', { value: '' }, 'All characters'));
+    for (const ch of chars) sel.append(h('option', { value: ch.name }, characterLabel(ch)));
+    if (this.dialogueCharacter && !chars.some((c2) => c2.name === this.dialogueCharacter)) sel.append(h('option', { value: this.dialogueCharacter }, `${this.dialogueCharacter} (0 speeches)`));
+    sel.value = this.dialogueCharacter;
+    sel.addEventListener('change', () => {
+      this.dialogueCharacter = sel.value;
+      this.applyDialogueFilter(true);
+      this.updateViewControls();
+      this.editor.focus();
+      this.saveStateSoon();
+    });
+    const scope = h('select', { class: 'field', 'aria-label': 'Scope' }, h('option', { value: 'all' }, 'Whole screenplay'), h('option', { value: 'scene' }, 'Current scene'));
+    scope.value = this.dialogueScope;
+    scope.addEventListener('change', () => {
+      this.dialogueScope = scope.value as any;
+      this.dialogueSceneKey = this.activeScene()?.key ?? this.dialogueSceneKey;
+      this.applyDialogueFilter(true);
+      this.updateViewControls();
+      this.editor.focus();
+      this.saveStateSoon();
+    });
+    const action = h('input', { type: 'checkbox', checked: this.dialogueAction });
+    action.addEventListener('change', () => {
+      this.dialogueAction = action.checked;
+      this.applyDialogueFilter(false);
+      this.editor.focus();
+      this.saveStateSoon();
+    });
+    c.append(
+      h('span', { class: 'doc-title view-head-title' }, 'Dialogue'),
+      h('span', { class: 'dim view-head-info' }, info),
+      h('span', { class: 'spacer' }),
+      sel,
+      scope,
+      h('label', null, action, h('span', null, 'Nearby action')),
+      h('button', { class: 'btn', title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, 'Go to passage in Script'),
+      h('button', {
+        class: 'btn',
+        title: 'Export this dialogue as PDF',
+        onclick: () => this.openPanel('export', { dialogue: { character: this.dialogueCharacter, action: this.dialogueAction } }),
+      }, 'Export…'),
+    );
   }
 
   /** "Scene 4 of 38 · HEADING" in the Scene view header. */

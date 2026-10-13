@@ -50,15 +50,20 @@ function loadPdfjs(): Promise<any> {
  * inside `host` (below the tab bar, over the panes) and closed by the app when another tab
  * is chosen.
  */
-export function openExport(app: App, host: HTMLElement): { close(): void } | null {
+export interface ExportPreset {
+  /** Start with the dialogue of one character ('' = all characters). */
+  dialogue?: { character: string; action: boolean };
+}
+
+export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {}): { close(): void } | null {
   const p = app.project;
   if (!p) return null;
   const meta = p.meta;
   let s: ExportSettings = projectExportSettings(app);
   let fonts: FontEntry[] = [];
-  let dialogueAction = false;
+  let dialogueAction = preset.dialogue?.action ?? false;
   let dialogueHeadings = true;
-  let scopeKind: ScopeKind = 'all';
+  let scopeKind: ScopeKind = preset.dialogue ? 'dialogue' : 'all';
   // Version of this export (a copy is saved with every export) and the version to compare with.
   const stamp = new Date().toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   let versionName = '';
@@ -68,7 +73,7 @@ export function openExport(app: App, host: HTMLElement): { close(): void } | nul
   let revisionInfo = '';
   const selectedScenes = new Set<number>();
   let pages = '';
-  let character = '';
+  let character = preset.dialogue?.character ?? '';
   const prevFocus = document.activeElement as HTMLElement | null;
 
   const side = h('div', { class: 'scroll' });
@@ -101,8 +106,6 @@ export function openExport(app: App, host: HTMLElement): { close(): void } | nul
     h(
       'div',
       { class: 'export-head' },
-      h('span', { class: 'title' }, 'Export'),
-      h('span', { class: 'dim' }, p.name),
       h('span', { class: 'spacer' }),
       h('span', { class: 'dim', style: { fontSize: '12px' } }, 'Preset'),
       presetSel,

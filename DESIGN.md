@@ -18,23 +18,29 @@ file first, then the code.
 ## 2. Layout of the window
 
 ```
-┌ title bar 38 ─ ● ● ●  ▣  Project  file.fountain ················ 🔍 ⤓ ⌘ ⚙ ▣ ┐
-├ tab bar 36 ── Script  Scene  Cards  Dialogue  Characters  Source ─────────┤
-│ scene pane 280 │ view header 40 (Scene/Dialogue only)          │ notes 320 │
+┌ title bar 38 ─ ● ● ●  ▣  Project  file.fountain ························ ▣ ┐
+├ tab bar 40 ── Script  Scene  Cards  Dialogue  Characters  Source ··· Export ┤
+│ scene pane 280 │ view header 40 (Dialogue, Cards, Characters)  │ notes 320 │
 │ Projects  + …  │                                               │ tabs 40   │
 │  project       │            the page (Courier, centred)        │           │
 │ Scenes  + …    │                                               │           │
 │  search        │                                               │           │
 │  1 INT. …      │                                               │           │
 │ ─────────────  │                                               │           │
-│ workspace ⌄  ⚙ │                                               │           │
-├ status bar 26 ─────────────────────────────────────────────────────────────┤
+│ workspace ⌄ ⌘⚙ │                                               │           │
+├ status bar 26 ─ saved · counts ················· Scene 4 of 38  ‹ › (Scene) ┤
 ```
 
 - The **tab bar holds only tabs.** Options of a view live in that view's own header row.
 - **Export is a tab** at the far right of the tab bar. It covers both panes (their toggles rest)
   and starts below the tab bar like every other view.
-- The title bar holds only the pane toggles, the project name and the command window button.
+- The title bar holds only the pane toggles and the project name. Commands and Settings sit at
+  the bottom of the scene pane, next to the workspace switcher.
+- **Outer edge: 14 px.** Text and controls start 14 px from the window's left edge and end 14 px
+  from its right edge in every bar and pane (tab bar, panes, view headers, status bar).
+- View headers (Dialogue, Cards, Characters, Export) are 40 px: title, a short info, then the
+  view's controls; all controls in them are 30 px. Scene view has no header: previous/next
+  scene sit in the status bar.
 - **Scene pane:** minimum 220 px, default 280 px. **Notes pane:** minimum 310 px, default 320 px.
 - Text in the interface is not selectable; text a person writes is.
 
@@ -45,7 +51,7 @@ Everything sits on a **4 px grid**. Spacing steps: **4 · 8 · 12 · 16 · 20 ·
 | Element | Height | Inner padding |
 | --- | --- | --- |
 | Title bar | 38 | 10 sides (80 left of the macOS buttons) |
-| Tab bar | 36 | tabs 14 |
+| Tab bar | 40 | tabs 14 (14 to the window edges) |
 | View header (Scene, Dialogue) | 40 | 14 |
 | Section heading in a pane (Projects, Scenes) | 36 | 14 left |
 | List row (projects, scenes, results) | 28 | 14 sides, 10 gap |
@@ -88,6 +94,10 @@ Help text sits directly under its field (4 px), and the next row follows after 1
   page: menus, dialogs, the find bar, toasts.
 - Cards and boxes only where something is a separate object (a comment, a scene card). Plain
   lists stay plain.
+- **Checkboxes** are drawn by the app: 16 px, radius 4, accent fill with a check when on.
+- **Two-way choices** in a pane (Open / Resolved) are a segmented switch, not a checkbox.
+- A scene's colour shows as the colour of its number in the scene list (nothing that shifts the
+  heading); cards and the optional row tint use it more strongly.
 
 ## 7. Behaviour
 

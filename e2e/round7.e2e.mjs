@@ -25,9 +25,9 @@ await check('the tab bar holds only tabs; view options live in the view and neve
   assert((await page.locator('.characters .icon-btn[aria-label^="Back"], .characters .icon-btn[title^="Close"]').count()) === 0, 'close button in Characters');
   await page.keyboard.press('Control+2');
   await sleep(100);
-  assert(await page.isVisible('.view-head [aria-label^="Next scene"]'), 'scene navigation missing');
-  const label = await page.textContent('.view-head-label');
-  assert(/^Scene \d+ of \d+$/.test(label), label);
+  // Scene view has no header: previous/next sit in the status bar.
+  assert(await page.isHidden('.view-head'), 'header in Scene view');
+  assert(await page.isVisible('.statusbar .status-nav [aria-label="Next scene"]'), 'scene navigation missing');
   await page.keyboard.press('Control+1');
   assert(await page.isHidden('.view-head'), 'header in Script view');
 });

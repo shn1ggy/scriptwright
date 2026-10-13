@@ -158,8 +158,8 @@ export class OutlinePane {
       const row = h(
         'div',
         { class: `row${it.kind !== 'scene' ? ' title-row' : ''}`, role: 'option', title: this.tooltip(it), dataset: { id: it.id } },
-        h('span', { class: 'num' }, it.kind === 'scene' ? String(it.order) : ''),
-        it.record?.color ? h('span', { class: 'swatch', style: { background: it.record.color } }) : null,
+        // The scene colour shows as the colour of its number, so headings always line up.
+        h('span', { class: `num${it.record?.color ? ' colored' : ''}`, style: it.record?.color ? { color: it.record.color } : undefined }, it.kind === 'scene' ? String(it.order) : ''),
         h('span', { class: 'label' }, it.heading || '(empty heading)'),
         it.record?.status ? h('span', { class: 'meta' }, it.record.status === 'done' ? '✓' : it.record.status === 'revise' ? '!' : '·') : null,
         q ? h('span', { class: 'meta match-count', title: 'Matches in this scene' }, String(this.matchCount(it, q) || '')) : null,
@@ -247,7 +247,7 @@ export class OutlinePane {
   /** Marks selected rows (several when Cmd/Ctrl- or Shift-clicked). */
   applySelection() {
     for (const [id, row] of this.rows) {
-      const on = this.app.sceneSel.has(id) || (this.app.sceneSel.size === 0 && this.selectedId === id);
+      const on = this.app.sceneSel.has(id);
       row.classList.toggle('selected', on);
       row.classList.toggle('multi', on && this.app.sceneSel.size > 1);
       row.setAttribute('aria-selected', String(on));

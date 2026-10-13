@@ -15,7 +15,7 @@ export class ProjectsPane {
 
   constructor(private app: App) {
     this.chevron = h('span', { style: { display: 'inline-flex' } }, icon('chevronDown'));
-    this.collapser = h('button', { class: 'collapser', tabindex: '-1', onclick: () => this.toggle() }, this.chevron, 'Projects');
+    this.collapser = h('button', { class: 'collapser', tabindex: '-1', title: 'Show or hide the projects', onclick: () => this.toggle() }, 'Projects');
     this.list = h('div', { class: 'list', role: 'listbox', 'aria-label': 'Projects' });
     const more = iconButton('more', 'Project actions', (e) => this.moreMenu(e.currentTarget as HTMLElement));
     this.el = h(
@@ -29,7 +29,7 @@ export class ProjectsPane {
   setCollapsed(c: boolean) {
     this.collapsed = c;
     this.list.classList.toggle('hidden', c);
-    this.chevron.replaceChildren(icon(c ? 'chevronRight' : 'chevronDown'));
+    this.chevron.replaceChildren();
   }
 
   private toggle() {
@@ -117,8 +117,7 @@ export class ProjectsPane {
     if (archived.length) {
       const head = h(
         'button',
-        { class: 'row archive-head', tabindex: '-1', onclick: () => this.setArchiveOpen(!showArchive) },
-        h('span', { style: { display: 'inline-flex' } }, icon(showArchive ? 'chevronDown' : 'chevronRight')),
+        { class: `row archive-head${showArchive ? ' open' : ''}`, tabindex: '-1', title: showArchive ? 'Hide the archive' : 'Show the archived projects', onclick: () => this.setArchiveOpen(!showArchive) },
         h('span', { class: 'label' }, 'Archive'),
         h('span', { class: 'meta' }, String(archived.length)),
       );
