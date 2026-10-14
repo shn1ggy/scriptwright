@@ -71,6 +71,8 @@ export interface CardSettings {
   showLength: boolean;
   /** Tint outline rows with the scene color. */
   tintOutline: boolean;
+  /** Show acts and sequences as foldable groups in the scene list. */
+  actsInOutline: boolean;
 }
 
 export const DEFAULT_DARK: ThemeColors = {
@@ -119,7 +121,7 @@ export function defaultSettings(): Settings {
       pink: { color: '#E5534B', label: 'Red' },
     },
     exportPresets: [],
-    cards: { size: 'medium', colorStyle: 'tint', showSummary: true, showStatus: true, showCharacters: true, showLength: true, tintOutline: true },
+    cards: { size: 'medium', colorStyle: 'tint', showSummary: true, showStatus: true, showCharacters: true, showLength: true, tintOutline: true, actsInOutline: true },
   };
 }
 
@@ -185,6 +187,8 @@ export interface ProjectMeta {
   comments: CommentRecord[];
   passages: PassageRecord[];
   shelf: ShelfItem[];
+  /** Scenes taken out of the screenplay but kept, newest first. */
+  sceneArchive: ArchivedScene[];
   drafts: DraftInfo[];
   exports: ExportRecord[];
   /** Version last used for "Mark changes since" in the export. */
@@ -315,6 +319,7 @@ export function emptyMeta(id: string): ProjectMeta {
     comments: [],
     passages: [],
     shelf: [],
+    sceneArchive: [],
     drafts: [],
     exports: [],
   };
@@ -661,6 +666,10 @@ export interface LayoutState {
   previewBrightness?: number;
   /** Export settings groups that are open. */
   exportOpen?: string[];
+  /** Scene list: the archive group is open. */
+  sceneArchiveOpen?: boolean;
+  /** Scene list: acts and sequences folded closed (by level and title). */
+  outlineFolded?: string[];
   /** Review pane: groups that are folded closed. */
   reviewFolded?: string[];
   /** History: show only the scenes that differ. */
@@ -706,4 +715,24 @@ export interface StructureState {
   beats: Record<string, string>;
   /** Beats of the project's own model. */
   custom: Array<{ id: string; name: string; at: number; hint?: string }>;
+}
+
+export interface ArchivedScene {
+  /** The scene's id when it was archived. */
+  id: string;
+  heading: string;
+  /** Number shown for it at the time (1, 2 … or a locked 12A). */
+  number: string;
+  /** Its lines, heading first. */
+  lines: string[];
+  summary?: string;
+  status?: SceneStatus;
+  color?: string;
+  notes?: string;
+  archivedAt: string;
+  /** Scene it followed and scene that followed it (to put it back where it was). */
+  afterId?: string;
+  beforeId?: string;
+  /** It was the first scene of an act or sequence (goes back after that section line). */
+  opensSection?: boolean;
 }

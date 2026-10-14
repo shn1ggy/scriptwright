@@ -316,6 +316,10 @@ export class Timeline {
     this.head = h('div', { class: 'tl-head' });
     this.scroll = h('div', { class: 'tl-scroll', tabindex: '0', 'aria-label': 'Timeline' });
     this.scroll.addEventListener('keydown', (e) => this.onKey(e));
+    this.scroll.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest('.tl-scene, .tl-band, .tl-mark, .tl-beat, button, select') && this.app.sceneSel.size) this.app.setSceneSelection([], null);
+    });
     this.el = h('div', { class: 'timeline hidden' }, this.head, this.scroll);
     this.ro = new ResizeObserver(() => {
       const w = this.scroll.clientWidth;

@@ -43,6 +43,22 @@ export class History {
     this.sealed = false;
   }
 
+  /**
+   * Joins the last entry (a change around the text, from app.undoable) to the text change
+   * before it, so one undo reverts both.
+   */
+  joinLast() {
+    const n = this.done.length;
+    if (n < 2) return;
+    const meta = this.done[n - 1];
+    const text = this.done[n - 2];
+    if (!meta.custom || meta.steps.length || text.custom || !text.steps.length) return;
+    text.custom = meta.custom;
+    text.label = meta.label ?? text.label;
+    this.done.pop();
+    this.sealed = true;
+  }
+
   /** Prevents the next edit from merging into the previous one. */
   seal() {
     this.sealed = true;

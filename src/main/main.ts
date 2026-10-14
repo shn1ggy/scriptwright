@@ -14,6 +14,8 @@ interface MenuModelItem {
   enabled?: boolean;
 }
 interface MenuModel {
+  /** Stable name (File, Edit …); the label may be translated. */
+  key?: string;
   label: string;
   items: MenuModelItem[];
 }
@@ -26,6 +28,9 @@ let allowClose = false;
 let quitting = false;
 let normalBounds: Electron.Rectangle | null = null;
 let menuModel: MenuModel[] = [];
+/** Labels of the menu items the main process adds itself (translated by the renderer). */
+let menuLabels: Record<string, string> = {};
+const ML = (key: string, fallback: string) => menuLabels[key] ?? fallback;
 
 const windowFile = () => path.join(app.getPath('userData'), 'window.json');
 
@@ -174,52 +179,59 @@ function buildMenu() {
     template.push({
       label: app.name,
       submenu: [
-        { role: 'about' },
+        { label: ML('about', `About ${app.name}`).replace('{app}', app.name), role: 'about' },
         { type: 'separator' },
-        { label: 'Settings…', click: () => sendCommand('app.settings') },
+        { label: ML('settings', 'Settings…'), accelerator: 'Cmd+,', registerAccelerator: false, click: () => sendCommand('app.settings') },
         { type: 'separator' },
-        { role: 'services' },
+        { label: ML('services', 'Services'), role: 'services' },
         { type: 'separator' },
-        { label: `Hide ${app.name}`, click: () => app.hide() },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
+        { label: ML('hide', `Hide ${app.name}`).replace('{app}', app.name), click: () => app.hide() },
+        { label: ML('hideOthers', 'Hide Others'), role: 'hideOthers' },
+        { label: ML('showAll', 'Show All'), role: 'unhide' },
         { type: 'separator' },
-        { label: `Quit ${app.name}`, accelerator: 'Cmd+Q', registerAccelerator: false, click: () => sendCommand('app.quit') },
+        { label: ML('quit', `Quit ${app.name}`).replace('{app}', app.name), accelerator: 'Cmd+Q', registerAccelerator: false, click: () => sendCommand('app.quit') },
       ],
     });
   }
-  const model = menuModel.length ? menuModel : [{ label: 'File', items: [{ id: 'app.quit', label: 'Quit' }] }];
+  const model: MenuModel[] = menuModel.length ? menuModel : [{ key: 'File', label: 'File', items: [{ id: 'app.quit', label: 'Quit' }] }];
   // Standard edit items; the renderer's own Edit entries (find, replace, rename…) follow them
   // in the same menu, so there is only one Edit menu.
   const editBasics: MenuItemConstructorOptions[] = [
     // The renderer handles these keys itself (reliably on every system); the menu shows them.
-    { label: 'Undo', accelerator: 'CmdOrCtrl+Z', registerAccelerator: false, click: () => sendCommand('edit.undo') },
-    { label: 'Redo', accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', registerAccelerator: false, click: () => sendCommand('edit.redo') },
+    { label: ML('undo', 'Undo'), accelerator: 'CmdOrCtrl+Z', registerAccelerator: false, click: () => sendCommand('edit.undo') },
+    { label: ML('redo', 'Redo'), accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', registerAccelerator: false, click: () => sendCommand('edit.redo') },
     { type: 'separator' },
-    { role: 'cut' },
-    { role: 'copy' },
-    { role: 'paste' },
-    { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendCommand('edit.selectAll') },
+    { label: ML('cut', 'Cut'), role: 'cut' },
+    { label: ML('copy', 'Copy'), role: 'copy' },
+    { label: ML('paste', 'Paste'), role: 'paste' },
+    { label: ML('selectAll', 'Select All'), accelerator: 'CmdOrCtrl+A', click: () => sendCommand('edit.selectAll') },
   ];
-  const hasEdit = model.some((m) => m.label === 'Edit');
+  const keyOf = (m: MenuModel) => m.key ?? m.label;
+  const hasEdit = model.some((m) => keyOf(m) === 'Edit');
   for (const m of model) {
     const item = fromModel(m);
-    if (m.label === 'Edit') item.submenu = [...editBasics, { type: 'separator' }, ...(item.submenu as MenuItemConstructorOptions[])];
+    if (keyOf(m) === 'Edit') item.submenu = [...editBasics, { type: 'separator' }, ...(item.submenu as MenuItemConstructorOptions[])];
+    // Help is the last menu on every system: the Window menu goes before it.
+    if (keyOf(m) === 'Help') template.push(windowMenu());
     template.push(item);
-    if (m.label === 'File' && !hasEdit) template.push({ label: 'Edit', submenu: editBasics });
+    if (keyOf(m) === 'File' && !hasEdit) template.push({ label: ML('edit', 'Edit'), submenu: editBasics });
   }
-  // Custom Window menu: the standard one claims ⌘M, which is the minimal-view shortcut.
-  template.push({
-    label: 'Window',
-    submenu: [
-      { label: 'Minimize', click: () => win?.minimize() },
-      { label: 'Maximize / Restore', click: () => toggleMaximize() },
-      { type: 'separator' },
-      { label: 'Close Window', accelerator: 'CmdOrCtrl+W', click: () => win?.close() },
-      ...(isMac ? [{ type: 'separator' as const }, { role: 'front' as const }] : []),
-    ],
-  });
+  if (!model.some((m) => keyOf(m) === 'Help')) template.push(windowMenu());
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function windowMenu(): MenuItemConstructorOptions {
+  // Custom Window menu: the standard one claims ⌘M, which is the minimal-view shortcut.
+  return {
+    label: ML('window', 'Window'),
+    submenu: [
+      { label: ML('minimize', 'Minimize'), click: () => win?.minimize() },
+      { label: isMac ? ML('zoom', 'Zoom') : ML('maximize', 'Maximize / Restore'), click: () => toggleMaximize() },
+      { type: 'separator' },
+      { label: ML('closeWindow', 'Close Window'), accelerator: 'CmdOrCtrl+W', click: () => win?.close() },
+      ...(isMac ? [{ type: 'separator' as const }, { label: ML('front', 'Bring All to Front'), role: 'front' as const }] : []),
+    ],
+  };
 }
 
 function setup() {
@@ -313,8 +325,12 @@ function setup() {
       return;
     }
   });
-  ipcMain.handle('menu', (_e, model: MenuModel[]) => {
-    menuModel = model;
+  ipcMain.handle('menu', (_e, model: MenuModel[] | { menus: MenuModel[]; labels?: Record<string, string> }) => {
+    if (Array.isArray(model)) menuModel = model;
+    else {
+      menuModel = model.menus;
+      menuLabels = model.labels ?? {};
+    }
     buildMenu();
   });
 }

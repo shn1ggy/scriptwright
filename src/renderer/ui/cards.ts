@@ -38,6 +38,10 @@ export class SceneCards {
   constructor(private app: App) {
     this.grid = h('div', { class: 'cards-grid', tabindex: '0', role: 'listbox', 'aria-label': 'Scene cards' });
     this.grid.addEventListener('keydown', (e) => this.onKey(e));
+    // A click on the empty space between cards clears the selection.
+    this.grid.addEventListener('click', (e) => {
+      if (e.target === this.grid && this.app.sceneSel.size) this.app.setSceneSelection([], null);
+    });
     this.countEl = h('span', { class: 'dim' });
     this.timeline = new Timeline(app, {
       cursor: () => this.selected,
@@ -363,6 +367,7 @@ export class SceneCards {
         { label: mark(o.showLength, 'Length in pages'), run: () => set({ showLength: !o.showLength }) },
         { sep: true },
         { label: mark(o.tintOutline, 'Tint scene rows in the outline'), run: () => set({ tintOutline: !o.tintOutline }) },
+        { label: mark(o.actsInOutline, 'Acts and sequences in the scene list'), run: () => set({ actsInOutline: !o.actsInOutline }) },
       ],
       anchor.getBoundingClientRect(),
     );
@@ -449,6 +454,7 @@ export class SceneCards {
         this.app.showRightTab('scene');
         this.app.rightPane.focusSummary();
       } },
+      { label: 'Move to Archive', run: () => this.app.archiveScenes([it]) },
       { sep: true },
       { head: 'Status' },
       ...Object.entries(STATUS_LABELS).map(([k, label]) => ({ label: (rec?.status ?? '') === k ? `✓ ${label}` : `   ${label}`, run: () => this.app.updateSceneRecord(it, { status: k as SceneStatus }) })),

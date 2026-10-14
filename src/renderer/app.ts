@@ -8,7 +8,7 @@ import { alertDialog, choiceDialog, confirmDialog, handleEscape, openDialog, ope
 import { applyHighlightColors, applyTheme } from './theme';
 import { Line, Pos, Selection, Step, cursor, joinLines, makeLines, selEmpty, selFrom, selTo, newKey } from '../shared/doc';
 import { ParseResult, characterLabel, characterList, cleanText, countWords, sceneIndexAt, titlePageTemplate } from '../shared/fountain';
-import { AppState, ProjectMeta, ProjectSession, SceneRecord, Settings, ViewName, defaultAppState, defaultSettings } from '../shared/types';
+import { AppState, ArchivedScene, ProjectMeta, ProjectSession, SceneRecord, Settings, ViewName, defaultAppState, defaultSettings } from '../shared/types';
 import { detach, fingerprint, hasInfo, reconcile } from '../shared/scenes';
 import type { ProjectEntry, ExternalEvent } from '../main/backend';
 import { OutlinePane } from './ui/outline';
@@ -33,6 +33,7 @@ import { saveDraft } from './ui/drafts';
 import { HistoryHandle, openHistory } from './ui/history';
 import { exportFinalDraft, openFountainExport, openSceneNumbers } from './ui/fountaintools';
 import { keyIndex } from '../shared/anchors';
+import { sectionsOf } from '../shared/structure';
 import { CommentRecord, HighlightColor, PassageRecord } from '../shared/types';
 
 export interface SceneItem {
@@ -973,7 +974,7 @@ export class App {
 
   private metaSnapshot() {
     const m = this.project!.meta;
-    const json = JSON.stringify({ highlights: m.highlights, comments: m.comments, passages: m.passages, shelf: m.shelf, scenes: m.scenes, detached: m.detached, structure: m.structure ?? null });
+    const json = JSON.stringify({ highlights: m.highlights, comments: m.comments, passages: m.passages, shelf: m.shelf, sceneArchive: m.sceneArchive, scenes: m.scenes, detached: m.detached, structure: m.structure ?? null });
     const anchors = new Map<string, any>();
     for (const [id, an] of this.annotations.live) anchors.set(id, { a: { ...an.a }, b: { ...an.b } });
     return { json, anchors, live: JSON.stringify([...anchors]) };
@@ -2316,6 +2317,135 @@ export class App {
     ];
   }
 
+  // ---------------------------------------------------------------------------------
+  // Scene archive: scenes taken out of the screenplay but kept (text and details)
+
+  /** Moves scenes out of the screenplay into the project's archive (one undo step). */
+  archiveScenes(items: SceneItem[]) {
+    const p = this.project;
+    const arch = items.filter((s) => s.kind === 'scene').sort((a, b) => a.line - b.line);
+    if (!p || !arch.length) return;
+    const order = this.scenes.filter((s) => s.kind === 'scene');
+    const ids = new Set(arch.map((a) => a.id));
+    const L = this.editor.lines;
+    const secs = sectionsOf(this.editor.parsed, this.editor.lineTexts);
+    const now = new Date().toISOString();
+    const entries: ArchivedScene[] = arch.map((it) => {
+      const i = order.findIndex((s) => s.id === it.id);
+      let prev: SceneItem | undefined;
+      for (let k = i - 1; k >= 0; k--) if (!ids.has(order[k].id)) { prev = order[k]; break; }
+      let next: SceneItem | undefined;
+      for (let k = i + 1; k < order.length; k++) if (!ids.has(order[k].id)) { next = order[k]; break; }
+      const opensSection = secs.some((x) => x.firstScene === i);
+      const lines = L.slice(it.line, Math.max(it.end, it.line + 1)).map((l) => l.text);
+      while (lines.length > 1 && lines[lines.length - 1].trim() === '') lines.pop();
+      const r = it.record;
+      return { id: it.id, heading: it.heading, number: it.number, lines, summary: r?.summary, status: r?.status, color: r?.color, notes: r?.notes, archivedAt: now, afterId: prev?.id, beforeId: next?.id, opensSection };
+    });
+    const wasFocused = this.view === 'scene' && this.focus?.kind === 'scene' && arch.some((a) => a.key === (this.focus as any).key);
+    this.editor.history.seal();
+    this.editor.edit((tx) => {
+      for (const it of [...arch].reverse()) {
+        const start = tx.lines.findIndex((l) => l.key === it.key);
+        if (start < 0) continue;
+        tx.removeLines(start, it.end - it.line);
+        const keep = this.omittedLines(it);
+        if (keep) tx.insertLines(start, keep);
+      }
+      if (tx.lines.length === 0) tx.insertLines(0, [{ key: newKey(), text: '' }]);
+      return cursor({ line: Math.min(arch[0].line, tx.lines.length - 1), ch: 0 });
+    });
+    this.undoable(() => {
+      p.meta.sceneArchive = [...entries.reverse(), ...(p.meta.sceneArchive ?? [])];
+      this.markMetaDirty();
+    }, arch.length === 1 ? 'Archive Scene' : 'Archive Scenes');
+    this.editor.history.joinLast();
+    this.setSceneSelection([], null);
+    this.refreshDerived(true);
+    if (wasFocused) {
+      const f = this.activeScene();
+      if (f) this.enterScene(f);
+    }
+    this.outline.refresh();
+    toast(arch.length === 1 ? `“${arch[0].heading}” moved to the scene archive.` : `${arch.length} scenes moved to the scene archive.`, { actions: [{ label: 'Undo', run: () => this.run('edit.undo') }] });
+  }
+
+  /**
+   * Puts an archived scene back: where it was (after the scene it followed, or in place of its
+   * omitted number when scene numbers are locked), or after the current scene.
+   */
+  restoreArchivedScene(id: string, where: 'original' | 'current' = 'original') {
+    const p = this.project;
+    const entry = p?.meta.sceneArchive?.find((x) => x.id === id);
+    if (!p || !entry) return;
+    const order = this.scenes.filter((s) => s.kind === 'scene');
+    const lines = entry.lines.map((text) => ({ key: newKey(), text }));
+    lines.push({ key: newKey(), text: '' });
+    const headKey = lines[0].key;
+    // With locked numbers, the omitted placeholder for its number is replaced.
+    const numMatch = /#([^#]+)#\s*$/.exec(entry.lines[0] ?? '');
+    const omitted = numMatch ? order.find((s) => isOmittedHeading(this.editor.lines[s.line].text) && s.sceneNumber === numMatch[1]) : undefined;
+    let target: SceneItem | undefined;
+    // The first scene of an act goes back in front of the scene that followed it (after the
+    // act line); any other scene after the one it followed.
+    const before = where === 'original' && (entry.opensSection || !entry.afterId) && entry.beforeId ? order.find((s) => s.id === entry.beforeId) : undefined;
+    if (where === 'current') target = this.activeScene()?.kind === 'scene' ? this.activeScene() : order[order.length - 1];
+    else if (!before) target = entry.afterId ? order.find((s) => s.id === entry.afterId) : undefined;
+    this.editor.history.seal();
+    this.editor.edit((tx) => {
+      const T = tx.lines;
+      let at: number;
+      if (where === 'original' && omitted) {
+        at = T.findIndex((l) => l.key === omitted.key);
+        tx.removeLines(at, omitted.end - omitted.line);
+      } else if (before) {
+        at = T.findIndex((l) => l.key === before.key);
+      } else if (target) {
+        const t = T.findIndex((l) => l.key === target!.key);
+        at = t + (target.end - target.line);
+      } else {
+        // It was the first scene: before the first one now (after the title page and opening).
+        const first = order[0];
+        at = first ? T.findIndex((l) => l.key === first.key) : T.length;
+      }
+      at = Math.max(0, Math.min(T.length, at));
+      const ins = [...lines];
+      if (at > 0 && T[at - 1].text.trim() !== '') ins.unshift({ key: newKey(), text: '' });
+      tx.insertLines(at, ins);
+      const hl = T.findIndex((l) => l.key === headKey);
+      return cursor({ line: hl, ch: 0 });
+    });
+    this.refreshDerived(true);
+    const item = this.scenes.find((s) => s.key === headKey);
+    this.undoable(() => {
+      p.meta.sceneArchive = p.meta.sceneArchive.filter((x) => x.id !== id);
+      if (item) {
+        const r = this.sceneRecord(item);
+        if (r) Object.assign(r, { summary: entry.summary, status: entry.status, color: entry.color, notes: entry.notes });
+      }
+      this.markMetaDirty();
+    }, 'Restore Scene');
+    this.editor.history.joinLast();
+    this.updateScenes();
+    this.outline.refresh();
+    this.cards.render();
+    if (item) this.goToScene(item);
+    toast(`“${entry.heading}” is back in the screenplay.`, { actions: [{ label: 'Undo', run: () => this.run('edit.undo') }] });
+  }
+
+  async deleteArchivedScene(id: string) {
+    const p = this.project;
+    const entry = p?.meta.sceneArchive?.find((x) => x.id === id);
+    if (!p || !entry) return;
+    if (!(await confirmDialog('Delete archived scene', `Delete “${entry.heading}” from the archive? You can undo this.`, 'Delete', { danger: true }))) return;
+    this.undoable(() => {
+      p.meta.sceneArchive = p.meta.sceneArchive.filter((x) => x.id !== id);
+      this.markMetaDirty();
+    }, 'Delete Archived Scene');
+    this.outline.refresh();
+    toast('Archived scene deleted.', { actions: [{ label: 'Undo', run: () => this.run('edit.undo') }] });
+  }
+
   async deleteScenes(items: SceneItem[]) {
     const del = items.filter((s) => s.kind === 'scene');
     if (del.length <= 1) return del[0] && this.deleteScene(del[0]);
@@ -2699,7 +2829,7 @@ export class App {
       C.register({ id, title, category, keys, run, ...extra });
 
     reg('app.commands', 'Commands & Shortcuts…', 'App', ['Mod+K'], () => openPalette(this), { inFields: true, menu: 'Help' });
-    reg('app.settings', 'Settings…', 'App', ['Mod+P'], () => openSettings(this), { inFields: true, menu: isMac ? undefined : 'File' });
+    reg('app.settings', 'Settings…', 'App', ['Mod+P', 'Mod+,'], () => openSettings(this), { inFields: true, menu: isMac ? undefined : 'File' });
     reg('app.quit', 'Quit', 'App', ['Mod+Q'], () => this.quit(), { inFields: true, menu: isMac ? undefined : 'File' });
     reg('file.save', 'Save', 'File', ['Mod+S'], async () => {
       await this.flush();
@@ -2750,6 +2880,10 @@ export class App {
     reg('scene.duplicate', 'Duplicate Scene', 'Scenes', [], () => {
       const a = this.activeScene();
       if (a) this.duplicateScene(a);
+    }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
+    reg('scene.archive', 'Move Scene to Archive', 'Scenes', [], () => {
+      const a = this.activeScene();
+      if (a) this.archiveScenes(this.sceneSel.has(a.id) ? this.scenesFor(a) : [a]);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
     reg('scene.delete', 'Remove Scene…', 'Scenes', [], () => {
       const a = this.activeScene();
@@ -3107,17 +3241,60 @@ export class App {
 
   updateMenu() {
     if (!bridge.setMenu) return;
-    const groups = ['File', 'Edit', 'View', 'Scene', 'Help'];
-    const model = groups.map((g) => ({
-      label: g,
-      items: this.commands
-        .all()
-        .filter((c) => c.menu === g)
-        .map((c) => {
-          const k = this.commands.keysFor(c.id)[0];
-          return { id: c.id, label: c.title, accelerator: k ? toAccelerator(k) : undefined };
-        }),
-    }));
+    // The application menus, grouped: a separator goes between groups. Commands not placed
+    // here but marked for a menu are added at the end of it, so nothing goes missing.
+    const layout: Array<[string, string[][]]> = [
+      ['File', [
+        ['project.new', 'workspace.create', 'project.openWorkspace'],
+        ['file.save', 'draft.save'],
+        ['file.export', 'project.exportFountain', 'project.exportFdx'],
+        ['project.importFountain', 'project.importBackup', 'project.backup'],
+        ['project.rename', 'project.reveal', 'project.close'],
+        ['app.settings'],
+        ['app.quit'],
+      ]],
+      ['Edit', [
+        ['search.script', 'search.replace', 'search.scenes'],
+        ['edit.comment', 'edit.highlight', 'edit.rewrite'],
+        ['shelf.cut', 'shelf.copy'],
+        ['character.rename', 'title.addFields'],
+      ]],
+      ['View', [
+        ['view.script', 'view.scene', 'view.cards', 'view.dialogue', 'view.characters'],
+        ['view.source', 'view.history', 'view.titlePage', 'view.toggleScriptScene'],
+        ['project.notes', 'scene.notes', 'project.review', 'project.shelf'],
+        ['view.leftPane', 'view.rightPane', 'view.minimal'],
+        ['view.zoomIn', 'view.zoomOut'],
+      ]],
+      ['Scene', [
+        ['scene.prev', 'scene.next', 'dialogue.goToPassage'],
+        ['scene.new', 'scene.duplicate', 'scene.moveUp', 'scene.moveDown'],
+        ['scene.archive', 'scene.delete'],
+        ['scene.lockNumbers', 'scene.unlockNumbers', 'scene.writtenNumbers'],
+      ]],
+      ['Help', [['app.commands']]],
+    ];
+    // Shown elsewhere: the Window menu has Maximize; History has its tab in View.
+    const skip = new Set(['view.toggleMaximize', 'project.history']);
+    const all = this.commands.all();
+    const item = (id: string) => {
+      const c = all.find((x) => x.id === id);
+      if (!c || !c.menu) return null;
+      const k = this.commands.keysFor(c.id)[0];
+      return { id: c.id, label: c.title, accelerator: k ? toAccelerator(k) : undefined };
+    };
+    const model = layout.map(([menu, groups]) => {
+      const placed = new Set(groups.flat());
+      const rest = all.filter((c) => c.menu === menu && !placed.has(c.id) && !skip.has(c.id)).map((c) => c.id);
+      const items: Array<{ id?: string; label?: string; accelerator?: string; type?: 'separator' }> = [];
+      for (const g of rest.length ? [...groups, rest] : groups) {
+        const list = g.map(item).filter(Boolean) as Array<{ id: string; label: string; accelerator?: string }>;
+        if (!list.length) continue;
+        if (items.length) items.push({ type: 'separator' });
+        items.push(...list);
+      }
+      return { key: menu, label: menu, items };
+    });
     // Rebuilding the native menu is not free (macOS logs warnings): only when it changed.
     const sig = JSON.stringify(model);
     if (sig === this.menuSig) return;

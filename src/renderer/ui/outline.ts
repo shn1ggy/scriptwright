@@ -1,7 +1,9 @@
 // Scene outline: compact single-line rows with order numbers, search, keyboard
 // navigation, drag-and-drop and keyboard reordering.
 
-import { sceneStructureMenu } from './structure';
+import { sceneStructureMenu, sectionMenu, sections } from './structure';
+import { archivedSceneMenu, openArchivedScene } from './scenearchive';
+import type { StorySection } from '../../shared/structure';
 import type { App, SceneItem } from '../app';
 import { h, icon, iconButton, withClear } from './dom';
 import { MenuItem, openMenu } from './overlay';
@@ -29,6 +31,8 @@ export class OutlinePane {
   private selectedId: string | null = null;
   private lastSig = '';
   private dragId: string | null = null;
+  /** Act and sequence rows with the scenes they hold (for marking a folded one as current). */
+  private actRows: Array<{ row: HTMLElement; first: number; end: number }> = [];
 
   constructor(private app: App) {
     this.search = h('input', { class: 'field', placeholder: 'Search scenes (text, names, notes)', 'aria-label': 'Search scenes', spellcheck: 'false' });
@@ -85,6 +89,12 @@ export class OutlinePane {
           this.list.focus();
         } },
         { sep: true },
+        { label: `${this.app.settings.cards.actsInOutline ? '✓' : '  '} Show Acts and Sequences`, run: () => {
+          this.app.settings.cards.actsInOutline = !this.app.settings.cards.actsInOutline;
+          this.app.saveSettings();
+          this.refresh();
+        } },
+        { sep: true },
         this.app.numbersLocked ? cmd('scene.unlockNumbers', 'Unlock Scene Numbers…') : cmd('scene.lockNumbers', 'Lock Scene Numbers'),
         cmd('scene.writtenNumbers', 'Scene Numbers in Fountain Text…'),
       ],
@@ -132,17 +142,51 @@ export class OutlinePane {
    */
   private visibleItems(): SceneItem[] {
     const q = this.search.value.trim().toLowerCase();
-    if (!q) return this.app.scenes;
+    if (!q) {
+      const hidden = this.foldedScenes();
+      return hidden.size ? this.app.scenes.filter((s) => !hidden.has(s.id)) : this.app.scenes;
+    }
     return this.app.scenes.filter((s) => {
       const meta = `${s.number || ''} ${s.sceneNumber ?? ''}`.toLowerCase();
       return meta.split(' ').includes(q) || this.matchCount(s, q) > 0;
     });
   }
 
+  private actsShown(): boolean {
+    return !!this.app.project && this.app.settings.cards.actsInOutline && !this.search.value.trim();
+  }
+
+  private foldKey(sec: StorySection): string {
+    return `${sec.level}:${sec.title}`;
+  }
+
+  /** Scenes inside a folded act or sequence (not listed while it is folded). */
+  private foldedScenes(): Set<string> {
+    const out = new Set<string>();
+    if (!this.actsShown()) return out;
+    const folded = new Set(this.app.state.layout.outlineFolded ?? []);
+    if (!folded.size) return out;
+    const scenes = this.app.scenes.filter((s) => s.kind === 'scene');
+    for (const sec of sections(this.app)) if (folded.has(this.foldKey(sec))) for (const s of scenes.slice(sec.firstScene, sec.endScene)) out.add(s.id);
+    return out;
+  }
+
+  private toggleFold(sec: StorySection) {
+    const l = this.app.state.layout;
+    const f = new Set(l.outlineFolded ?? []);
+    const k = this.foldKey(sec);
+    if (f.has(k)) f.delete(k);
+    else f.add(k);
+    l.outlineFolded = [...f];
+    this.app.saveStateSoon();
+    this.refresh();
+  }
+
   render() {
     const items = this.visibleItems();
+    const secs = this.actsShown() ? sections(this.app) : [];
     const q = this.search.value.trim().toLowerCase();
-    const sig = (q ? `${q}|${this.app.editor.version}|` : '') + items.map((s) => `${s.id}|${s.number}|${s.heading}|${s.record?.color ?? ''}|${s.record?.status ?? ''}|${s.record?.summary ?? ''}`).join('\n');
+    const sig = (q ? `${q}|${this.app.editor.version}|` : '') + JSON.stringify((this.app.project?.meta.sceneArchive ?? []).map((a) => a.id)) + (this.app.state.layout.sceneArchiveOpen ? 'A' : '') + secs.map((x) => `${x.level}${x.title}${x.firstScene}-${x.endScene}`).join(',') + JSON.stringify(this.app.state.layout.outlineFolded ?? []) + items.map((s) => `${s.id}|${s.number}|${s.heading}|${s.record?.color ?? ''}|${s.record?.status ?? ''}|${s.record?.summary ?? ''}`).join('\n');
     const total = this.app.scenes.filter((s) => s.kind === 'scene').length;
     this.countEl.textContent = this.app.project ? String(total) : '';
     this.lockEl.classList.toggle('hidden', !this.app.project || !this.app.numbersLocked);
@@ -158,7 +202,37 @@ export class OutlinePane {
     if (!items.length) {
       this.list.append(h('div', { class: 'empty-note' }, this.search.value ? 'No scene contains this text' : 'No scenes yet. Write a heading such as INT. HOUSE - DAY, or use New Scene.'));
     }
+    const sceneIdx = new Map(this.app.scenes.filter((s) => s.kind === 'scene').map((s, i) => [s.id, i]));
+    const folded = new Set(this.app.state.layout.outlineFolded ?? []);
+    const headed = new Set<StorySection>();
+    this.actRows = [];
+    // Headers of every act or sequence that starts at or before scene k and is not shown yet.
+    const groupRows = (k: number) => {
+      for (const sec of secs) {
+        if (sec.firstScene > k || headed.has(sec)) continue;
+        // Inside a folded act its sequences are hidden too.
+        if (secs.some((o) => o !== sec && o.level < sec.level && folded.has(this.foldKey(o)) && o.firstScene <= sec.firstScene && sec.firstScene < o.endScene)) continue;
+        headed.add(sec);
+        const isOpen = !folded.has(this.foldKey(sec));
+        const n = sec.endScene - sec.firstScene;
+        const head = h(
+          'div',
+          { class: `row act-row lvl-${Math.min(2, sec.level)}`, role: 'button', 'aria-expanded': String(isOpen), title: `${sec.title} · ${n} scene${n === 1 ? '' : 's'}`, dataset: { act: this.foldKey(sec) } },
+          h('span', { class: 'label' }, sec.title),
+          h('span', { class: 'meta' }, String(n)),
+          h('span', { class: 'collapse-mark' }, icon(isOpen ? 'chevronDown' : 'chevronRight')),
+        );
+        if (!isOpen) this.actRows.push({ row: head, first: sec.firstScene, end: sec.endScene });
+        head.addEventListener('click', () => this.toggleFold(sec));
+        head.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          openMenu(sectionMenu(this.app, sec), { x: e.clientX, y: e.clientY });
+        });
+        this.list.append(head);
+      }
+    };
     for (const it of items) {
+      if (secs.length && it.kind === 'scene') groupRows(sceneIdx.get(it.id) ?? -1);
       const row = h(
         'div',
         { class: `row${it.kind !== 'scene' ? ' title-row' : ''}`, role: 'option', title: this.tooltip(it), dataset: { id: it.id } },
@@ -218,8 +292,46 @@ export class OutlinePane {
       this.rows.set(it.id, row);
       this.list.append(row);
     }
+    if (secs.length) groupRows(sceneIdx.size);
+    if (!q) this.renderArchive();
     this.list.scrollTop = scroll;
     this.updateActive();
+  }
+
+  /** Archived scenes: a foldable group at the end of the list, like the projects archive. */
+  private renderArchive() {
+    const arch = this.app.project?.meta.sceneArchive ?? [];
+    if (!arch.length) return;
+    const l = this.app.state.layout;
+    const open = !!l.sceneArchiveOpen;
+    const head = h(
+      'div',
+      { class: 'row archive-head act-row', role: 'button', 'aria-expanded': String(open), title: 'Scenes taken out of the screenplay but kept' },
+      h('span', { class: 'label' }, 'Archive'),
+      h('span', { class: 'meta' }, String(arch.length)),
+      h('span', { class: 'collapse-mark' }, icon(open ? 'chevronDown' : 'chevronRight')),
+    );
+    head.addEventListener('click', () => {
+      l.sceneArchiveOpen = !open;
+      this.app.saveStateSoon();
+      this.refresh();
+    });
+    this.list.append(head);
+    if (!open) return;
+    for (const a of arch) {
+      const row = h(
+        'div',
+        { class: 'row archived', role: 'option', title: `${a.heading}${a.summary ? '\n' + a.summary : ''}\nArchived ${new Date(a.archivedAt).toLocaleDateString()}` },
+        h('span', { class: 'num', style: a.color ? { color: a.color } : undefined }, a.number),
+        h('span', { class: 'label' }, a.heading || '(empty heading)'),
+      );
+      row.addEventListener('click', () => void openArchivedScene(this.app, a.id));
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openMenu(archivedSceneMenu(this.app, a.id), { x: e.clientX, y: e.clientY });
+      });
+      this.list.append(row);
+    }
   }
 
   private tooltip(it: SceneItem): string {
@@ -245,6 +357,9 @@ export class OutlinePane {
         if (on && document.activeElement !== this.list) row.scrollIntoView({ block: 'nearest' });
       }
     }
+    // A folded act holding the current scene is marked instead.
+    const idx = active?.kind === 'scene' ? this.app.scenes.filter((s) => s.kind === 'scene').findIndex((s) => s.id === active.id) : -1;
+    for (const a of this.actRows) a.row.classList.toggle('active', idx >= a.first && idx < a.end);
     this.applySelection();
   }
 
@@ -327,6 +442,7 @@ export class OutlinePane {
         { label: 'Duplicate', run: () => this.app.duplicateScene(it) },
         { label: 'Move up', kbd: this.app.commands.label('scene.moveUp'), run: () => this.app.moveSceneBy(it, -1) },
         { label: 'Move down', kbd: this.app.commands.label('scene.moveDown'), run: () => this.app.moveSceneBy(it, 1) },
+        { label: 'Move to Archive', run: () => this.app.archiveScenes([it]) },
         { label: 'Remove…', run: () => this.app.deleteScene(it) },
         { sep: true },
         { label: 'Summary & notes…', run: () => {
@@ -354,6 +470,7 @@ export function sceneGroupMenu(app: App, group: SceneItem[]): MenuItem[] {
     { head: `${n} scenes selected` },
     { label: 'Move up', kbd: app.commands.label('scene.moveUp'), run: () => app.moveScenesBy(group, -1) },
     { label: 'Move down', kbd: app.commands.label('scene.moveDown'), run: () => app.moveScenesBy(group, 1) },
+    { label: 'Move to Archive', run: () => app.archiveScenes(group) },
     { label: 'Remove…', run: () => app.deleteScenes(group) },
     { head: 'Status' },
   ];

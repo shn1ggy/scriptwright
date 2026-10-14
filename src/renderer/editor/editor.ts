@@ -366,7 +366,7 @@ export class Editor {
   undo() {
     const e = this.history.done.pop();
     if (!e) return false;
-    if (e.custom) {
+    if (e.custom && !e.steps.length) {
       this.history.undone.push(e);
       e.custom.undo();
       return true;
@@ -376,13 +376,15 @@ export class Editor {
     this.version++;
     this.sel = this.clampSel(e.selBefore);
     this.afterChange(e.steps.map(invertStep).reverse(), 'undo');
+    // A text change joined with a change around it (e.g. a scene moved to the archive).
+    e.custom?.undo();
     return true;
   }
 
   redo() {
     const e = this.history.undone.pop();
     if (!e) return false;
-    if (e.custom) {
+    if (e.custom && !e.steps.length) {
       this.history.done.push(e);
       e.custom.redo();
       return true;
@@ -392,6 +394,7 @@ export class Editor {
     this.version++;
     this.sel = this.clampSel(e.selAfter);
     this.afterChange(e.steps, 'redo');
+    e.custom?.redo();
     return true;
   }
 
