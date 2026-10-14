@@ -14,6 +14,7 @@ import {
 } from './fountain';
 import { sceneNumberList } from './scenenumbers';
 import { ExportScope, ExportSettings, paperDims } from './types';
+import { t, tn } from './i18n';
 
 export const S_BOLD = 1;
 export const S_ITALIC = 2;
@@ -288,17 +289,17 @@ export function capacity(s: ExportSettings, advanceEm = 0.6): { cap: Capacity; w
   const below = (n: number) => dims.height - top - n * lineH;
   if (below(lpp) < lineH) {
     lpp = Math.max(1, Math.floor((dims.height - top - lineH) / lineH));
-    warnings.push(`${s.linesPerPage} lines do not fit below a ${fmt(top)} pt top margin; ${lpp} lines are used.`);
-  } else if (below(lpp) < 2.5 * lineH) warnings.push(`Only ${fmt(below(lpp))} pt remain below the text for page numbers and footers.`);
+    warnings.push(t('{0} lines do not fit below a {1} pt top margin; {2} lines are used.', s.linesPerPage, fmt(top), lpp));
+  } else if (below(lpp) < 2.5 * lineH) warnings.push(t('Only {0} pt remain below the text for page numbers and footers.', fmt(below(lpp))));
   const check = (name: string, indent: number, width: number) => {
     const right = totalChars - s.leftMargin - indent - width;
-    if (right < 0) warnings.push(`${name} extends ${fmt(-right)} character${right === -1 ? '' : 's'} past the edge of the page.`);
-    else if (right < 4) warnings.push(`${name} leaves only ${fmt(right)} character${right === 1 ? '' : 's'} of right margin.`);
+    if (right < 0) warnings.push(tn(-right, '{1} extends {0} character past the edge of the page.', '{1} extends {0} characters past the edge of the page.', name).replace(String(-right), fmt(-right)));
+    else if (right < 4) warnings.push(tn(right, '{1} leaves only {0} character of right margin.', '{1} leaves only {0} characters of right margin.', name).replace(String(right), fmt(right)));
   };
-  check('Action', 0, s.actionWidth);
-  check('Dialogue', s.dialogueIndent, s.dialogueWidth);
-  check('Parenthetical', s.parentheticalIndent, s.parentheticalWidth);
-  if (s.characterIndent >= s.actionWidth) warnings.push('Character indent is wider than the action width.');
+  check(t('Action'), 0, s.actionWidth);
+  check(t('Dialogue'), s.dialogueIndent, s.dialogueWidth);
+  check(t('Parenthetical'), s.parentheticalIndent, s.parentheticalWidth);
+  if (s.characterIndent >= s.actionWidth) warnings.push(t('Character indent is wider than the action width.'));
   // Indents may use half characters (as on many printed screenplays).
   const half = (v: number) => Math.max(0, Math.round(v * 2) / 2);
   const cap: Capacity = {
@@ -654,7 +655,7 @@ export function paginate(
   let guard = 0;
   for (let u = 0; u < queue.length; u++) {
     if (++guard > 500000) {
-      warnings.push('Pagination stopped early: content could not be placed.');
+      warnings.push(t('Pagination stopped early: content could not be placed.'));
       break;
     }
     const un = queue[u];

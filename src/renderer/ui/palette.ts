@@ -5,6 +5,7 @@ import { Command, comboFromEvent, formatCombo } from '../commands';
 import { h, icon, withClear } from './dom';
 import { openDialog } from './overlay';
 import { isMac } from '../bridge';
+import { t } from '../../shared/i18n';
 
 /** The command list with shortcut editing. Used by the command window and Settings. */
 export class CommandList {
@@ -18,23 +19,23 @@ export class CommandList {
   private pending: { id: string; combo: string } | null = null;
 
   constructor(private app: App, private opts: { onRun?: (c: Command) => void; embedded?: boolean }) {
-    this.search = h('input', { class: 'field', placeholder: opts.embedded ? 'Filter commands' : 'Search commands', 'aria-label': 'Search commands', spellcheck: 'false' });
+    this.search = h('input', { class: 'field', placeholder: opts.embedded ? t("Filter commands") : t("Search commands"), 'aria-label': t("Search commands"), spellcheck: 'false' });
     this.search.dataset.esc = 'self';
     this.search.addEventListener('input', () => {
       this.selected = 0;
       this.render();
     });
     this.search.addEventListener('keydown', (e) => this.onKey(e));
-    this.list = h('div', { class: 'list', role: 'listbox', 'aria-label': 'Commands' });
+    this.list = h('div', { class: 'list', role: 'listbox', 'aria-label': t("Commands") });
     this.msg = h('div', { class: 'msg hidden' });
     const mod = isMac ? '⌘' : 'Ctrl+';
     const foot = h(
       'div',
       { class: 'foot' },
-      opts.onRun ? h('span', null, '↵ Run') : null,
-      h('span', null, `${mod}R Record shortcut`),
-      h('span', null, `${mod}${isMac ? '⌫' : 'Backspace'} Clear`),
-      h('span', null, `${mod}${isMac ? '⇧' : 'Shift+'}R Restore default`),
+      opts.onRun ? h('span', null, t("↵ Run")) : null,
+      h('span', null, t("{0}R Record shortcut", mod)),
+      h('span', null, t("{0}{1} Clear", mod, isMac ? '⌫' : 'Backspace')),
+      h('span', null, t("{0}{1}R Restore default", mod, isMac ? '⇧' : 'Shift+')),
     );
     this.el = h('div', { class: 'palette', style: { display: 'flex', flexDirection: 'column', minHeight: '0', flex: '1' } }, h('div', { class: 'search' }, withClear(this.search)), this.list, this.msg, foot);
     this.render();
@@ -58,26 +59,26 @@ export class CommandList {
     this.items.forEach((c, i) => {
       const keys = this.app.commands.keysFor(c.id);
       const keyEls = h('span', { class: 'keys' });
-      if (this.recordingId === c.id) keyEls.append(h('span', { class: 'kbd recording' }, this.pending ? formatCombo(this.pending.combo) : 'Press keys…'));
+      if (this.recordingId === c.id) keyEls.append(h('span', { class: 'kbd recording' }, this.pending ? formatCombo(this.pending.combo) : t("Press keys…")));
       else {
         for (const k of keys) {
           const conflict = this.app.commands.lookup(k).length > 1;
-          keyEls.append(h('span', { class: `kbd${conflict ? ' conflict' : ''}`, title: conflict ? 'This shortcut is assigned to more than one command' : '' }, formatCombo(k)));
+          keyEls.append(h('span', { class: `kbd${conflict ? ' conflict' : ''}`, title: conflict ? t("This shortcut is assigned to more than one command") : '' }, formatCombo(k)));
         }
       }
       const enabled = !c.enabled || c.enabled();
       const acts = h(
         'span',
         { class: 'acts' },
-        h('button', { class: 'icon-btn', title: 'Record shortcut', tabindex: '-1', onclick: (e: MouseEvent) => (e.stopPropagation(), this.startRecording(c.id)) }, h('span', { style: { fontSize: '11px' } }, '⏺')),
-        h('button', { class: 'icon-btn', title: 'Clear shortcut', tabindex: '-1', onclick: (e: MouseEvent) => (e.stopPropagation(), this.clear(c.id)) }, icon('close')),
-        h('button', { class: 'icon-btn', title: 'Restore default', tabindex: '-1', onclick: (e: MouseEvent) => (e.stopPropagation(), this.reset(c.id)) }, icon('restore')),
+        h('button', { class: 'icon-btn', title: t("Record shortcut"), tabindex: '-1', onclick: (e: MouseEvent) => (e.stopPropagation(), this.startRecording(c.id)) }, h('span', { style: { fontSize: '11px' } }, '⏺')),
+        h('button', { class: 'icon-btn', title: t("Clear shortcut"), tabindex: '-1', onclick: (e: MouseEvent) => (e.stopPropagation(), this.clear(c.id)) }, icon('close')),
+        h('button', { class: 'icon-btn', title: t("Restore default"), tabindex: '-1', onclick: (e: MouseEvent) => (e.stopPropagation(), this.reset(c.id)) }, icon('restore')),
       );
       const row = h(
         'div',
         { class: `row${i === this.selected ? ' selected' : ''}`, role: 'option', 'aria-selected': String(i === this.selected), style: enabled ? {} : { color: 'var(--text-3)' } },
         h('span', { class: 'cat' }, c.category),
-        h('span', { class: 'label' }, c.title, this.app.commands.isDefault(c.id) ? null : h('span', { class: 'dim', style: { fontSize: '11px' } }, '  · custom')),
+        h('span', { class: 'label' }, c.title, this.app.commands.isDefault(c.id) ? null : h('span', { class: 'dim', style: { fontSize: '11px' } }, t("  · custom"))),
         keyEls,
         acts,
       );
@@ -144,7 +145,7 @@ export class CommandList {
   private startRecording(id: string) {
     this.recordingId = id;
     this.pending = null;
-    this.setMsg('Press the new shortcut. Esc cancels.');
+    this.setMsg(t("Press the new shortcut. Esc cancels."));
     this.render();
     this.app.recording = (e: KeyboardEvent) => {
       // The pressed keys go to the recorder only; they never run their current command.
@@ -162,25 +163,25 @@ export class CommandList {
       if (!conflicts.length) {
         this.app.commands.assign(id, combo);
         this.stopRecording();
-        this.setMsg(`Assigned ${formatCombo(combo)}.`);
+        this.setMsg(t("Assigned {0}.", formatCombo(combo)));
         return;
       }
       this.pending = { id, combo };
       this.app.recording = null;
       this.render();
       const names = conflicts.map((x) => `“${x.title}”`).join(', ');
-      this.setMsg(`${formatCombo(combo)} is already used by ${names}.`, true, [
+      this.setMsg(t("{0} is already used by {1}.", formatCombo(combo), names), true, [
         {
-          label: 'Reassign',
+          label: t("Reassign"),
           run: () => {
             this.app.commands.assign(id, combo);
             this.stopRecording();
-            this.setMsg(`Assigned ${formatCombo(combo)}; removed it from ${names}.`);
+            this.setMsg(t("Assigned {0}; removed it from {1}.", formatCombo(combo), names));
             this.search.focus();
           },
         },
         {
-          label: 'Cancel',
+          label: t("Cancel"),
           run: () => {
             this.stopRecording();
             this.setMsg('');
@@ -201,14 +202,14 @@ export class CommandList {
 
   private clear(id: string) {
     this.app.commands.clear(id);
-    this.setMsg('Shortcut cleared.');
+    this.setMsg(t("Shortcut cleared."));
     this.render();
   }
 
   private reset(id: string) {
     this.app.commands.reset(id);
     const k = this.app.commands.keysFor(id);
-    this.setMsg(k.length ? `Restored ${k.map(formatCombo).join(', ')}.` : 'Restored (no default shortcut).');
+    this.setMsg(k.length ? t("Restored {0}.", k.map(formatCombo).join(', ')) : t("Restored (no default shortcut)."));
     this.render();
   }
 
@@ -220,7 +221,7 @@ export class CommandList {
 export function openPalette(app: App) {
   let list: CommandList;
   const dlg = openDialog({
-    title: 'Commands & Shortcuts',
+    title: t("Commands & Shortcuts"),
     cls: 'palette',
     body: [],
     onClose: () => list.dispose(),

@@ -50,6 +50,7 @@ import {
 } from '../../shared/fountain';
 import { EditorSettings } from '../../shared/types';
 import { EditKind, History } from './history';
+import { t } from '../../shared/i18n';
 
 export interface Highlight {
   line: number;
@@ -1077,7 +1078,7 @@ export class Editor {
         mark.style.transform = `translate(${Math.round(contentRect.left - colRect.left)}px, ${Math.round(y - colRect.top)}px)`;
         mark.style.width = `${Math.round(contentRect.width)}px`;
         mark.append(el('span', '', m.label));
-        mark.title = `Page ${m.label} starts here`;
+        mark.title = t("Page {0} starts here", m.label);
         pbFrag.append(mark);
       }
     }

@@ -2,6 +2,7 @@
 
 import { h } from './dom';
 import { openDialog } from './overlay';
+import { t } from '../../shared/i18n';
 
 export type DiffOp = { kind: 'same' | 'add' | 'del'; text: string };
 
@@ -62,7 +63,7 @@ export function compareDialog(title: string, a: string, b: string, aLabel: strin
           const head = k === 0 ? [] : run.slice(0, 2);
           const tail = e === ops.length ? [] : run.slice(-2);
           for (const o of head) out.append(h('div', null, o.text || ' '));
-          out.append(h('div', { class: 'dim' }, `⋯ ${run.length - head.length - tail.length} unchanged lines`));
+          out.append(h('div', { class: 'dim' }, t("⋯ {0} unchanged lines", run.length - head.length - tail.length)));
           for (const o of tail) out.append(h('div', null, o.text || ' '));
         } else for (const o of run) out.append(h('div', null, o.text || ' '));
         k = e;
@@ -75,8 +76,8 @@ export function compareDialog(title: string, a: string, b: string, aLabel: strin
     openDialog({
       title,
       width: 760,
-      body: [h('p', null, `Lines marked − are only in “${aLabel}”; lines marked + are only in “${bLabel}”. ${dels} removed, ${adds} added.`), out],
-      buttons: [{ label: 'Back' }, { label: actionLabel, primary: true, run: () => void (result = true) }],
+      body: [h('p', null, t("Lines marked − are only in “{0}”; lines marked + are only in “{1}”. {2} removed, {3} added.", aLabel, bLabel, dels, adds)), out],
+      buttons: [{ label: t("Back") }, { label: actionLabel, primary: true, run: () => void (result = true) }],
       onClose: () => resolve(result),
     });
   });

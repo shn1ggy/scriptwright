@@ -48,6 +48,8 @@ export interface SavingSettings {
 }
 
 export interface Settings {
+  /** Interface language (the screenplay's own language is a project setting). */
+  language: 'en' | 'de';
   version: 1;
   editor: EditorSettings;
   appearance: AppearanceSettings;
@@ -96,6 +98,7 @@ export const DEFAULT_LIGHT: ThemeColors = {
 export function defaultSettings(): Settings {
   return {
     version: 1,
+    language: 'en',
     editor: {
       fontFamily: 'Courier Prime',
       fontSize: 16,

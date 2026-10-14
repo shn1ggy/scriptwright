@@ -5,6 +5,8 @@
 // which characters are formatting operators (hidden in clean mode) and how the
 // remaining characters are styled.
 
+import { tn } from './i18n';
+
 export type ElementType =
   | 'title'
   | 'heading'
@@ -700,7 +702,7 @@ export function characterList(parse: ParseResult, fromLine = 0, toLine = Infinit
 }
 
 export function characterLabel(c: CharacterCount): string {
-  return `${c.name} (${c.cues} ${c.cues === 1 ? 'speech' : 'speeches'})`;
+  return `${c.name} (${tn(c.cues, '{0} speech', '{0} speeches')})`;
 }
 
 /** Title page fields as key → value (multi-line values joined with \n). */

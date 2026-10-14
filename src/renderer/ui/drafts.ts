@@ -6,11 +6,12 @@ import { uid } from './dom';
 import { promptDialog, toast } from './overlay';
 import { DraftInfo } from '../../shared/types';
 import { countWords } from '../../shared/fountain';
+import { t } from '../../shared/i18n';
 
 export async function saveDraft(app: App, name?: string): Promise<DraftInfo | null> {
   const p = app.project;
   if (!p) return null;
-  const n = name ?? (await promptDialog('Save named draft', 'Name', '', { okLabel: 'Save draft', placeholder: 'e.g. Before feedback' }));
+  const n = name ?? (await promptDialog(t("Save named draft"), t("Name"), '', { okLabel: t("Save draft"), placeholder: t("e.g. Before feedback") }));
   if (!n) return null;
   const text = app.editor.getText();
   const info: DraftInfo = {
@@ -25,7 +26,7 @@ export async function saveDraft(app: App, name?: string): Promise<DraftInfo | nu
   app.markMetaDirty();
   await app.saveMetaNow();
   app.rightPane.historyChanged();
-  if (!name) toast(`Draft “${n}” saved.`);
+  if (!name) toast(t("Draft “{0}” saved.", n));
   return info;
 }
 
@@ -44,8 +45,8 @@ export async function saveTextAsDraft(app: App, name: string, text: string, scen
 
 /** Restores a version after saving the current writing as a draft. Undoable. */
 export async function restoreVersion(app: App, text: string, label: string, sceneIds?: string[]) {
-  const before = await saveDraft(app, `Before restoring “${label}”`);
+  const before = await saveDraft(app, t('Before restoring “{0}”', label));
   if (!before) return;
-  await app.replaceAllText(text, `Restored “${label}”. Your previous text was saved as the draft “${before.name}”.`, 'command', sceneIds);
+  await app.replaceAllText(text, t("Restored “{0}”. Your previous text was saved as the draft “{1}”.", label, before.name), 'command', sceneIds);
   app.rightPane.historyChanged();
 }

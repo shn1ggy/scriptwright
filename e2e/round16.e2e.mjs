@@ -89,6 +89,36 @@ await check('a click on empty space in Cards clears the selection', async () => 
   await app(() => window.__app.closePanel());
 });
 
+await check('the interface switches to German and back', async () => {
+  await app(() => window.__app.setInterfaceLanguage('de'));
+  await page.waitForLoadState('load');
+  await page.waitForFunction(() => window.__app && window.__app.project, null, { timeout: 20000 });
+  await sleep(500);
+  const tab = await page.locator('.viewbar .tab').first().textContent();
+  assert(tab === 'Drehbuch', tab);
+  const count = await page.locator('.outline .section-head span').first().textContent();
+  assert(count === 'Szenen', count);
+  if (shots) {
+    await page.screenshot({ path: path.join(shots, 'de-script.png') });
+    await app(() => window.__app.openPanel('cards'));
+    await sleep(400);
+    await page.screenshot({ path: path.join(shots, 'de-cards.png') });
+    await app(() => { window.__app.closePanel(); window.__app.run('app.settings'); });
+    await sleep(400);
+    await page.screenshot({ path: path.join(shots, 'de-settings.png') });
+    await page.keyboard.press('Escape');
+    await app(() => window.__app.openPanel('export'));
+    await sleep(1200);
+    await page.screenshot({ path: path.join(shots, 'de-export.png') });
+    await app(() => window.__app.closePanel());
+  }
+  await app(() => window.__app.setInterfaceLanguage('en'));
+  await page.waitForLoadState('load');
+  await page.waitForFunction(() => window.__app && window.__app.project, null, { timeout: 20000 });
+  await sleep(500);
+  assert((await page.locator('.viewbar .tab').first().textContent()) === 'Script', 'not back in English');
+});
+
 console.log(results.map((r) => r.join(' — ')).join('\n'));
 console.log('page errors:', JSON.stringify(h.errors.filter((e) => !e.includes('404'))));
 await h.stop();

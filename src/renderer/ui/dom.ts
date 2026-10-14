@@ -1,3 +1,4 @@
+import { t } from '../../shared/i18n';
 // Tiny DOM helpers and the icon set.
 
 type Child = Node | string | null | undefined | false;
@@ -115,7 +116,7 @@ export function uid(): string {
  * an "input" event, so the field's own handlers update the results.
  */
 export function withClear(input: HTMLInputElement): HTMLElement {
-  const btn = h('button', { class: 'field-clear', type: 'button', tabindex: '-1', title: 'Clear search', 'aria-label': 'Clear search' }, icon('close'));
+  const btn = h('button', { class: 'field-clear', type: 'button', tabindex: '-1', title: t("Clear search"), 'aria-label': t("Clear search") }, icon('close'));
   const wrap = h('span', { class: 'field-wrap' }, input, btn);
   const sync = () => wrap.classList.toggle('has-value', !!input.value);
   input.addEventListener('input', sync);

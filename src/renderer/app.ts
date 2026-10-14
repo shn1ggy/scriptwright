@@ -35,6 +35,7 @@ import { exportFinalDraft, openFountainExport, openSceneNumbers } from './ui/fou
 import { keyIndex } from '../shared/anchors';
 import { sectionsOf } from '../shared/structure';
 import { CommentRecord, HighlightColor, PassageRecord } from '../shared/types';
+import { t, tn, uiLocale, uiLanguage, setUiLanguage, UiLanguage } from '../shared/i18n';
 
 export interface SceneItem {
   kind: 'scene' | 'title' | 'opening';
@@ -150,18 +151,17 @@ export class App {
   updateTooltips() {
     for (const [b, title, id] of this.tooltipButtons) {
       const k = this.commands.label(id);
-      const t = k ? `${title} (${k})` : title;
-      b.title = t;
+      b.title = k ? `${title} (${k})` : title;
       b.setAttribute('aria-label', title);
     }
-    for (const [v, label] of [['script', 'Script'], ['scene', 'Scene'], ['cards', 'Cards'], ['dialogue', 'Dialogue'], ['characters', 'Characters'], ['source', 'Source']] as const) {
+    for (const [v, label] of [['script', t('Script view')], ['scene', t('Scene view')], ['cards', t('Cards view')], ['dialogue', t('Dialogue view')], ['characters', t('Characters view')], ['source', t('Source view')]] as const) {
       const k = this.commands.label(`view.${v}`);
-      this.tabs[v].title = `${k ? `${label} view (${k})` : `${label} view`} · double-click to hide the side panes`;
+      this.tabs[v].title = t('{0} · double-click to hide the side panes', k ? `${label} (${k})` : label);
     }
     const ek = this.commands.label('file.export');
-    this.tabs.export.title = ek ? `Export PDF (${ek})` : 'Export PDF';
+    this.tabs.export.title = ek ? t("Export PDF ({0})", ek) : t("Export PDF");
     const hk = this.commands.label('view.history');
-    this.tabs.history.title = hk ? `Drafts, exports and snapshots (${hk})` : 'Drafts, exports and snapshots';
+    this.tabs.history.title = hk ? t("Drafts, exports and snapshots ({0})", hk) : t("Drafts, exports and snapshots");
   }
   private rightToggle!: HTMLButtonElement;
 
@@ -175,6 +175,24 @@ export class App {
     if (this.state.workspace) wsOk = (await bridge.call('setWorkspace', this.state.workspace)).ok;
     if (wsOk) this.adoptWorkspaceState(await bridge.call('loadWorkspaceState'));
     this.settings = await bridge.call('loadSettings');
+    // The interface language is applied while the page loads (from local storage); if the
+    // settings (e.g. from a synced workspace) ask for another one, the page loads once more.
+    const lang: UiLanguage = this.settings.language === 'de' ? 'de' : 'en';
+    if (lang !== uiLanguage()) {
+      let stored = false;
+      try {
+        localStorage.setItem('scriptwright.uiLanguage', lang);
+        stored = localStorage.getItem('scriptwright.uiLanguage') === lang && sessionStorage.getItem('scriptwright.langReload') !== lang;
+        sessionStorage.setItem('scriptwright.langReload', lang);
+      } catch {
+        /* no storage */
+      }
+      setUiLanguage(lang);
+      if (stored) {
+        location.reload();
+        return;
+      }
+    }
     this.commands.overrides = { ...this.settings.keymap };
     this.commands.onChange = () => {
       this.settings.keymap = { ...this.commands.overrides };
@@ -204,7 +222,7 @@ export class App {
         const last = this.state.lastProject;
         if (last && this.projects.some((p) => p.rel === last && !p.loose)) await this.openProject(last);
       } else {
-        toast(`The workspace folder ${this.state.workspace} is not available.`, { warn: true });
+        toast(t("The workspace folder {0} is not available.", this.state.workspace), { warn: true });
         this.state.workspace = undefined;
       }
     }
@@ -219,11 +237,11 @@ export class App {
   // DOM
 
   private buildDom() {
-    this.titleEl = h('span', { class: 'doc-title' }, 'Scriptwright');
+    this.titleEl = h('span', { class: 'doc-title' }, t("Scriptwright"));
     this.subEl = h('span', { class: 'doc-sub' });
-    this.leftToggle = iconButton('sidebarLeft', 'Toggle scene pane', () => this.run('view.leftPane'));
-    this.rightToggle = iconButton('sidebarRight', 'Toggle notes pane', () => this.run('view.rightPane'));
-    this.tooltipButtons.push([this.leftToggle, 'Toggle scene pane', 'view.leftPane'], [this.rightToggle, 'Toggle notes pane', 'view.rightPane']);
+    this.leftToggle = iconButton('sidebarLeft', t("Toggle scene pane"), () => this.run('view.leftPane'));
+    this.rightToggle = iconButton('sidebarRight', t("Toggle notes pane"), () => this.run('view.rightPane'));
+    this.tooltipButtons.push([this.leftToggle, t('Toggle scene pane'), 'view.leftPane'], [this.rightToggle, t('Toggle notes pane'), 'view.rightPane']);
     const titlebar = h(
       'div',
       { class: 'titlebar' },
@@ -244,25 +262,25 @@ export class App {
       return p === 'export' || p === 'history' ? b : focusOpen(b);
     };
     this.tabs = {
-      script: mkTab('script', 'Script'),
-      scene: mkTab('scene', 'Scene'),
-      cards: mkPanelTab('cards', 'Cards'),
-      dialogue: mkTab('dialogue', 'Dialogue'),
-      characters: mkPanelTab('characters', 'Characters'),
-      source: mkTab('source', 'Source'),
-      history: mkPanelTab('history', 'History'),
-      export: mkPanelTab('export', 'Export'),
+      script: mkTab('script', t("Script")),
+      scene: mkTab('scene', t("Scene")),
+      cards: mkPanelTab('cards', t("Cards")),
+      dialogue: mkTab('dialogue', t("Dialogue")),
+      characters: mkPanelTab('characters', t("Characters")),
+      source: mkTab('source', t("Source")),
+      history: mkPanelTab('history', t("History")),
+      export: mkPanelTab('export', t("Export")),
     };
     // Options of the Scene and Dialogue views live in the view itself, never in the tab bar.
     this.viewControls = h('div', { class: 'view-head hidden' });
-    const t = this.tabs;
-    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, t.script, t.scene, t.cards, t.dialogue, t.characters), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, t.source, t.history, t.export));
+    const tb = this.tabs;
+    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, tb.script, tb.scene, tb.cards, tb.dialogue, tb.characters), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, tb.source, tb.history, tb.export));
 
     this.leftPane = h('div', { class: 'pane pane-left' });
     this.rightPaneEl = h('div', { class: 'pane pane-right' });
     this.center = h('div', { class: 'center' });
-    this.leftResizer = h('div', { class: 'resizer', title: 'Drag to resize' });
-    this.rightResizer = h('div', { class: 'resizer', title: 'Drag to resize' });
+    this.leftResizer = h('div', { class: 'resizer', title: t("Drag to resize") });
+    this.rightResizer = h('div', { class: 'resizer', title: t("Drag to resize") });
     const main = h('div', { class: 'main' }, this.leftPane, this.leftResizer, this.center, this.rightResizer, this.rightPaneEl);
     this.mainEl = main;
 
@@ -274,8 +292,8 @@ export class App {
     this.statusNav = h(
       'span',
       { class: 'status-nav hidden' },
-      iconButton('left', 'Previous scene', () => this.stepScene(-1)),
-      iconButton('right', 'Next scene', () => this.stepScene(1)),
+      iconButton('left', t("Previous scene"), () => this.stepScene(-1)),
+      iconButton('right', t("Next scene"), () => this.stepScene(1)),
     );
     const status = h('div', { class: 'statusbar' }, this.statusSave, this.statusCount, h('span', { class: 'spacer' }), this.statusView, this.statusScene, this.statusNav);
     // The status line stays under the writing area: it starts and ends where the text view
@@ -377,8 +395,24 @@ export class App {
   // ---------------------------------------------------------------------------------
   // Settings & state persistence
 
+  /** Switches the interface language: saved, then the window loads again in it. */
+  async setInterfaceLanguage(lang: UiLanguage) {
+    if (lang === uiLanguage()) return;
+    this.settings.language = lang;
+    try {
+      localStorage.setItem('scriptwright.uiLanguage', lang);
+    } catch {
+      /* no storage */
+    }
+    await bridge.call('saveSettings', this.settings).catch(() => {});
+    await this.flush();
+    this.saveStateNow();
+    await new Promise((r) => setTimeout(r, 150));
+    location.reload();
+  }
+
   saveSettings = debounce(() => {
-    bridge.call('saveSettings', this.settings).catch((e) => toast(`Settings could not be saved: ${e.message}`, { warn: true }));
+    bridge.call('saveSettings', this.settings).catch((e) => toast(t("Settings could not be saved: {0}", e.message), { warn: true }));
   }, 300);
 
   saveStateSoon = debounce(() => this.saveStateNow(), 800);
@@ -471,23 +505,23 @@ export class App {
   // Workspace & projects
 
   async chooseWorkspace() {
-    const dir = await bridge.dialog('folder', { title: 'Open a folder as workspace' });
+    const dir = await bridge.dialog('folder', { title: t("Open a folder as workspace") });
     if (!dir) return;
     await this.setWorkspace(dir);
   }
 
   /** A new, empty workspace: a name and the folder it goes in. */
   async createWorkspace() {
-    const name = await promptDialog('New workspace', 'Name', 'Screenplays', { okLabel: 'Choose location…' });
+    const name = await promptDialog(t("New workspace"), t("Name"), t("Screenplays"), { okLabel: t("Choose location…") });
     if (!name?.trim()) return;
-    const parent = await bridge.dialog('folder', { title: `Where should the workspace “${name.trim()}” be created?` });
+    const parent = await bridge.dialog('folder', { title: t("Where should the workspace “{0}” be created?", name.trim()) });
     if (!parent) return;
     try {
       const dir = await bridge.call('createWorkspace', parent, name.trim());
       await this.setWorkspace(dir);
-      toast(`Workspace “${name.trim()}” created. Projects, settings and history for it are kept in its folder.`);
+      toast(t("Workspace “{0}” created. Projects, settings and history for it are kept in its folder.", name.trim()));
     } catch (e: any) {
-      alertDialog('Workspace not created', e.message);
+      alertDialog(t("Workspace not created"), e.message);
     }
   }
 
@@ -499,15 +533,15 @@ export class App {
   private workspaceMenu(anchor: HTMLElement) {
     const cur = this.state.workspace;
     const base = (d: string) => d.split(/[\\/]/).filter(Boolean).pop() ?? d;
-    const items: MenuItem[] = [{ head: 'Workspaces' }];
+    const items: MenuItem[] = [{ head: t("Workspaces") }];
     for (const d of this.state.recentWorkspaces) items.push({ label: `${d === cur ? '✓' : '  '} ${base(d)}`, kbd: d === cur ? '' : undefined, run: () => d !== cur && this.setWorkspace(d) });
     items.push(
       { sep: true },
-      { label: 'Open Folder as Workspace…', kbd: this.commands.label('project.openWorkspace'), run: () => this.chooseWorkspace() },
-      { label: 'Create New Workspace…', run: () => this.createWorkspace() },
+      { label: t("Open Folder as Workspace…"), kbd: this.commands.label('project.openWorkspace'), run: () => this.chooseWorkspace() },
+      { label: t("Create New Workspace…"), run: () => this.createWorkspace() },
     );
-    if (cur && bridge.isElectron) items.push({ sep: true }, { label: 'Show Workspace in Folder', run: () => this.revealPath('') });
-    if (this.state.recentWorkspaces.length > 1) items.push({ label: 'Clear List of Other Workspaces', run: () => {
+    if (cur && bridge.isElectron) items.push({ sep: true }, { label: t("Show Workspace in Folder"), run: () => this.revealPath('') });
+    if (this.state.recentWorkspaces.length > 1) items.push({ label: t("Clear List of Other Workspaces"), run: () => {
       this.state.recentWorkspaces = cur ? [cur] : [];
       this.saveStateSoon();
     } });
@@ -518,14 +552,14 @@ export class App {
 
   renderWorkspaceBar() {
     const ws = this.state.workspace;
-    const name = ws ? ws.split(/[\\/]/).filter(Boolean).pop() ?? ws : 'No workspace';
-    const btn = h('button', { class: 'ws-switch', title: ws ? `Workspace: ${ws}\nSwitch or create workspaces` : 'Open or create a workspace' }, h('span', { class: 'ws-icon' }, icon('folder')), h('span', { class: 'ws-name' }, name), icon('chevronDown'));
+    const name = ws ? ws.split(/[\\/]/).filter(Boolean).pop() ?? ws : t('No workspace');
+    const btn = h('button', { class: 'ws-switch', title: ws ? t("Workspace: {0}\nSwitch or create workspaces", ws) : t("Open or create a workspace") }, h('span', { class: 'ws-icon' }, icon('folder')), h('span', { class: 'ws-name' }, name), icon('chevronDown'));
     btn.addEventListener('click', () => this.workspaceMenu(btn));
     this.workspaceBar.replaceChildren(
       btn,
       h('span', { class: 'spacer' }),
-      iconButton('command', `Commands & shortcuts (${this.commands.label('app.commands')})`, () => this.run('app.commands')),
-      iconButton('settings', `Settings (${this.commands.label('app.settings')})`, () => this.run('app.settings')),
+      iconButton('command', t("Commands & shortcuts ({0})", this.commands.label('app.commands')), () => this.run('app.commands')),
+      iconButton('settings', t("Settings ({0})", this.commands.label('app.settings')), () => this.run('app.settings')),
     );
   }
 
@@ -536,8 +570,8 @@ export class App {
       const e = await bridge.call('archiveProject', rel, archive);
       await this.refreshProjects();
       if (wasOpen) await this.openProject(e.rel);
-      toast(archive ? `“${e.name}” moved to the archive.` : `“${e.name}” moved out of the archive.`, {
-        actions: [{ label: 'Undo', run: async () => {
+      toast(archive ? t("“{0}” moved to the archive.", e.name) : t("“{0}” moved out of the archive.", e.name), {
+        actions: [{ label: t("Undo"), run: async () => {
           const again = this.project?.rel === e.rel;
           if (again) await this.closeProject();
           const back = await bridge.call('archiveProject', e.rel, !archive);
@@ -546,7 +580,7 @@ export class App {
         } }],
       });
     } catch (err: any) {
-      alertDialog('Not moved', err.message);
+      alertDialog(t("Not moved"), err.message);
       if (wasOpen) await this.openProject(rel);
     }
     this.updateWelcome();
@@ -555,11 +589,11 @@ export class App {
   async deleteProject(rel: string) {
     const entry = this.projects.find((p) => p.rel === rel);
     if (!entry) return;
-    const where = bridge.isElectron ? (isMac ? 'the Trash' : 'the Recycle Bin') : 'the workspace’s deleted items';
+    const where = bridge.isElectron ? (isMac ? t('the Trash') : t('the Recycle Bin')) : t('the workspace’s deleted items');
     const ok = await confirmDialog(
-      'Delete project',
-      `Delete “${entry.name}”? The project folder with its screenplay, history, drafts, comments and notes is moved to ${where}.`,
-      'Delete',
+      t("Delete project"),
+      t("Delete “{0}”? The project folder with its screenplay, history, drafts, comments and notes is moved to {1}.", entry.name, where),
+      t("Delete"),
       { danger: true },
     );
     if (!ok) return;
@@ -569,9 +603,9 @@ export class App {
       if (this.state.lastProject === rel) this.state.lastProject = undefined;
       delete this.state.sessions[rel];
       this.saveStateSoon();
-      toast(`“${entry.name}” moved to ${where}.`);
+      toast(t("“{0}” moved to {1}.", entry.name, where));
     } catch (e: any) {
-      alertDialog('Not deleted', e.message);
+      alertDialog(t("Not deleted"), e.message);
     }
     await this.refreshProjects();
     this.updateWelcome();
@@ -585,7 +619,7 @@ export class App {
     await this.closeProject();
     const r = await bridge.call('setWorkspace', dir);
     if (!r.ok) {
-      await alertDialog('Workspace unavailable', r.message ?? 'The folder cannot be used.');
+      await alertDialog(t("Workspace unavailable"), r.message ?? t("The folder cannot be used."));
       if (this.state.workspace) await bridge.call('setWorkspace', this.state.workspace);
       return;
     }
@@ -622,7 +656,7 @@ export class App {
         this.projects = await bridge.call('listProjects');
       } catch (e: any) {
         this.projects = [];
-        toast(`The workspace could not be read: ${e.message}`, { warn: true });
+        toast(t("The workspace could not be read: {0}", e.message), { warn: true });
       }
     }
     this.projectsPane.render();
@@ -633,15 +667,15 @@ export class App {
       await this.chooseWorkspace();
       if (!this.state.workspace) return;
     }
-    const name = await promptDialog('New project', 'Name', '', { okLabel: 'Create' });
+    const name = await promptDialog(t("New project"), t("Name"), '', { okLabel: t("Create") });
     if (!name) return;
-    const text = `${titlePageTemplate(name, new Date().toLocaleDateString())}\n${this.settings.editor.defaultHeading}\n\n`;
+    const text = `${titlePageTemplate(name, new Date().toLocaleDateString(uiLocale()))}\n${this.settings.editor.defaultHeading}\n\n`;
     try {
       const p = await bridge.call('createProject', name, text);
       await this.refreshProjects();
       await this.openProject(p.rel);
     } catch (e: any) {
-      alertDialog('Project not created', e.message);
+      alertDialog(t("Project not created"), e.message);
     }
   }
 
@@ -651,9 +685,9 @@ export class App {
     const entry = this.projects.find((p) => p.rel === rel);
     if (entry?.loose) {
       const ok = await confirmDialog(
-        'Open loose file',
-        `"${entry.file}" is not inside a project folder yet. Scriptwright will move it into its own folder "${entry.name}" so notes and history can be kept beside it.`,
-        'Move into project folder',
+        t("Open loose file"),
+        t("\"{0}\" is not inside a project folder yet. Scriptwright will move it into its own folder \"{1}\" so notes and history can be kept beside it.", entry.file, entry.name),
+        t("Move into project folder"),
       );
       if (!ok) return;
       try {
@@ -661,7 +695,7 @@ export class App {
         await this.refreshProjects();
         rel = adopted.rel;
       } catch (e: any) {
-        alertDialog('Could not move the file', e.message);
+        alertDialog(t("Could not move the file"), e.message);
         return;
       }
     }
@@ -669,7 +703,7 @@ export class App {
     try {
       r = await bridge.call('openProject', rel);
     } catch (e: any) {
-      await alertDialog('Project could not be opened', e.message);
+      await alertDialog(t("Project could not be opened"), e.message);
       return;
     }
     const meta = r.meta;
@@ -729,7 +763,7 @@ export class App {
     // Warnings and recovery
     for (const w of r.warnings) toast(w, { warn: true, timeout: 12000 });
     if (r.otherInstance) {
-      this.showBanner(`This project also appears to be open on ${r.otherInstance.host}. Changes are checked before saving, so nothing will be overwritten silently.`, [{ label: 'OK', run: () => this.hideBanner() }]);
+      this.showBanner(t("This project also appears to be open on {0}. Changes are checked before saving, so nothing will be overwritten silently.", r.otherInstance.host), [{ label: t("OK"), run: () => this.hideBanner() }]);
     }
     if (p.conflicts.length) this.showConflictCopiesBanner();
     // Not awaited: the recovery question must not block startup.
@@ -738,35 +772,35 @@ export class App {
   }
 
   private async offerRecovery(rec: { text: string; savedAt: string }) {
-    const when = new Date(rec.savedAt).toLocaleString();
+    const when = new Date(rec.savedAt).toLocaleString(uiLocale());
     const choice = await choiceDialog(
-      'Unsaved work found',
+      t("Unsaved work found"),
       h(
         'div',
         { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-        h('p', null, `Scriptwright kept a recovery copy from ${when} that differs from the saved screenplay. This usually means the app closed before it could save.`),
-        h('p', null, 'Restoring replaces the editor text with the recovered version (you can undo). The current file is kept in history either way.'),
+        h('p', null, t("Scriptwright kept a recovery copy from {0} that differs from the saved screenplay. This usually means the app closed before it could save.", when)),
+        h('p', null, t("Restoring replaces the editor text with the recovered version (you can undo). The current file is kept in history either way.")),
       ),
       [
-        { label: 'Compare…', value: 'compare' as const },
-        { label: 'Discard recovery', value: 'discard' as const, danger: true },
-        { label: 'Restore', value: 'restore' as const, primary: true },
+        { label: t("Compare…"), value: 'compare' as const },
+        { label: t("Discard recovery"), value: 'discard' as const, danger: true },
+        { label: t("Restore"), value: 'restore' as const, primary: true },
       ],
     );
     const p = this.project!;
     if (choice === 'compare') {
-      const use = await compareDialog('Recovered vs saved', this.editor.getText(), rec.text, 'Saved file', 'Recovered', 'Use recovered');
-      if (use) await this.replaceAllText(rec.text, 'Recovered work restored');
+      const use = await compareDialog(t("Recovered vs saved"), this.editor.getText(), rec.text, t("Saved file"), t("Recovered"), t("Use recovered"));
+      if (use) await this.replaceAllText(rec.text, t("Recovered work restored"));
       else await this.offerRecovery(rec);
       return;
     }
     if (choice === 'restore') {
       await bridge.call('snapshotProject', p.rel, this.editor.getText(), 'before recovery');
-      await this.replaceAllText(rec.text, 'Recovered work restored');
+      await this.replaceAllText(rec.text, t("Recovered work restored"));
     } else if (choice === 'discard') {
       await bridge.call('saveConflictCopy', p.rel, rec.text, 'discarded recovery');
       await bridge.call('clearRecovery', p.meta.id);
-      toast('Recovery copy discarded (a copy was kept in the project’s conflicts folder).');
+      toast(t("Recovery copy discarded (a copy was kept in the project’s conflicts folder)."));
     }
   }
 
@@ -840,16 +874,16 @@ export class App {
     this.saveError = err;
     const label: Record<SaveState, string> = {
       none: '',
-      saved: 'Saved',
-      unsaved: 'Unsaved changes',
-      saving: 'Saving…',
-      error: 'Not saved — retrying',
-      conflict: 'Changed outside Scriptwright — review',
-      missing: 'File missing',
+      saved: t('Saved'),
+      unsaved: t('Unsaved changes'),
+      saving: t('Saving…'),
+      error: t('Not saved — retrying'),
+      conflict: t('Changed outside Scriptwright — review'),
+      missing: t('File missing'),
     };
     this.statusSave.textContent = label[s];
     this.statusSave.className = `save-state ${s === 'error' || s === 'conflict' || s === 'missing' ? 'error' : s === 'unsaved' || s === 'saving' ? 'unsaved' : ''}`;
-    this.statusSave.title = err || (s === 'saved' ? 'All changes are saved to disk' : '');
+    this.statusSave.title = err || (s === 'saved' ? t("All changes are saved to disk") : '');
   }
 
   private scheduleSave() {
@@ -938,7 +972,7 @@ export class App {
   }
 
   private onSaveStateClick() {
-    if (this.saveState === 'error') alertDialog('Saving failed', `${this.saveError}\n\nYour work is kept in a recovery copy and Scriptwright keeps retrying.`);
+    if (this.saveState === 'error') alertDialog(t("Saving failed"), t("{0}\n\nYour work is kept in a recovery copy and Scriptwright keeps retrying.", this.saveError));
     else if (this.saveState === 'conflict' && this.project?.pendingExternal !== null) this.reviewConflict();
     else if (this.saveState === 'missing') this.showMissingBanner();
     else if (this.saveState === 'unsaved') this.save();
@@ -1013,9 +1047,9 @@ export class App {
     const r = await bridge.call('saveMeta', p.rel, p.meta);
     if (!r.ok) {
       p.metaDirty = true;
-      toast(`Project information could not be saved: ${r.message}`, { warn: true });
+      toast(t("Project information could not be saved: {0}", r.message), { warn: true });
     } else if (r.preservedExternal) {
-      toast(`Project information was also changed elsewhere; that version was kept as ${r.preservedExternal}.`, { warn: true, timeout: 10000 });
+      toast(t("Project information was also changed elsewhere; that version was kept as {0}.", r.preservedExternal), { warn: true, timeout: 10000 });
     }
   }
 
@@ -1079,7 +1113,7 @@ export class App {
         p.baseHash = disk.hash;
         p.savedVersion = this.editor.version;
         this.setSaveState('saved');
-        toast('Reloaded changes made outside Scriptwright.', { actions: [{ label: 'Undo', run: () => this.editor.undo() }] });
+        toast(t("Reloaded changes made outside Scriptwright."), { actions: [{ label: t("Undo"), run: () => this.editor.undo() }] });
         return;
       }
       this.setSaveState('conflict');
@@ -1091,8 +1125,8 @@ export class App {
     const p = this.project!;
     p.pendingExternal = diskText;
     (p as any).pendingExternalHash = diskHash;
-    this.showBanner('The screenplay was changed outside Scriptwright while you had unsaved changes. Both versions are kept until you decide.', [
-      { label: 'Review…', run: () => this.reviewConflict() },
+    this.showBanner(t("The screenplay was changed outside Scriptwright while you had unsaved changes. Both versions are kept until you decide."), [
+      { label: t("Review…"), run: () => this.reviewConflict() },
     ]);
   }
 
@@ -1102,21 +1136,21 @@ export class App {
     const diskText = p.pendingExternal;
     const diskHash = (p as any).pendingExternalHash as string;
     const choice = await choiceDialog(
-      'Resolve conflicting changes',
+      t("Resolve conflicting changes"),
       h(
         'div',
         { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-        h('p', null, 'The file on disk no longer matches the version you started editing. Whichever version you choose, the other one is saved in the project’s conflicts folder.'),
+        h('p', null, t("The file on disk no longer matches the version you started editing. Whichever version you choose, the other one is saved in the project’s conflicts folder.")),
       ),
       [
-        { label: 'Compare…', value: 'compare' as const },
-        { label: 'Use the other version', value: 'theirs' as const },
-        { label: 'Keep my version', value: 'mine' as const, primary: true },
+        { label: t("Compare…"), value: 'compare' as const },
+        { label: t("Use the other version"), value: 'theirs' as const },
+        { label: t("Keep my version"), value: 'mine' as const, primary: true },
       ],
     );
     if (!choice) return;
     if (choice === 'compare') {
-      const useTheirs = await compareDialog('My version vs file on disk', this.editor.getText(), diskText, 'My version', 'File on disk', 'Use file on disk');
+      const useTheirs = await compareDialog(t("My version vs file on disk"), this.editor.getText(), diskText, t("My version"), t("File on disk"), t("Use file on disk"));
       if (useTheirs) await this.resolveConflict('theirs', diskText, diskHash);
       else await this.reviewConflict();
       return;
@@ -1134,7 +1168,7 @@ export class App {
       this.hideBanner();
       this.setSaveState('unsaved');
       await this.save();
-      toast(`Kept your version. The other version was saved as ${saved}.`, { timeout: 8000 });
+      toast(t("Kept your version. The other version was saved as {0}.", saved), { timeout: 8000 });
     } else {
       const saved = await bridge.call('saveConflictCopy', p.rel, this.editor.getText(), 'my version');
       await this.replaceAllText(diskText, null, 'external');
@@ -1144,14 +1178,14 @@ export class App {
       await bridge.call('acknowledge', p.rel, diskHash);
       this.hideBanner();
       this.setSaveState('saved');
-      toast(`Loaded the other version. Your version was saved as ${saved}.`, { timeout: 8000, actions: [{ label: 'Undo', run: () => this.editor.undo() }] });
+      toast(t("Loaded the other version. Your version was saved as {0}.", saved), { timeout: 8000, actions: [{ label: t("Undo"), run: () => this.editor.undo() }] });
     }
   }
 
   private showMissingBanner() {
-    this.showBanner('The screenplay file was moved, renamed or deleted outside Scriptwright. Your text is still here and in a recovery copy.', [
+    this.showBanner(t("The screenplay file was moved, renamed or deleted outside Scriptwright. Your text is still here and in a recovery copy."), [
       {
-        label: 'Save here again',
+        label: t("Save here again"),
         run: async () => {
           const p = this.project!;
           const r = await bridge.call('restoreScript', p.rel, this.editor.getText());
@@ -1162,19 +1196,19 @@ export class App {
             this.setSaveState('saved');
             this.hideBanner();
             this.refreshProjects();
-          } else alertDialog('Could not save', (r as any).message ?? 'The folder is not available.');
+          } else alertDialog(t("Could not save"), (r as any).message ?? t("The folder is not available."));
         },
       },
-      { label: 'Close project', run: () => this.closeProject() },
+      { label: t("Close project"), run: () => this.closeProject() },
     ]);
   }
 
   private showConflictCopiesBanner() {
     const p = this.project!;
     const n = p.conflicts.length;
-    this.showBanner(`${n} other screenplay ${n === 1 ? 'copy' : 'copies'} found in this project folder (for example a sync conflict copy).`, [
-      { label: 'Review…', run: () => this.reviewConflictCopies() },
-      { label: 'Later', run: () => this.hideBanner() },
+    this.showBanner(tn(n, '{0} other screenplay copy found in this project folder (for example a sync conflict copy).', '{0} other screenplay copies found in this project folder (for example a sync conflict copy).'), [
+      { label: t("Review…"), run: () => this.reviewConflictCopies() },
+      { label: t("Later"), run: () => this.hideBanner() },
     ]);
   }
 
@@ -1189,21 +1223,21 @@ export class App {
         continue;
       }
       const choice = await choiceDialog(
-        'Other screenplay copy',
-        h('div', null, h('p', null, `"${name}"`), h('p', null, 'Compare it with the current screenplay, use it, or archive it into the project’s conflicts folder.')),
+        t("Other screenplay copy"),
+        h('div', null, h('p', null, `"${name}"`), h('p', null, t("Compare it with the current screenplay, use it, or archive it into the project’s conflicts folder."))),
         [
-          { label: 'Skip', value: 'skip' as const },
-          { label: 'Archive', value: 'archive' as const },
-          { label: 'Compare…', value: 'compare' as const, primary: true },
+          { label: t("Skip"), value: 'skip' as const },
+          { label: t("Archive"), value: 'archive' as const },
+          { label: t("Compare…"), value: 'compare' as const, primary: true },
         ],
       );
       if (choice === 'archive') {
         await bridge.call('archiveProjectFile', p.rel, name);
       } else if (choice === 'compare') {
-        const use = await compareDialog('Current screenplay vs copy', this.editor.getText(), text, 'Current', name, 'Use this copy');
+        const use = await compareDialog(t("Current screenplay vs copy"), this.editor.getText(), text, t("Current"), name, t("Use this copy"));
         if (use) {
           await bridge.call('snapshotProject', p.rel, this.editor.getText(), 'before using copy');
-          await this.replaceAllText(text, `Using "${name}"`);
+          await this.replaceAllText(text, t("Using \"{0}\"", name));
           await bridge.call('archiveProjectFile', p.rel, name);
         }
       } else if (!choice) break;
@@ -1261,7 +1295,7 @@ export class App {
       this.suspendScenes = false;
     }
     this.refreshDerived(true);
-    if (message) toast(message, { actions: [{ label: 'Undo', run: () => this.editor.undo() }] });
+    if (message) toast(message, { actions: [{ label: t("Undo"), run: () => this.editor.undo() }] });
   }
 
   // ---------------------------------------------------------------------------------
@@ -1430,12 +1464,12 @@ export class App {
         const id = res.ids[n] ?? uid();
         p.sceneIds.set(this.editor.lines[s.line].key, id);
       });
-      for (const r of res.unmatched) if (hasInfo(r)) this.addDetached(r, res.ambiguous.includes(r) ? 'Matches more than one scene after an external change' : 'Scene not found after an external change');
+      for (const r of res.unmatched) if (hasInfo(r)) this.addDetached(r, res.ambiguous.includes(r) ? t('Matches more than one scene after an external change') : t('Scene not found after an external change'));
     } else {
       p.sceneIds.clear();
       const res = reconcile(p.meta.scenes, sigs);
       scenes.forEach((s, i) => p.sceneIds.set(this.editor.lines[s.line].key, res.ids[i] ?? uid()));
-      for (const r of res.unmatched) if (hasInfo(r)) this.addDetached(r, res.ambiguous.includes(r) ? 'Matches more than one scene' : 'Scene not found in the screenplay');
+      for (const r of res.unmatched) if (hasInfo(r)) this.addDetached(r, res.ambiguous.includes(r) ? t('Matches more than one scene') : t('Scene not found in the screenplay'));
       if (res.unmatched.length) this.markMetaDirty();
     }
     this.updateScenes();
@@ -1462,7 +1496,7 @@ export class App {
     const parsed = this.editor.parsed;
     const lines = this.editor.lines;
     const items: SceneItem[] = [];
-    if (parsed.titleEnd > 0) items.push({ kind: 'title', id: 'title', key: lines[0].key, line: 0, end: parsed.titleEnd, heading: 'Title page', order: 0, number: '' });
+    if (parsed.titleEnd > 0) items.push({ kind: 'title', id: 'title', key: lines[0].key, line: 0, end: parsed.titleEnd, heading: t('Title page'), order: 0, number: '' });
     const firstScene = parsed.scenes[0];
     const openingEnd = firstScene ? firstScene.line : lines.length;
     let openingHas = false;
@@ -1472,7 +1506,7 @@ export class App {
       const t = parsed.lines[i].type;
       if (lines[i].text.trim() && t !== 'section' && t !== 'synopsis') openingHas = true;
     }
-    if (openingHas) items.push({ kind: 'opening', id: 'opening', key: lines[parsed.bodyStart].key, line: parsed.bodyStart, end: openingEnd, heading: 'Opening', order: 0, number: '' });
+    if (openingHas) items.push({ kind: 'opening', id: 'opening', key: lines[parsed.bodyStart].key, line: parsed.bodyStart, end: openingEnd, heading: t('Opening'), order: 0, number: '' });
     if (p) {
       let changed = false;
       const nums = sceneNumberList(parsed, this.numbersLocked);
@@ -1502,7 +1536,7 @@ export class App {
       const gone = p.meta.scenes.filter((r) => !present.has(r.id));
       if (gone.length) {
         for (const r of gone) {
-          if (hasInfo(r)) p.meta.detached.push(detach(r, 'The scene heading was removed or changed into other text'));
+          if (hasInfo(r)) p.meta.detached.push(detach(r, t('The scene heading was removed or changed into other text')));
         }
         p.meta.scenes = p.meta.scenes.filter((r) => present.has(r.id));
         changed = true;
@@ -1558,7 +1592,7 @@ export class App {
     this.undoable(() => {
       Object.assign(this.sceneRecord(item)!, patch);
       this.markMetaDirty();
-    }, 'Scene Details');
+    }, t("Scene Details"));
     this.updateScenes();
     this.outline.render();
     this.cards.render();
@@ -1798,7 +1832,7 @@ export class App {
     }
     if (!title) {
       // Create a title page above the existing screenplay.
-      const tpl = titlePageTemplate(this.project.name, new Date().toLocaleDateString());
+      const tpl = titlePageTemplate(this.project.name, new Date().toLocaleDateString(uiLocale()));
       const L = this.editor.lines;
       const needBlank = L.length > 0 && L[0].text.trim() !== '';
       this.editor.edit((tx) => {
@@ -1832,7 +1866,7 @@ export class App {
       .split('\n')
       .filter((l) => l && !have.has(l.slice(0, l.indexOf(':')).toLowerCase()));
     if (!missing.length) {
-      toast('The title page already has all common fields.');
+      toast(t("The title page already has all common fields."));
       return;
     }
     const at = lastKeyLine + 1;
@@ -1840,7 +1874,7 @@ export class App {
       tx.insertLines(at, makeLines(missing.join('\n')));
       return cursor({ line: at, ch: missing[0].length });
     });
-    toast(`Added ${missing.length} title page field${missing.length === 1 ? '' : 's'}. Empty fields are not printed.`);
+    toast(tn(missing.length, 'Added {0} title page field. Empty fields are not printed.', 'Added {0} title page fields. Empty fields are not printed.'));
   }
 
   // ---------------------------------------------------------------------------------
@@ -1896,13 +1930,13 @@ export class App {
     let action = false;
     let other = false;
     for (let i = a + 1; i < b; i++) {
-      const t = parsed.lines[i].type;
-      if (t === 'action' || t === 'transition' || t === 'centered' || t === 'lyric') action = true;
-      else if (t === 'character' || t === 'dialogue' || t === 'parenthetical') other = true;
+      const ty = parsed.lines[i].type;
+      if (ty === 'action' || ty === 'transition' || ty === 'centered' || ty === 'lyric') action = true;
+      else if (ty === 'character' || ty === 'dialogue' || ty === 'parenthetical') other = true;
     }
-    if (action && !this.dialogueAction) return 'action hidden';
-    if (action) return 'more action hidden';
-    if (other) return 'other dialogue hidden';
+    if (action && !this.dialogueAction) return t('action hidden');
+    if (action) return t('more action hidden');
+    if (other) return t('other dialogue hidden');
     return null;
   }
 
@@ -2112,7 +2146,7 @@ export class App {
         if (r) Object.assign(r, patch);
       }
       this.markMetaDirty();
-    }, 'Scene Details');
+    }, t("Scene Details"));
     this.updateScenes();
     this.outline.render();
     this.cards.render();
@@ -2239,7 +2273,7 @@ export class App {
     this.undoable(() => {
       this.project!.meta.numbersLocked = true;
       this.markMetaDirty();
-    }, 'Lock Scene Numbers');
+    }, t("Lock Scene Numbers"));
     if (edits.length)
       this.editor.edit((tx) => {
         for (const e of edits) tx.setLine(e.line, e.text);
@@ -2248,7 +2282,7 @@ export class App {
     this.editor.history.seal();
     this.refreshDerived(true);
     this.outline.refresh();
-    toast(`Scene numbers locked. New scenes get letters such as ${nums[0]}A; removed scenes stay as omitted.`, { actions: [{ label: 'Undo', run: () => this.unlockUndo(edits.length > 0) }] });
+    toast(t("Scene numbers locked. New scenes get letters such as {0}A; removed scenes stay as omitted.", nums[0]), { actions: [{ label: t("Undo"), run: () => this.unlockUndo(edits.length > 0) }] });
   }
 
   /**
@@ -2274,8 +2308,12 @@ export class App {
   async unlockSceneNumbers() {
     const parsed = this.editor.parsed;
     const omitted = parsed.scenes.filter((sc) => isOmittedHeading(this.editor.lines[sc.line].text));
-    const msg = `Written numbers are removed from all headings and scenes are counted 1, 2, 3 … again.${omitted.length ? ` The ${omitted.length} omitted scene${omitted.length === 1 ? '' : 's'} (only a number) ${omitted.length === 1 ? 'is' : 'are'} removed as well.` : ''} You can undo this.`;
-    if (!(await confirmDialog('Unlock scene numbers', msg, 'Unlock'))) return;
+    const msg = [
+      t('Written numbers are removed from all headings and scenes are counted 1, 2, 3 … again.'),
+      omitted.length ? tn(omitted.length, 'The omitted scene (only a number) is removed as well.', 'The {0} omitted scenes (only a number) are removed as well.') : '',
+      t('You can undo this.'),
+    ].filter(Boolean).join(' ');
+    if (!(await confirmDialog(t("Unlock scene numbers"), msg, t("Unlock")))) return;
     const edits = sceneNumberEdits(this.editor.lineTexts, parsed, 'remove');
     const omit = omitted.map((sc) => ({ key: this.editor.lines[sc.line].key, len: sc.end - sc.line }));
     this.editor.edit((tx) => {
@@ -2290,11 +2328,11 @@ export class App {
     this.undoable(() => {
       this.project!.meta.numbersLocked = false;
       this.markMetaDirty();
-    }, 'Unlock Scene Numbers');
+    }, t("Unlock Scene Numbers"));
     this.editor.history.seal();
     this.refreshDerived(true);
     this.outline.refresh();
-    toast('Scene numbers unlocked.', { actions: [{ label: 'Undo', run: () => this.unlockUndo(true) }] });
+    toast(t("Scene numbers unlocked."), { actions: [{ label: t("Undo"), run: () => this.unlockUndo(true) }] });
   }
 
   get numbersLocked(): boolean {
@@ -2358,7 +2396,7 @@ export class App {
     this.undoable(() => {
       p.meta.sceneArchive = [...entries.reverse(), ...(p.meta.sceneArchive ?? [])];
       this.markMetaDirty();
-    }, arch.length === 1 ? 'Archive Scene' : 'Archive Scenes');
+    }, arch.length === 1 ? t("Archive Scene") : t("Archive Scenes"));
     this.editor.history.joinLast();
     this.setSceneSelection([], null);
     this.refreshDerived(true);
@@ -2367,7 +2405,7 @@ export class App {
       if (f) this.enterScene(f);
     }
     this.outline.refresh();
-    toast(arch.length === 1 ? `“${arch[0].heading}” moved to the scene archive.` : `${arch.length} scenes moved to the scene archive.`, { actions: [{ label: 'Undo', run: () => this.run('edit.undo') }] });
+    toast(arch.length === 1 ? t("“{0}” moved to the scene archive.", arch[0].heading) : t("{0} scenes moved to the scene archive.", arch.length), { actions: [{ label: t("Undo"), run: () => this.run('edit.undo') }] });
   }
 
   /**
@@ -2424,33 +2462,33 @@ export class App {
         if (r) Object.assign(r, { summary: entry.summary, status: entry.status, color: entry.color, notes: entry.notes });
       }
       this.markMetaDirty();
-    }, 'Restore Scene');
+    }, t("Restore Scene"));
     this.editor.history.joinLast();
     this.updateScenes();
     this.outline.refresh();
     this.cards.render();
     if (item) this.goToScene(item);
-    toast(`“${entry.heading}” is back in the screenplay.`, { actions: [{ label: 'Undo', run: () => this.run('edit.undo') }] });
+    toast(t("“{0}” is back in the screenplay.", entry.heading), { actions: [{ label: t("Undo"), run: () => this.run('edit.undo') }] });
   }
 
   async deleteArchivedScene(id: string) {
     const p = this.project;
     const entry = p?.meta.sceneArchive?.find((x) => x.id === id);
     if (!p || !entry) return;
-    if (!(await confirmDialog('Delete archived scene', `Delete “${entry.heading}” from the archive? You can undo this.`, 'Delete', { danger: true }))) return;
+    if (!(await confirmDialog(t("Delete archived scene"), t("Delete “{0}” from the archive? You can undo this.", entry.heading), t("Delete"), { danger: true }))) return;
     this.undoable(() => {
       p.meta.sceneArchive = p.meta.sceneArchive.filter((x) => x.id !== id);
       this.markMetaDirty();
-    }, 'Delete Archived Scene');
+    }, t("Delete Archived Scene"));
     this.outline.refresh();
-    toast('Archived scene deleted.', { actions: [{ label: 'Undo', run: () => this.run('edit.undo') }] });
+    toast(t("Archived scene deleted."), { actions: [{ label: t("Undo"), run: () => this.run('edit.undo') }] });
   }
 
   async deleteScenes(items: SceneItem[]) {
     const del = items.filter((s) => s.kind === 'scene');
     if (del.length <= 1) return del[0] && this.deleteScene(del[0]);
     const locked = this.numbersLocked;
-    const ok = await confirmDialog('Remove scenes', `Remove ${del.length} scenes and their text?${locked ? ' Scene numbers are locked, so each keeps its number as omitted.' : ''} You can undo this.`, 'Remove', { danger: true });
+    const ok = await confirmDialog(t("Remove scenes"), [t('Remove {0} scenes and their text?', del.length), locked ? t('Scene numbers are locked, so each keeps its number as omitted.') : '', t('You can undo this.')].filter(Boolean).join(' '), t("Remove"), { danger: true });
     if (!ok) return;
     this.editor.edit((tx) => {
       for (const it of [...del].sort((a, b) => b.line - a.line)) {
@@ -2503,7 +2541,7 @@ export class App {
   async deleteScene(item: SceneItem) {
     if (item.kind !== 'scene') return;
     const keep = this.omittedLines(item);
-    const ok = await confirmDialog('Remove scene', `Remove "${item.heading}" and its text?${keep ? ` Scene numbers are locked, so ${item.number} stays as omitted.` : ''} You can undo this.`, 'Remove', { danger: true });
+    const ok = await confirmDialog(t("Remove scene"), [t('Remove “{0}” and its text?', item.heading), keep ? t('Scene numbers are locked, so {0} stays as omitted.', item.number) : '', t('You can undo this.')].filter(Boolean).join(' '), t("Remove"), { danger: true });
     if (!ok) return;
     const wasFocused = this.view === 'scene' && this.focus?.kind === 'scene' && this.focus.key === item.key;
     const list = this.navigableScenes();
@@ -2521,7 +2559,7 @@ export class App {
       const next = this.navigableScenes()[Math.min(idx, this.navigableScenes().length - 1)];
       if (next) this.enterScene(next);
     }
-    toast('Scene removed.', { actions: [{ label: 'Undo', run: () => this.run('edit.undo') }] });
+    toast(t("Scene removed."), { actions: [{ label: t("Undo"), run: () => this.run('edit.undo') }] });
   }
 
   // ---------------------------------------------------------------------------------
@@ -2529,7 +2567,7 @@ export class App {
 
   updateChrome() {
     const p = this.project;
-    this.titleEl.textContent = p ? p.name : 'Scriptwright';
+    this.titleEl.textContent = p ? p.name : t("Scriptwright");
     this.subEl.textContent = p ? p.file : '';
     bridge.window('setTitle', p ? `${p.name} — Scriptwright` : 'Scriptwright');
     for (const [v, b] of Object.entries(this.tabs)) {
@@ -2555,8 +2593,8 @@ export class App {
     this.statusNav.classList.toggle('hidden', !showNav);
     if (showNav) {
       const [prev, next] = Array.from(this.statusNav.children) as HTMLElement[];
-      prev.title = `Previous scene (${this.commands.label('scene.prev')})`;
-      next.title = `Next scene (${this.commands.label('scene.next')})`;
+      prev.title = t("Previous scene ({0})", this.commands.label('scene.prev'));
+      next.title = t("Next scene ({0})", this.commands.label('scene.next'));
     }
     // Only Dialogue view has a header row (title, info and its options), like Cards and Characters.
     const show = !!this.project && !this.panel && this.view === 'dialogue';
@@ -2567,11 +2605,13 @@ export class App {
     const total = chars.reduce((n, x) => n + x.cues, 0);
     const who = chars.find((x) => x.name === this.dialogueCharacter);
     const info = this.dialogueCharacter
-      ? `${who?.cues ?? 0} ${who?.cues === 1 ? 'speech' : 'speeches'}${this.dialogueScope === 'scene' ? ' in this scene' : ''}`
-      : `${chars.length} characters · ${total} speeches`;
-    const sel = h('select', { class: 'field', 'aria-label': 'Character', title: 'Character' }, h('option', { value: '' }, 'All characters'));
+      ? this.dialogueScope === 'scene'
+        ? tn(who?.cues ?? 0, '{0} speech in this scene', '{0} speeches in this scene')
+        : tn(who?.cues ?? 0, '{0} speech', '{0} speeches')
+      : [tn(chars.length, '{0} character', '{0} characters'), tn(total, '{0} speech', '{0} speeches')].join(' · ');
+    const sel = h('select', { class: 'field', 'aria-label': t("Character"), title: t("Character") }, h('option', { value: '' }, t("All characters")));
     for (const ch of chars) sel.append(h('option', { value: ch.name }, characterLabel(ch)));
-    if (this.dialogueCharacter && !chars.some((c2) => c2.name === this.dialogueCharacter)) sel.append(h('option', { value: this.dialogueCharacter }, `${this.dialogueCharacter} (0 speeches)`));
+    if (this.dialogueCharacter && !chars.some((c2) => c2.name === this.dialogueCharacter)) sel.append(h('option', { value: this.dialogueCharacter }, t("{0} (0 speeches)", this.dialogueCharacter)));
     sel.value = this.dialogueCharacter;
     sel.addEventListener('change', () => {
       this.dialogueCharacter = sel.value;
@@ -2580,7 +2620,7 @@ export class App {
       this.editor.focus();
       this.saveStateSoon();
     });
-    const scope = h('select', { class: 'field', 'aria-label': 'Scope' }, h('option', { value: 'all' }, 'Whole screenplay'), h('option', { value: 'scene' }, 'Current scene'));
+    const scope = h('select', { class: 'field', 'aria-label': t("Scope") }, h('option', { value: 'all' }, t("Whole screenplay")), h('option', { value: 'scene' }, t("Current scene")));
     scope.value = this.dialogueScope;
     scope.addEventListener('change', () => {
       this.dialogueScope = scope.value as any;
@@ -2598,18 +2638,18 @@ export class App {
       this.saveStateSoon();
     });
     c.append(
-      h('span', { class: 'doc-title view-head-title' }, 'Dialogue'),
+      h('span', { class: 'doc-title view-head-title' }, t("Dialogue")),
       h('span', { class: 'dim view-head-info' }, info),
       h('span', { class: 'spacer' }),
       sel,
       scope,
-      h('label', null, action, h('span', null, 'Nearby action')),
-      h('button', { class: 'btn', title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, 'Go to passage in Script'),
+      h('label', null, action, h('span', null, t("Nearby action"))),
+      h('button', { class: 'btn', title: this.commands.label('dialogue.goToPassage'), onclick: () => this.goToPassage() }, t("Go to passage in Script")),
       h('button', {
         class: 'btn',
-        title: 'Export this dialogue as PDF',
+        title: t("Export this dialogue as PDF"),
         onclick: () => this.openPanel('export', { dialogue: { character: this.dialogueCharacter, action: this.dialogueAction } }),
-      }, 'Export'),
+      }, t("Export")),
     );
   }
 
@@ -2618,7 +2658,7 @@ export class App {
     if (!this.viewHeadScene) return;
     const list = this.scenes.filter((s) => s.kind === 'scene');
     const f = this.focusedItem() ?? this.activeScene();
-    this.viewHeadScene.textContent = !f ? '' : f.kind === 'scene' ? `Scene ${f.order} of ${list.length}` : f.kind === 'title' ? 'Title page' : 'Opening';
+    this.viewHeadScene.textContent = !f ? '' : f.kind === 'scene' ? t("Scene {0} of {1}", f.order, list.length) : f.kind === 'title' ? t("Title page") : t("Opening");
   }
 
   private updateStatusScene() {
@@ -2631,9 +2671,9 @@ export class App {
     }
     const list = this.scenes.filter((s) => s.kind === 'scene');
     const a = this.activeScene();
-    if (a?.kind === 'scene') this.statusScene.textContent = `Scene ${a.order} of ${list.length}`;
-    else if (a?.kind === 'title') this.statusScene.textContent = `Title page · ${list.length} scenes`;
-    else this.statusScene.textContent = `${list.length} scenes`;
+    if (a?.kind === 'scene') this.statusScene.textContent = t("Scene {0} of {1}", a.order, list.length);
+    else if (a?.kind === 'title') this.statusScene.textContent = t("Title page · {0} scenes", list.length);
+    else this.statusScene.textContent = t("{0} scenes", list.length);
     this.statusView.textContent = '';
   }
 
@@ -2646,7 +2686,8 @@ export class App {
     const L = this.editor.lines;
     let from = parsed.bodyStart;
     let to = L.length;
-    let label = 'Screenplay';
+    let label = t('Screenplay');
+    let isSel = false;
     let fromCh = -1;
     let toCh = -1;
     const sel = this.editor.sel;
@@ -2660,16 +2701,17 @@ export class App {
       to = b.line + 1;
       fromCh = a.ch;
       toCh = b.ch;
-      label = 'Selection';
+      label = t('Selection');
+      isSel = true;
     } else if (this.view === 'scene') {
       const it = this.focusedItem();
       if (it) {
         from = it.line;
         to = it.end;
-        label = it.kind === 'scene' ? `Scene ${it.order}` : it.heading;
+        label = it.kind === 'scene' ? t('Scene {0}', it.order) : it.heading;
       }
     } else if (this.view === 'dialogue') {
-      label = 'Dialogue view';
+      label = t('Dialogue view');
     }
     let words = 0;
     let chars = 0;
@@ -2678,7 +2720,7 @@ export class App {
       if (filter && !filter.has(L[i].key)) continue;
       let text = L[i].text;
       const pl = parsed.lines[i];
-      if (label === 'Selection') {
+      if (isSel) {
         const a = i === from ? fromCh : 0;
         const b = i === to - 1 ? toCh : text.length;
         text = text.slice(a, b);
@@ -2691,8 +2733,8 @@ export class App {
       words += countWords(clean);
       chars += clean.length;
     }
-    this.statusCount.textContent = `${label} · ${fmtNum(words)} words · ${fmtNum(chars)} characters`;
-    this.statusCount.title = label === 'Selection' ? 'Counts for the selected text' : 'Counts exclude notes, omitted text, sections and synopses';
+    this.statusCount.textContent = t("{0} · {1} words · {2} characters", label, fmtNum(words), fmtNum(chars));
+    this.statusCount.title = isSel ? t("Counts for the selected text") : t("Counts exclude notes, omitted text, sections and synopses");
   }
 
   updateWelcome() {
@@ -2708,25 +2750,25 @@ export class App {
     const box = h('div', { class: 'box' });
     if (!this.state.workspace) {
       box.append(
-        h('h1', null, 'Choose a workspace'),
-        h('p', null, 'A workspace is a folder that holds your screenplay projects. It can be inside a synced folder.'),
-        h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => this.chooseWorkspace() }, 'Choose folder…')),
+        h('h1', null, t("Choose a workspace")),
+        h('p', null, t("A workspace is a folder that holds your screenplay projects. It can be inside a synced folder.")),
+        h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => this.chooseWorkspace() }, t("Choose folder…"))),
       );
       if (this.state.recentWorkspaces.length) {
-        const rec = h('div', { class: 'recent' }, h('div', { class: 'section-head', style: { padding: '0' } }, 'Recent'));
+        const rec = h('div', { class: 'recent' }, h('div', { class: 'section-head', style: { padding: '0' } }, t("Recent")));
         for (const d of this.state.recentWorkspaces) rec.append(h('button', { class: 'row', onclick: () => this.setWorkspace(d) }, h('span', { class: 'label' }, d)));
         box.append(rec);
       }
     } else {
       box.append(
-        h('h1', null, this.projects.length ? 'Open a project' : 'No projects yet'),
-        h('p', null, this.projects.length ? 'Choose a project in the left pane, or create a new one.' : 'Create a project to start writing.'),
+        h('h1', null, this.projects.length ? t("Open a project") : t("No projects yet")),
+        h('p', null, this.projects.length ? t("Choose a project in the left pane, or create a new one.") : t("Create a project to start writing.")),
         h(
           'div',
           { class: 'actions' },
-          h('button', { class: 'btn primary', onclick: () => this.newProject() }, 'New project…'),
-          h('button', { class: 'btn', onclick: () => this.run('project.importFountain') }, 'Import Fountain…'),
-          h('button', { class: 'btn', onclick: () => this.chooseWorkspace() }, 'Change workspace…'),
+          h('button', { class: 'btn primary', onclick: () => this.newProject() }, t("New project…")),
+          h('button', { class: 'btn', onclick: () => this.run('project.importFountain') }, t("Import Fountain…")),
+          h('button', { class: 'btn', onclick: () => this.chooseWorkspace() }, t("Change workspace…")),
         ),
       );
     }
@@ -2746,9 +2788,9 @@ export class App {
       if (w.text && this.isMisspelled(w.text)) {
         const sugg = bridge.spell.suggest(w.text).slice(0, 6);
         for (const s of sugg) items.push({ label: s, run: () => ed.replaceRange(w.from, w.to, s) });
-        if (!sugg.length) items.push({ label: 'No suggestions', disabled: true });
+        if (!sugg.length) items.push({ label: t("No suggestions"), disabled: true });
         items.push({
-          label: 'Add to project dictionary',
+          label: t("Add to project dictionary"),
           run: () => {
             this.project?.meta.dictionary.push(w.text);
             this.markMetaDirty();
@@ -2756,7 +2798,7 @@ export class App {
           },
         });
         items.push({
-          label: 'Add to personal dictionary',
+          label: t("Add to personal dictionary"),
           run: () => {
             bridge.spell?.add(w.text);
             this.spellCache.set(w.text, false);
@@ -2766,34 +2808,34 @@ export class App {
         items.push({ sep: true });
       }
     }
-    items.push({ label: 'Cut', kbd: formatCombo('Mod+X'), disabled: !hasSel, run: () => this.clipboardCut() });
-    items.push({ label: 'Copy', kbd: formatCombo('Mod+C'), disabled: !hasSel, run: () => this.clipboardCopy() });
-    items.push({ label: 'Paste', kbd: formatCombo('Mod+V'), run: () => this.clipboardPaste() });
-    items.push({ label: 'Select All', kbd: formatCombo('Mod+A'), run: () => ed.selectAll() });
+    items.push({ label: t("Cut"), kbd: formatCombo('Mod+X'), disabled: !hasSel, run: () => this.clipboardCut() });
+    items.push({ label: t("Copy"), kbd: formatCombo('Mod+C'), disabled: !hasSel, run: () => this.clipboardCopy() });
+    items.push({ label: t("Paste"), kbd: formatCombo('Mod+V'), run: () => this.clipboardPaste() });
+    items.push({ label: t("Select All"), kbd: formatCombo('Mod+A'), run: () => ed.selectAll() });
     items.push({ sep: true });
-    items.push({ label: 'Rewrite…', kbd: this.commands.label('edit.rewrite'), run: () => openRewrite(this) });
-    items.push({ label: 'Comment…', kbd: this.commands.label('edit.comment'), disabled: !hasSel, run: () => this.addComment() });
-    items.push({ head: 'Highlight' });
+    items.push({ label: t("Rewrite…"), kbd: this.commands.label('edit.rewrite'), run: () => openRewrite(this) });
+    items.push({ label: t("Comment…"), kbd: this.commands.label('edit.comment'), disabled: !hasSel, run: () => this.addComment() });
+    items.push({ head: t("Highlight") });
     for (const c of ['yellow', 'green', 'blue', 'pink'] as const) items.push({ label: this.settings.highlights[c].label, dot: this.settings.highlights[c].color, disabled: !hasSel, run: () => this.highlight(c) });
-    items.push({ label: 'Remove highlight', disabled: !hasSel && !(pos && this.annotations.at(pos).some((r) => r.kind === 'highlight')), run: () => this.highlight(null, pos) });
+    items.push({ label: t("Remove highlight"), disabled: !hasSel && !(pos && this.annotations.at(pos).some((r) => r.kind === 'highlight')), run: () => this.highlight(null, pos) });
     items.push({ sep: true });
-    items.push({ label: 'Cut to shelf', kbd: this.commands.label('shelf.cut'), disabled: !hasSel, run: () => toShelf(this, true) });
-    items.push({ label: 'Copy to shelf', kbd: this.commands.label('shelf.copy'), disabled: !hasSel, run: () => toShelf(this, false) });
+    items.push({ label: t("Cut to shelf"), kbd: this.commands.label('shelf.cut'), disabled: !hasSel, run: () => toShelf(this, true) });
+    items.push({ label: t("Copy to shelf"), kbd: this.commands.label('shelf.copy'), disabled: !hasSel, run: () => toShelf(this, false) });
     if (pos) {
       const { comments, passages } = this.annotationsAt(pos);
       if (comments.length || passages.length) items.push({ sep: true });
       for (const c of comments) {
         const label = comments.length > 1 ? ` “${c.text.slice(0, 24)}${c.text.length > 24 ? '…' : ''}”` : '';
-        items.push({ label: `Open comment${label}…`, kbd: formatCombo('Mod+Click'), run: () => openCommentDialog(this, c.id) });
-        items.push({ label: `Delete comment${label}`, run: () => deleteComment(this, c.id) });
+        items.push({ label: t("Open comment{0}…", label), kbd: formatCombo('Mod+Click'), run: () => openCommentDialog(this, c.id) });
+        items.push({ label: t("Delete comment{0}", label), run: () => deleteComment(this, c.id) });
       }
-      for (const p of passages) items.push({ label: passages.length > 1 ? `Versions of ${passageLabel(this, p as PassageRecord, 30)}…` : 'Passage versions…', kbd: comments.length ? undefined : formatCombo('Mod+Click'), run: () => openRewriteFor(this, p.id) });
+      for (const p of passages) items.push({ label: passages.length > 1 ? t("Versions of {0}…", passageLabel(this, p as PassageRecord, 30)) : t("Passage versions…"), kbd: comments.length ? undefined : formatCombo('Mod+Click'), run: () => openRewriteFor(this, p.id) });
     }
     const pl = pos ? ed.parsed.lines[pos.line] : null;
     if (pl?.type === 'character' && pl.cue) {
-      items.push({ sep: true }, { label: `Rename ${pl.cue}…`, run: () => openRename(this, pl.cue) });
+      items.push({ sep: true }, { label: t("Rename {0}…", pl.cue), run: () => openRename(this, pl.cue) });
     }
-    if (!this.isFullView()) items.push({ sep: true }, { label: 'Go to passage in Script', kbd: this.commands.label('dialogue.goToPassage'), run: () => this.goToPassage() });
+    if (!this.isFullView()) items.push({ sep: true }, { label: t("Go to passage in Script"), kbd: this.commands.label('dialogue.goToPassage'), run: () => this.goToPassage() });
     openMenu(items, { x: e.clientX, y: e.clientY });
   }
 
@@ -2819,7 +2861,7 @@ export class App {
     const c = this.commands.get(id);
     if (!c) return;
     if (c.enabled && !c.enabled()) return;
-    Promise.resolve(c.run()).catch((e) => alertDialog('Something went wrong', e?.message ?? String(e)));
+    Promise.resolve(c.run()).catch((e) => alertDialog(t("Something went wrong"), e?.message ?? String(e)));
   }
 
   private registerCommands() {
@@ -2828,92 +2870,92 @@ export class App {
     const reg = (id: string, title: string, category: string, keys: string[], run: () => any, extra: Partial<Parameters<CommandRegistry['register']>[0]> = {}) =>
       C.register({ id, title, category, keys, run, ...extra });
 
-    reg('app.commands', 'Commands & Shortcuts…', 'App', ['Mod+K'], () => openPalette(this), { inFields: true, menu: 'Help' });
-    reg('app.settings', 'Settings…', 'App', ['Mod+P', 'Mod+,'], () => openSettings(this), { inFields: true, menu: isMac ? undefined : 'File' });
-    reg('app.quit', 'Quit', 'App', ['Mod+Q'], () => this.quit(), { inFields: true, menu: isMac ? undefined : 'File' });
-    reg('file.save', 'Save', 'File', ['Mod+S'], async () => {
+    reg('app.commands', t("Commands & Shortcuts…"), t("App"), ['Mod+K'], () => openPalette(this), { inFields: true, menu: 'Help' });
+    reg('app.settings', t("Settings…"), t("App"), ['Mod+P', 'Mod+,'], () => openSettings(this), { inFields: true, menu: isMac ? undefined : 'File' });
+    reg('app.quit', t("Quit"), t("App"), ['Mod+Q'], () => this.quit(), { inFields: true, menu: isMac ? undefined : 'File' });
+    reg('file.save', t("Save"), t("File"), ['Mod+S'], async () => {
       await this.flush();
-      if (this.saveState === 'saved') toast('Saved.');
+      if (this.saveState === 'saved') toast(t("Saved."));
     }, { inFields: true, enabled: hasProject, menu: 'File' });
-    reg('view.history', 'History', 'View', [isMac ? 'Mod+Y' : 'Mod+Shift+H'], () => (this.panel === 'history' ? this.closePanel() : this.openPanel('history')), { inFields: true, enabled: hasProject, menu: 'View' });
-    reg('file.export', 'Export PDF…', 'File', ['Mod+E'], () => (this.panel === 'export' ? this.closePanel() : this.openPanel('export')), { inFields: true, enabled: hasProject, menu: 'File' });
-    reg('project.new', 'New Project…', 'File', ['Mod+Shift+N'], () => this.newProject(), { menu: 'File' });
-    reg('project.openWorkspace', 'Open Folder as Workspace…', 'File', ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
-    reg('workspace.create', 'Create New Workspace…', 'File', [], () => this.createWorkspace(), { menu: 'File' });
-    reg('project.importFountain', 'Import Fountain or Final Draft File…', 'File', ['Mod+I'], () => this.importFountain(), { menu: 'File' });
-    reg('project.backup', 'Back Up Project…', 'File', ['Mod+Shift+S'], () => this.backupProject(), { enabled: hasProject, menu: 'File' });
-    reg('project.importBackup', 'Import Project Backup…', 'File', ['Mod+Shift+I'], () => this.importBackup(), { menu: 'File' });
-    reg('project.rename', 'Rename Project…', 'File', ['Mod+Shift+R'], () => this.renameProject(), { enabled: hasProject, menu: 'File' });
-    reg('project.close', 'Close Project', 'File', [], () => this.closeProject().then(() => this.updateWelcome()), { enabled: hasProject, menu: 'File' });
-    if (bridge.isElectron) reg('project.reveal', 'Show Project Folder', 'File', [], () => this.revealProject(), { enabled: hasProject, menu: 'File' });
-    reg('project.reviewCopies', 'Review Other Screenplay Copies…', 'File', [], () => this.reviewConflictCopies(), { enabled: () => !!this.project?.conflicts.length });
+    reg('view.history', t("History"), t("View"), [isMac ? 'Mod+Y' : 'Mod+Shift+H'], () => (this.panel === 'history' ? this.closePanel() : this.openPanel('history')), { inFields: true, enabled: hasProject, menu: 'View' });
+    reg('file.export', t("Export PDF…"), t("File"), ['Mod+E'], () => (this.panel === 'export' ? this.closePanel() : this.openPanel('export')), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('project.new', t("New Project…"), t("File"), ['Mod+Shift+N'], () => this.newProject(), { menu: 'File' });
+    reg('project.openWorkspace', t("Open Folder as Workspace…"), t("File"), ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
+    reg('workspace.create', t("Create New Workspace…"), t("File"), [], () => this.createWorkspace(), { menu: 'File' });
+    reg('project.importFountain', t("Import Fountain or Final Draft File…"), t("File"), ['Mod+I'], () => this.importFountain(), { menu: 'File' });
+    reg('project.backup', t("Back Up Project…"), t("File"), ['Mod+Shift+S'], () => this.backupProject(), { enabled: hasProject, menu: 'File' });
+    reg('project.importBackup', t("Import Project Backup…"), t("File"), ['Mod+Shift+I'], () => this.importBackup(), { menu: 'File' });
+    reg('project.rename', t("Rename Project…"), t("File"), ['Mod+Shift+R'], () => this.renameProject(), { enabled: hasProject, menu: 'File' });
+    reg('project.close', t("Close Project"), t("File"), [], () => this.closeProject().then(() => this.updateWelcome()), { enabled: hasProject, menu: 'File' });
+    if (bridge.isElectron) reg('project.reveal', t("Show Project Folder"), t("File"), [], () => this.revealProject(), { enabled: hasProject, menu: 'File' });
+    reg('project.reviewCopies', t("Review Other Screenplay Copies…"), t("File"), [], () => this.reviewConflictCopies(), { enabled: () => !!this.project?.conflicts.length });
 
-    reg('edit.undo', 'Undo', 'Edit', [], () => this.undoRedo('undo'), { inFields: true });
-    reg('edit.redo', 'Redo', 'Edit', [], () => this.undoRedo('redo'), { inFields: true });
-    reg('edit.selectAll', 'Select All', 'Edit', [], () => this.selectAll(), { inFields: true });
-    reg('search.script', 'Find in Screenplay', 'Search', ['Mod+F'], () => this.findbar.open(), { inFields: true, enabled: hasProject, menu: 'Edit' });
-    reg('search.replace', 'Find and Replace', 'Search', ['Mod+Alt+F'], () => this.findbar.open(true), { inFields: true, enabled: hasProject, menu: 'Edit' });
-    reg('search.scenes', 'Search Scenes', 'Search', ['Mod+Shift+F'], () => this.outline.focusSearch(), { inFields: true, enabled: hasProject, menu: 'Edit' });
-    reg('search.next', 'Find Next', 'Search', ['F3', 'Mod+G'], () => this.findbar.step(1), { enabled: () => this.findbar.hasQuery() });
-    reg('search.prev', 'Find Previous', 'Search', ['Shift+F3', 'Mod+Shift+G'], () => this.findbar.step(-1), { enabled: () => this.findbar.hasQuery() });
-    reg('character.rename', 'Rename Character…', 'Edit', ['Mod+R'], () => openRename(this), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('edit.undo', t("Undo"), t("Edit"), [], () => this.undoRedo('undo'), { inFields: true });
+    reg('edit.redo', t("Redo"), t("Edit"), [], () => this.undoRedo('redo'), { inFields: true });
+    reg('edit.selectAll', t("Select All"), t("Edit"), [], () => this.selectAll(), { inFields: true });
+    reg('search.script', t("Find in Screenplay"), t("Search"), ['Mod+F'], () => this.findbar.open(), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('search.replace', t("Find and Replace"), t("Search"), ['Mod+Alt+F'], () => this.findbar.open(true), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('search.scenes', t("Search Scenes"), t("Search"), ['Mod+Shift+F'], () => this.outline.focusSearch(), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('search.next', t("Find Next"), t("Search"), ['F3', 'Mod+G'], () => this.findbar.step(1), { enabled: () => this.findbar.hasQuery() });
+    reg('search.prev', t("Find Previous"), t("Search"), ['Shift+F3', 'Mod+Shift+G'], () => this.findbar.step(-1), { enabled: () => this.findbar.hasQuery() });
+    reg('character.rename', t("Rename Character…"), t("Edit"), ['Mod+R'], () => openRename(this), { inFields: true, enabled: hasProject, menu: 'Edit' });
 
-    reg('view.toggleScriptScene', 'Switch Script / Scene', 'View', [], () => this.toggleScriptScene(), { enabled: hasProject, menu: 'View' });
-    reg('view.script', 'Script View', 'View', ['Mod+1'], () => this.setView('script'), { enabled: hasProject, menu: 'View' });
-    reg('view.scene', 'Scene View', 'View', ['Mod+2'], () => this.setView('scene'), { enabled: hasProject, menu: 'View' });
-    reg('view.cards', 'Scene Cards', 'View', ['Mod+3', 'Mod+Shift+O'], () => (this.panel === 'cards' ? this.closePanel() : this.openPanel('cards')), { inFields: true, enabled: hasProject, menu: 'View' });
-    reg('view.dialogue', 'Dialogue View', 'View', ['Mod+4'], () => this.setView('dialogue'), { enabled: hasProject, menu: 'View' });
-    reg('view.characters', 'Characters', 'View', ['Mod+5'], () => (this.panel === 'characters' ? this.closePanel() : this.openPanel('characters')), { inFields: true, enabled: hasProject, menu: 'View' });
-    reg('title.addFields', 'Add Missing Title Page Fields', 'Edit', [], () => this.addMissingTitleFields(), { enabled: hasProject, menu: 'Edit' });
-    reg('view.titlePage', 'Title Page', 'View', ['Mod+T'], () => this.toggleTitlePage(), { inFields: true, enabled: hasProject, menu: 'View' });
-    reg('view.source', 'Source View', 'View', ['Mod+6'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
-    reg('view.minimal', 'Minimal View', 'View', ['Mod+M'], () => this.toggleMinimal(), { inFields: true, menu: 'View' });
-    reg('view.toggleMaximize', 'Maximize / Restore Window', 'View', ['Mod+Ö'], () => bridge.window('toggleMaximize'), { inFields: true, menu: 'View' });
-    reg('view.leftPane', 'Toggle Scene Pane', 'View', ['Mod+0'], () => this.togglePane('left'), { inFields: true, menu: 'View', enabled: () => this.panel !== 'export' });
-    reg('view.rightPane', 'Toggle Notes Pane', 'View', ['Mod+Shift+0'], () => this.togglePane('right'), { inFields: true, menu: 'View', enabled: () => this.panel !== 'export' });
-    reg('view.zoomIn', 'Larger Text', 'View', ['Mod+='], () => this.zoom(1), { inFields: true, menu: 'View' });
-    reg('view.zoomOut', 'Smaller Text', 'View', ['Mod+-'], () => this.zoom(-1), { inFields: true, menu: 'View' });
+    reg('view.toggleScriptScene', t("Switch Script / Scene"), t("View"), [], () => this.toggleScriptScene(), { enabled: hasProject, menu: 'View' });
+    reg('view.script', t("Script View"), t("View"), ['Mod+1'], () => this.setView('script'), { enabled: hasProject, menu: 'View' });
+    reg('view.scene', t("Scene View"), t("View"), ['Mod+2'], () => this.setView('scene'), { enabled: hasProject, menu: 'View' });
+    reg('view.cards', t("Scene Cards"), t("View"), ['Mod+3', 'Mod+Shift+O'], () => (this.panel === 'cards' ? this.closePanel() : this.openPanel('cards')), { inFields: true, enabled: hasProject, menu: 'View' });
+    reg('view.dialogue', t("Dialogue View"), t("View"), ['Mod+4'], () => this.setView('dialogue'), { enabled: hasProject, menu: 'View' });
+    reg('view.characters', t("Characters"), t("View"), ['Mod+5'], () => (this.panel === 'characters' ? this.closePanel() : this.openPanel('characters')), { inFields: true, enabled: hasProject, menu: 'View' });
+    reg('title.addFields', t("Add Missing Title Page Fields"), t("Edit"), [], () => this.addMissingTitleFields(), { enabled: hasProject, menu: 'Edit' });
+    reg('view.titlePage', t("Title Page"), t("View"), ['Mod+T'], () => this.toggleTitlePage(), { inFields: true, enabled: hasProject, menu: 'View' });
+    reg('view.source', t("Source View"), t("View"), ['Mod+6'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
+    reg('view.minimal', t("Minimal View"), t("View"), ['Mod+M'], () => this.toggleMinimal(), { inFields: true, menu: 'View' });
+    reg('view.toggleMaximize', t("Maximize / Restore Window"), t("View"), ['Mod+Ö'], () => bridge.window('toggleMaximize'), { inFields: true, menu: 'View' });
+    reg('view.leftPane', t("Toggle Scene Pane"), t("View"), ['Mod+0'], () => this.togglePane('left'), { inFields: true, menu: 'View', enabled: () => this.panel !== 'export' });
+    reg('view.rightPane', t("Toggle Notes Pane"), t("View"), ['Mod+Shift+0'], () => this.togglePane('right'), { inFields: true, menu: 'View', enabled: () => this.panel !== 'export' });
+    reg('view.zoomIn', t("Larger Text"), t("View"), ['Mod+='], () => this.zoom(1), { inFields: true, menu: 'View' });
+    reg('view.zoomOut', t("Smaller Text"), t("View"), ['Mod+-'], () => this.zoom(-1), { inFields: true, menu: 'View' });
 
-    reg('scene.prev', 'Previous Scene', 'Scenes', ['Alt+ArrowLeft'], () => this.stepScene(-1), { enabled: hasProject, menu: 'Scene' });
-    reg('scene.next', 'Next Scene', 'Scenes', ['Alt+ArrowRight'], () => this.stepScene(1), { enabled: hasProject, menu: 'Scene' });
-    reg('scene.new', 'New Scene After Current', 'Scenes', ['Mod+N'], () => this.insertScene(), { inFields: true, enabled: hasProject, menu: 'Scene' });
-    reg('scene.duplicate', 'Duplicate Scene', 'Scenes', [], () => {
+    reg('scene.prev', t("Previous Scene"), t("Scenes"), ['Alt+ArrowLeft'], () => this.stepScene(-1), { enabled: hasProject, menu: 'Scene' });
+    reg('scene.next', t("Next Scene"), t("Scenes"), ['Alt+ArrowRight'], () => this.stepScene(1), { enabled: hasProject, menu: 'Scene' });
+    reg('scene.new', t("New Scene After Current"), t("Scenes"), ['Mod+N'], () => this.insertScene(), { inFields: true, enabled: hasProject, menu: 'Scene' });
+    reg('scene.duplicate', t("Duplicate Scene"), t("Scenes"), [], () => {
       const a = this.activeScene();
       if (a) this.duplicateScene(a);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
-    reg('scene.archive', 'Move Scene to Archive', 'Scenes', [], () => {
+    reg('scene.archive', t("Move Scene to Archive"), t("Scenes"), [], () => {
       const a = this.activeScene();
       if (a) this.archiveScenes(this.sceneSel.has(a.id) ? this.scenesFor(a) : [a]);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
-    reg('scene.delete', 'Remove Scene…', 'Scenes', [], () => {
+    reg('scene.delete', t("Remove Scene…"), t("Scenes"), [], () => {
       const a = this.activeScene();
       if (a) this.deleteScene(a);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
-    reg('scene.moveUp', 'Move Scene Up', 'Scenes', ['Alt+Shift+ArrowUp'], () => {
+    reg('scene.moveUp', t("Move Scene Up"), t("Scenes"), ['Alt+Shift+ArrowUp'], () => {
       const a = this.activeScene();
       if (a) this.moveSceneBy(a, -1);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
-    reg('scene.moveDown', 'Move Scene Down', 'Scenes', ['Alt+Shift+ArrowDown'], () => {
+    reg('scene.moveDown', t("Move Scene Down"), t("Scenes"), ['Alt+Shift+ArrowDown'], () => {
       const a = this.activeScene();
       if (a) this.moveSceneBy(a, 1);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
-    reg('dialogue.goToPassage', 'Go to Passage in Script', 'Scenes', ['Mod+Enter'], () => this.goToPassage(), { enabled: () => !this.isFullView(), menu: 'Scene' });
-    reg('edit.rewrite', 'Rewrite…', 'Edit', ['Alt+A'], () => openRewrite(this), { enabled: hasProject, menu: 'Edit' });
-    reg('edit.highlight', 'Highlight…', 'Edit', ['Mod+H'], () => this.highlightMenu(), { enabled: hasProject, menu: 'Edit' });
-    reg('edit.comment', 'Comment…', 'Edit', ['Mod+Shift+M'], () => this.addComment(), { enabled: hasProject, menu: 'Edit' });
-    reg('shelf.cut', 'Cut to Shelf', 'Edit', ['Mod+Shift+X'], () => toShelf(this, true), { enabled: hasProject, menu: 'Edit' });
-    reg('shelf.copy', 'Copy to Shelf', 'Edit', ['Mod+Shift+C'], () => toShelf(this, false), { enabled: hasProject, menu: 'Edit' });
-    reg('draft.save', 'Save Named Draft…', 'File', ['Mod+Shift+D'], () => saveDraft(this).then(() => undefined), { inFields: true, enabled: hasProject, menu: 'File' });
-    reg('project.exportFountain', 'Export Fountain File…', 'File', ['Mod+Shift+E'], () => openFountainExport(this), { inFields: true, enabled: hasProject, menu: 'File' });
-    reg('project.exportFdx', 'Export Final Draft File…', 'File', ['Mod+Alt+E'], () => void exportFinalDraft(this), { inFields: true, enabled: hasProject, menu: 'File' });
-    reg('scene.lockNumbers', 'Lock Scene Numbers', 'Scenes', [], () => this.lockSceneNumbers(), { enabled: () => !!this.project && !this.numbersLocked && this.editor.parsed.scenes.length > 0, menu: 'Scene' });
-    reg('scene.unlockNumbers', 'Unlock Scene Numbers…', 'Scenes', [], () => void this.unlockSceneNumbers(), { enabled: () => !!this.project && this.numbersLocked, menu: 'Scene' });
-    reg('scene.writtenNumbers', 'Scene Numbers in Fountain Text…', 'Scenes', [], () => openSceneNumbers(this), { enabled: hasProject, menu: 'Scene' });
-    reg('project.review', 'Review: Comments & Alternatives', 'Scenes', [], () => this.showRightTab('comments'), { enabled: hasProject, menu: 'Scene' });
-    reg('project.shelf', 'Shelf', 'Scenes', [], () => this.showRightTab('shelf'), { enabled: hasProject, menu: 'Scene' });
-    reg('scene.notes', 'Scene Notes', 'Scenes', [], () => this.showRightTab('scene'), { enabled: hasProject, menu: 'Scene' });
-    reg('project.notes', 'Project Notes', 'Scenes', [], () => this.showRightTab('notes'), { enabled: hasProject, menu: 'Scene' });
-    reg('project.history', 'History', 'Scenes', [], () => this.showRightTab('history'), { enabled: hasProject, menu: 'Scene' });
+    reg('dialogue.goToPassage', t("Go to Passage in Script"), t("Scenes"), ['Mod+Enter'], () => this.goToPassage(), { enabled: () => !this.isFullView(), menu: 'Scene' });
+    reg('edit.rewrite', t("Rewrite…"), t("Edit"), ['Alt+A'], () => openRewrite(this), { enabled: hasProject, menu: 'Edit' });
+    reg('edit.highlight', t("Highlight…"), t("Edit"), ['Mod+H'], () => this.highlightMenu(), { enabled: hasProject, menu: 'Edit' });
+    reg('edit.comment', t("Comment…"), t("Edit"), ['Mod+Shift+M'], () => this.addComment(), { enabled: hasProject, menu: 'Edit' });
+    reg('shelf.cut', t("Cut to Shelf"), t("Edit"), ['Mod+Shift+X'], () => toShelf(this, true), { enabled: hasProject, menu: 'Edit' });
+    reg('shelf.copy', t("Copy to Shelf"), t("Edit"), ['Mod+Shift+C'], () => toShelf(this, false), { enabled: hasProject, menu: 'Edit' });
+    reg('draft.save', t("Save Named Draft…"), t("File"), ['Mod+Shift+D'], () => saveDraft(this).then(() => undefined), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('project.exportFountain', t("Export Fountain File…"), t("File"), ['Mod+Shift+E'], () => openFountainExport(this), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('project.exportFdx', t("Export Final Draft File…"), t("File"), ['Mod+Alt+E'], () => void exportFinalDraft(this), { inFields: true, enabled: hasProject, menu: 'File' });
+    reg('scene.lockNumbers', t("Lock Scene Numbers"), t("Scenes"), [], () => this.lockSceneNumbers(), { enabled: () => !!this.project && !this.numbersLocked && this.editor.parsed.scenes.length > 0, menu: 'Scene' });
+    reg('scene.unlockNumbers', t("Unlock Scene Numbers…"), t("Scenes"), [], () => void this.unlockSceneNumbers(), { enabled: () => !!this.project && this.numbersLocked, menu: 'Scene' });
+    reg('scene.writtenNumbers', t("Scene Numbers in Fountain Text…"), t("Scenes"), [], () => openSceneNumbers(this), { enabled: hasProject, menu: 'Scene' });
+    reg('project.review', t("Review: Comments & Alternatives"), t("Scenes"), [], () => this.showRightTab('comments'), { enabled: hasProject, menu: 'Scene' });
+    reg('project.shelf', t("Shelf"), t("Scenes"), [], () => this.showRightTab('shelf'), { enabled: hasProject, menu: 'Scene' });
+    reg('scene.notes', t("Scene Notes"), t("Scenes"), [], () => this.showRightTab('scene'), { enabled: hasProject, menu: 'Scene' });
+    reg('project.notes', t("Project Notes"), t("Scenes"), [], () => this.showRightTab('notes'), { enabled: hasProject, menu: 'Scene' });
+    reg('project.history', t("History"), t("Scenes"), [], () => this.showRightTab('history'), { enabled: hasProject, menu: 'Scene' });
   }
 
   /** Acts, sequences, beats or the story model changed: redraw what shows them. */
@@ -2949,8 +2991,8 @@ export class App {
       if (color === null && hl) {
         const an = ann.live.get(hl.rec.id) ?? null;
         ann.removeRecord(hl.rec.id);
-        toast('Highlight removed.', { actions: [{ label: 'Undo', run: () => ann.restoreRecord('highlight', hl.rec, an) }] });
-      } else toast('Select the text to highlight.');
+        toast(t("Highlight removed."), { actions: [{ label: t("Undo"), run: () => ann.restoreRecord('highlight', hl.rec, an) }] });
+      } else toast(t("Select the text to highlight."));
       return;
     }
     ann.highlight(color);
@@ -2977,8 +3019,8 @@ export class App {
     }
     openMenu(
       [
-        ...comments.map((c) => ({ label: `Comment: “${c.text.slice(0, 40)}${c.text.length > 40 ? '…' : ''}”`, dot: 'var(--comment)', run: () => openCommentDialog(this, c.id) })),
-        ...passages.map((p) => ({ label: `Versions: ${passageLabel(this, p as PassageRecord, 30)}`, dot: 'var(--passage)', run: () => openRewriteFor(this, p.id) })),
+        ...comments.map((c) => ({ label: t("Comment: “{0}{1}”", c.text.slice(0, 40), c.text.length > 40 ? '…' : ''), dot: 'var(--comment)', run: () => openCommentDialog(this, c.id) })),
+        ...passages.map((p) => ({ label: t("Versions: {0}", passageLabel(this, p as PassageRecord, 30)), dot: 'var(--passage)', run: () => openRewriteFor(this, p.id) })),
       ],
       { x: e.clientX, y: e.clientY },
     );
@@ -2992,7 +3034,7 @@ export class App {
       [
         ...(['yellow', 'green', 'blue', 'pink'] as const).map((k) => ({ label: this.settings.highlights[k].label, dot: this.settings.highlights[k].color, run: () => this.highlight(k) })),
         { sep: true },
-        { label: 'Remove highlight', run: () => this.highlight(null) },
+        { label: t("Remove highlight"), run: () => this.highlight(null) },
       ],
       at,
     );
@@ -3001,17 +3043,17 @@ export class App {
   async addComment() {
     const an = this.annotations.selectionAnchor();
     if (!an) {
-      toast('Select the text to comment on.');
+      toast(t("Select the text to comment on."));
       return;
     }
-    const ta = h('textarea', { class: 'field', rows: 4, placeholder: 'Comment', 'aria-label': 'Comment' });
+    const ta = h('textarea', { class: 'field', rows: 4, placeholder: t("Comment"), 'aria-label': t("Comment") });
     openDialog({
-      title: 'Comment',
+      title: t("Comment"),
       body: [h('div', { class: 'notice' }, `“${this.editor.selectedText().slice(0, 120)}”`), ta],
       buttons: [
-        { label: 'Cancel' },
+        { label: t("Cancel") },
         {
-          label: 'Add comment',
+          label: t("Add comment"),
           primary: true,
           run: () => {
             if (!ta.value.trim()) return false;
@@ -3037,7 +3079,7 @@ export class App {
   revealAnnotation(id: string) {
     const an = this.annotations.live.get(id);
     if (!an) {
-      toast('This item is detached from the text.');
+      toast(t("This item is detached from the text."));
       return;
     }
     const idx = keyIndex(this.editor.lines);
@@ -3145,7 +3187,7 @@ export class App {
       await this.chooseWorkspace();
       if (!this.state.workspace) return;
     }
-    const file = await bridge.dialog('open', { title: 'Import Fountain or Final Draft file', filters: [{ name: 'Screenplay', extensions: ['fountain', 'fdx', 'txt', 'spmd'] }] });
+    const file = await bridge.dialog('open', { title: t("Import Fountain or Final Draft file"), filters: [{ name: 'Screenplay', extensions: ['fountain', 'fdx', 'txt', 'spmd'] }] });
     if (!file) return;
     try {
       const p = await bridge.call('importFountain', file);
@@ -3154,11 +3196,11 @@ export class App {
       const numbered = this.editor.parsed.scenes.filter((sc) => sc.sceneNumber).length;
       if (numbered) {
         const remove = await choiceDialog(
-          'Written scene numbers',
-          `${numbered} of ${this.editor.parsed.scenes.length} scene headings in this file carry written numbers such as #4#. Scriptwright numbers scenes automatically while writing and in the PDF. Remove the written numbers? (Keep them only for locked production numbering.)`,
+          t("Written scene numbers"),
+          t("{0} of {1} scene headings in this file carry written numbers such as #4#. Scriptwright numbers scenes automatically while writing and in the PDF. Remove the written numbers? (Keep them only for locked production numbering.)", numbered, this.editor.parsed.scenes.length),
           [
-            { label: 'Keep', value: false },
-            { label: 'Remove numbers', value: true, primary: true },
+            { label: t("Keep"), value: false },
+            { label: t("Remove numbers"), value: true, primary: true },
           ],
         );
         if (!remove && numbered === this.editor.parsed.scenes.length) {
@@ -3177,9 +3219,9 @@ export class App {
           this.refreshDerived(true);
         }
       }
-      toast(`Imported into the new project "${p.name}". The original file was not changed.`);
+      toast(t("Imported into the new project \"{0}\". The original file was not changed.", p.name));
     } catch (e: any) {
-      alertDialog('Import failed', e.message);
+      alertDialog(t("Import failed"), e.message);
     }
   }
 
@@ -3188,13 +3230,13 @@ export class App {
     if (!p) return;
     await this.flush();
     const date = new Date().toISOString().slice(0, 10);
-    const dest = await bridge.dialog('save', { title: 'Back up project', defaultPath: `${p.name} ${date}.scriptwright.zip`, filters: [{ name: 'Project backup', extensions: ['zip'] }] });
+    const dest = await bridge.dialog('save', { title: t("Back up project"), defaultPath: `${p.name} ${date}.scriptwright.zip`, filters: [{ name: 'Project backup', extensions: ['zip'] }] });
     if (!dest) return;
     try {
       const r = await bridge.call('backupProject', p.rel, dest);
-      toast(`Backup saved: ${r.files} files including notes, scene information and history.`);
+      toast(t("Backup saved: {0} files including notes, scene information and history.", r.files));
     } catch (e: any) {
-      alertDialog('Backup failed', e.message);
+      alertDialog(t("Backup failed"), e.message);
     }
   }
 
@@ -3203,22 +3245,22 @@ export class App {
       await this.chooseWorkspace();
       if (!this.state.workspace) return;
     }
-    const file = await bridge.dialog('open', { title: 'Import project backup', filters: [{ name: 'Project backup', extensions: ['zip'] }] });
+    const file = await bridge.dialog('open', { title: t("Import project backup"), filters: [{ name: 'Project backup', extensions: ['zip'] }] });
     if (!file) return;
     try {
       const p = await bridge.call('importBackup', file);
       await this.refreshProjects();
       await this.openProject(p.rel);
-      toast(`Imported "${p.name}".`);
+      toast(t("Imported \"{0}\".", p.name));
     } catch (e: any) {
-      alertDialog('Import failed', e.message);
+      alertDialog(t("Import failed"), e.message);
     }
   }
 
   async renameProject() {
     const p = this.project;
     if (!p) return;
-    const name = await promptDialog('Rename project', 'Name', p.name, { okLabel: 'Rename' });
+    const name = await promptDialog(t("Rename project"), t("Name"), p.name, { okLabel: t("Rename") });
     if (!name || name === p.name) return;
     await this.flush();
     const rel = p.rel;
@@ -3228,7 +3270,7 @@ export class App {
       await this.refreshProjects();
       await this.openProject(r.rel);
     } catch (e: any) {
-      alertDialog('Rename failed', e.message);
+      alertDialog(t("Rename failed"), e.message);
       await this.refreshProjects();
       await this.openProject(rel);
     }
@@ -3293,13 +3335,36 @@ export class App {
         if (items.length) items.push({ type: 'separator' });
         items.push(...list);
       }
-      return { key: menu, label: menu, items };
+      return { key: menu, label: t(menu), items };
     });
+    // Items the main process adds itself (app menu, standard Edit and Window entries).
+    const labels: Record<string, string> = {
+      about: t('About {app}'),
+      settings: t('Settings…'),
+      services: t('Services'),
+      hide: t('Hide {app}'),
+      hideOthers: t('Hide Others'),
+      showAll: t('Show All'),
+      quit: t('Quit {app}'),
+      edit: t('Edit'),
+      undo: t('Undo'),
+      redo: t('Redo'),
+      cut: t('Cut'),
+      copy: t('Copy'),
+      paste: t('Paste'),
+      selectAll: t('Select All'),
+      window: t('Window'),
+      minimize: t('Minimize'),
+      zoom: t('Zoom'),
+      maximize: t('Maximize / Restore'),
+      closeWindow: t('Close Window'),
+      front: t('Bring All to Front'),
+    };
     // Rebuilding the native menu is not free (macOS logs warnings): only when it changed.
     const sig = JSON.stringify(model);
     if (sig === this.menuSig) return;
     this.menuSig = sig;
-    bridge.setMenu(model).catch(() => {});
+    bridge.setMenu({ menus: model, labels }).catch(() => {});
   }
   private menuSig = '';
 

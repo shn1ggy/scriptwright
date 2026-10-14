@@ -8,40 +8,41 @@ import { NumberMode, exportFountain, sceneNumberEdits } from '../../shared/fount
 import { exportFdx } from '../../shared/fdx';
 import { sceneNumberList } from '../../shared/scenenumbers';
 import { projectExportSettings } from './export';
+import { t, tn } from '../../shared/i18n';
 
 export function openSceneNumbers(app: App) {
   const sel = h(
     'select',
-    { class: 'field', 'aria-label': 'Action' },
-    h('option', { value: 'remove' }, 'Remove all written numbers'),
-    h('option', { value: 'addMissing' }, 'Add numbers where missing'),
-    h('option', { value: 'renumber' }, 'Renumber all in outline order'),
+    { class: 'field', 'aria-label': t("Action") },
+    h('option', { value: 'remove' }, t("Remove all written numbers")),
+    h('option', { value: 'addMissing' }, t("Add numbers where missing")),
+    h('option', { value: 'renumber' }, t("Renumber all in outline order")),
   );
   const written = app.editor.parsed.scenes.filter((s) => s.sceneNumber).length;
   sel.value = written ? 'remove' : 'renumber';
   const summary = h('div', { class: 'summary' });
   const update = () => {
     const n = sceneNumberEdits(app.editor.lineTexts, app.editor.parsed, sel.value as NumberMode).length;
-    summary.textContent = `${written} of ${app.editor.parsed.scenes.length} headings have a written number. This changes ${n} heading${n === 1 ? '' : 's'}.`;
+    summary.textContent = t('{0} of {1} headings have a written number.', written, app.editor.parsed.scenes.length) + ' ' + tn(n, 'This changes {0} heading.', 'This changes {0} headings.');
   };
   sel.addEventListener('change', update);
   update();
   openDialog({
-    title: 'Scene numbers in the Fountain text',
+    title: t("Scene numbers in the Fountain text"),
     body: [
-      h('p', null, 'Scene numbers are shown automatically while writing and in PDF export. Written numbers (such as #4#) are only needed for other apps or locked production numbering.'),
-      h('div', { class: 'form-row' }, h('label', null, 'Change'), sel),
+      h('p', null, t("Scene numbers are shown automatically while writing and in PDF export. Written numbers (such as #4#) are only needed for other apps or locked production numbering.")),
+      h('div', { class: 'form-row' }, h('label', null, t("Change")), sel),
       summary,
     ],
     buttons: [
-      { label: 'Cancel' },
+      { label: t("Cancel") },
       {
-        label: 'Apply',
+        label: t("Apply"),
         primary: true,
         run: () => {
           const edits = sceneNumberEdits(app.editor.lineTexts, app.editor.parsed, sel.value as NumberMode);
           if (!edits.length) {
-            toast('Nothing to change.');
+            toast(t("Nothing to change."));
             return;
           }
           app.editor.edit((tx) => {
@@ -49,7 +50,7 @@ export function openSceneNumbers(app: App) {
             return app.editor.sel;
           });
           app.refreshDerived(true);
-          toast(`${edits.length} heading${edits.length === 1 ? '' : 's'} changed.`, { actions: [{ label: 'Undo', run: () => app.run('edit.undo') }] });
+          toast(tn(edits.length, '{0} heading changed.', '{0} headings changed.'), { actions: [{ label: t("Undo"), run: () => app.run('edit.undo') }] });
         },
       },
     ],
@@ -61,28 +62,28 @@ export function openFountainExport(app: App) {
   if (!p) return;
   const numbers = h(
     'select',
-    { class: 'field', 'aria-label': 'Scene numbers' },
-    h('option', { value: 'renumber' }, 'Write numbers in outline order'),
-    h('option', { value: 'addMissing' }, 'Add where missing'),
-    h('option', { value: 'keep' }, 'Keep as written'),
-    h('option', { value: 'remove' }, 'Remove'),
+    { class: 'field', 'aria-label': t("Scene numbers") },
+    h('option', { value: 'renumber' }, t("Write numbers in outline order")),
+    h('option', { value: 'addMissing' }, t("Add where missing")),
+    h('option', { value: 'keep' }, t("Keep as written")),
+    h('option', { value: 'remove' }, t("Remove")),
   );
   const notes = h('input', { type: 'checkbox', checked: true });
   const omitted = h('input', { type: 'checkbox', checked: true });
   const title = h('input', { type: 'checkbox', checked: true });
   openDialog({
-    title: 'Export Fountain file',
+    title: t("Export Fountain file"),
     body: [
-      h('p', null, 'Writes a copy for other screenplay apps. Your screenplay is not changed. Comments, highlights, the shelf and other versions are never included.'),
-      h('div', { class: 'form-row' }, h('label', null, 'Scene numbers'), numbers),
-      h('label', { class: 'check-row' }, notes, 'Remove [[notes]]'),
-      h('label', { class: 'check-row' }, omitted, 'Remove omitted text /* */'),
-      h('label', { class: 'check-row' }, title, 'Include the title page'),
+      h('p', null, t("Writes a copy for other screenplay apps. Your screenplay is not changed. Comments, highlights, the shelf and other versions are never included.")),
+      h('div', { class: 'form-row' }, h('label', null, t("Scene numbers")), numbers),
+      h('label', { class: 'check-row' }, notes, t("Remove [[notes]]")),
+      h('label', { class: 'check-row' }, omitted, t("Remove omitted text /* */")),
+      h('label', { class: 'check-row' }, title, t("Include the title page")),
     ],
     buttons: [
-      { label: 'Cancel' },
+      { label: t("Cancel") },
       {
-        label: 'Export…',
+        label: t("Export…"),
         primary: true,
         run: async () => {
           const text = exportFountain(app.editor.lineTexts, app.editor.parsed, {
@@ -91,13 +92,13 @@ export function openFountainExport(app: App) {
             removeOmitted: omitted.checked,
             titlePage: title.checked,
           });
-          const dest = await bridge.dialog('save', { title: 'Export Fountain file', defaultPath: `${p.name}.fountain`, filters: [{ name: 'Fountain', extensions: ['fountain'] }] });
+          const dest = await bridge.dialog('save', { title: t("Export Fountain file"), defaultPath: `${p.name}.fountain`, filters: [{ name: 'Fountain', extensions: ['fountain'] }] });
           if (!dest) return false;
           try {
             await bridge.call('writeFile', dest.toLowerCase().endsWith('.fountain') ? dest : dest + '.fountain', text);
-            toast('Fountain file exported.');
+            toast(t("Fountain file exported."));
           } catch (e: any) {
-            alertDialog('Export failed', e.message);
+            alertDialog(t("Export failed"), e.message);
           }
         },
       },
@@ -114,12 +115,12 @@ export async function exportFinalDraft(app: App) {
   const locked = !!p.meta.numbersLocked;
   const nums = locked || s.sceneNumbers !== 'off' ? sceneNumberList(parsed, locked) : undefined;
   const xml = exportFdx(app.editor.lineTexts, parsed, { sceneNumbers: nums, titlePage: true });
-  const dest = await bridge.dialog('save', { title: 'Export Final Draft file', defaultPath: `${p.name}.fdx`, filters: [{ name: 'Final Draft', extensions: ['fdx'] }] });
+  const dest = await bridge.dialog('save', { title: t("Export Final Draft file"), defaultPath: `${p.name}.fdx`, filters: [{ name: 'Final Draft', extensions: ['fdx'] }] });
   if (!dest) return;
   try {
     await bridge.call('writeFile', dest.toLowerCase().endsWith('.fdx') ? dest : dest + '.fdx', xml);
-    toast('Final Draft file exported. Notes, sections, synopses and omitted text are left out.');
+    toast(t("Final Draft file exported. Notes, sections, synopses and omitted text are left out."));
   } catch (e: any) {
-    alertDialog('Export failed', e.message);
+    alertDialog(t("Export failed"), e.message);
   }
 }

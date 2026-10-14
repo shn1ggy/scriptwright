@@ -5,6 +5,7 @@ import { h, withClear } from './dom';
 import { pushEscape } from './overlay';
 import { analyzeCharacters, CharacterStats } from '../../shared/characters';
 import { openRename } from './rename';
+import { t, tn } from '../../shared/i18n';
 
 type SortKey = 'cues' | 'words' | 'scenes' | 'first' | 'name';
 
@@ -60,7 +61,7 @@ export class CharactersPanel {
 
   constructor(private app: App) {
     this.countEl = h('span', { class: 'dim' });
-    this.search = h('input', { class: 'field', placeholder: 'Filter', 'aria-label': 'Filter characters', spellcheck: 'false' });
+    this.search = h('input', { class: 'field', placeholder: t("Filter"), 'aria-label': t("Filter characters"), spellcheck: 'false' });
     this.search.dataset.esc = 'self';
     this.search.addEventListener('input', () => this.render());
     this.search.addEventListener('keydown', (e) => {
@@ -75,18 +76,18 @@ export class CharactersPanel {
     });
     this.sortSel = h(
       'select',
-      { class: 'field', 'aria-label': 'Sort by' },
-      h('option', { value: 'cues' }, 'Most speeches'),
-      h('option', { value: 'words' }, 'Most words'),
-      h('option', { value: 'scenes' }, 'Most scenes'),
-      h('option', { value: 'first' }, 'First appearance'),
-      h('option', { value: 'name' }, 'Name'),
+      { class: 'field', 'aria-label': t("Sort by") },
+      h('option', { value: 'cues' }, t("Most speeches")),
+      h('option', { value: 'words' }, t("Most words")),
+      h('option', { value: 'scenes' }, t("Most scenes")),
+      h('option', { value: 'first' }, t("First appearance")),
+      h('option', { value: 'name' }, t("Name")),
     );
     this.sortSel.addEventListener('change', () => this.render());
-    this.list = h('div', { class: 'ch-list', role: 'listbox', tabindex: '0', 'aria-label': 'Characters' });
+    this.list = h('div', { class: 'ch-list', role: 'listbox', tabindex: '0', 'aria-label': t("Characters") });
     this.list.addEventListener('keydown', (e) => this.onKey(e));
     this.detail = h('div', { class: 'ch-detail' });
-    this.detailResizer = h('div', { class: 'resizer ch-resizer', title: 'Drag to resize' });
+    this.detailResizer = h('div', { class: 'resizer ch-resizer', title: t("Drag to resize") });
     this.dragWidth(this.detailResizer, () => this.detailWidth, (w) => (this.app.state.layout.charDetailWidth = w), -1, 280, 640);
     this.el = h(
       'div',
@@ -94,7 +95,7 @@ export class CharactersPanel {
       h(
         'div',
         { class: 'cards-head' },
-        h('span', { class: 'doc-title', style: { padding: '0' } }, 'Characters'),
+        h('span', { class: 'doc-title', style: { padding: '0' } }, t("Characters")),
         this.countEl,
         h('span', { class: 'spacer' }),
         this.sortSel,
@@ -156,23 +157,23 @@ export class CharactersPanel {
     if (!this.isOpen || !this.app.project) return;
     const { scenes, stats } = this.data();
     const speaking = stats.filter((c) => c.cues > 0).length;
-    this.countEl.textContent = `${speaking} characters · ${scenes.length} scenes`;
+    this.countEl.textContent = t("{0} characters · {1} scenes", speaking, scenes.length);
     const list = this.visible();
     if (!this.selected || !list.some((c) => c.name === this.selected)) this.selected = list[0]?.name ?? null;
     this.list.textContent = '';
     const n = Math.max(1, scenes.length);
     this.list.append(
       h('div', { class: 'ch-row ch-header' }, (() => {
-        const head = h('span', { class: 'ch-name ch-name-head' }, 'Character');
-        const grip = h('span', { class: 'ch-col-resizer', title: 'Drag to resize the column' });
+        const head = h('span', { class: 'ch-name ch-name-head' }, t("Character"));
+        const grip = h('span', { class: 'ch-col-resizer', title: t("Drag to resize the column") });
         this.dragWidth(grip, () => this.nameWidth, (w) => (this.app.state.layout.charNameWidth = w), 1, 70, 320);
         head.append(grip);
         return head;
-      })(), h('span', { class: 'ch-num' }, 'Speeches'), h('span', { class: 'ch-num' }, 'Words'), h('span', { class: 'ch-num' }, 'Share'), h('span', { class: 'ch-num' }, 'Scenes'), h('span', { class: 'ch-strip-head' }, 'Through the story')),
+      })(), h('span', { class: 'ch-num' }, t("Speeches")), h('span', { class: 'ch-num' }, t("Words")), h('span', { class: 'ch-num' }, t("Share")), h('span', { class: 'ch-num' }, t("Scenes")), h('span', { class: 'ch-strip-head' }, t("Through the story"))),
     );
-    if (!list.length) this.list.append(h('div', { class: 'empty-note' }, stats.length ? 'No matching characters.' : 'No dialogue yet.'));
+    if (!list.length) this.list.append(h('div', { class: 'empty-note' }, stats.length ? t("No matching characters.") : t("No dialogue yet.")));
     for (const c of list) {
-      const strip = h('span', { class: 'ch-strip', style: { gridTemplateColumns: `repeat(${n}, 1fr)` }, title: 'Each cell is a scene: filled where the character speaks, outlined where only mentioned' });
+      const strip = h('span', { class: 'ch-strip', style: { gridTemplateColumns: `repeat(${n}, 1fr)` }, title: t("Each cell is a scene: filled where the character speaks, outlined where only mentioned") });
       const speaks = new Set(c.speaksIn);
       const mentioned = new Set(c.mentionedIn);
       for (let i = 0; i < scenes.length; i++) strip.append(h('i', { class: speaks.has(i) ? 'on' : mentioned.has(i) ? 'mention' : '' }));
@@ -206,35 +207,35 @@ export class CharactersPanel {
     const { scenes, stats } = this.data();
     const c = stats.find((x) => x.name === this.selected);
     if (!c) {
-      d.append(h('div', { class: 'empty-note' }, 'Choose a character.'));
+      d.append(h('div', { class: 'empty-note' }, t("Choose a character.")));
       return;
     }
     const sceneLabel = (i: number) => (i >= 0 && scenes[i] ? `${scenes[i].number}. ${scenes[i].heading}` : '–');
     const fact = (label: string, value: string) => h('div', { class: 'ch-fact' }, h('span', { class: 'dim' }, label), h('span', null, value));
     d.append(
-      h('div', { class: 'ch-detail-head' }, h('span', { class: 'ch-detail-name' }, c.name), c.silent ? h('span', { class: 'meta dim' }, 'no dialogue') : null),
+      h('div', { class: 'ch-detail-head' }, h('span', { class: 'ch-detail-name' }, c.name), c.silent ? h('span', { class: 'meta dim' }, t("no dialogue")) : null),
       h(
         'div',
         { class: 'ch-actions' },
-        c.cues ? h('button', { class: 'btn', onclick: () => this.showDialogue(c.name) }, 'Show dialogue') : null,
-        h('button', { class: 'btn', onclick: () => openRename(this.app, c.name) }, 'Rename…'),
+        c.cues ? h('button', { class: 'btn', onclick: () => this.showDialogue(c.name) }, t("Show dialogue")) : null,
+        h('button', { class: 'btn', onclick: () => openRename(this.app, c.name) }, t("Rename…")),
       ),
       h(
         'div',
         { class: 'ch-facts' },
-        fact('Speeches', String(c.cues)),
-        fact('Words spoken', `${c.words}${c.words ? ` (${Math.round(c.share * 100)}% of all dialogue)` : ''}`),
-        fact('Average speech', c.cues ? `${Math.round(c.words / c.cues)} words` : '–'),
-        fact('Longest speech', c.longest ? `${c.longest} words` : '–'),
-        fact('Parentheticals', String(c.parentheticals)),
-        fact('Speaks in', `${c.speaksIn.length} of ${scenes.length} scenes`),
-        fact('Only mentioned in', `${c.mentionedIn.length} scenes`),
-        fact('First appearance', sceneLabel(c.firstScene)),
-        fact('Last appearance', sceneLabel(c.lastScene)),
+        fact(t("Speeches"), String(c.cues)),
+        fact(t("Words spoken"), c.words ? t('{0} ({1}% of all dialogue)', c.words, Math.round(c.share * 100)) : '0'),
+        fact(t("Average speech"), c.cues ? tn(Math.round(c.words / c.cues), '{0} word', '{0} words') : '–'),
+        fact(t("Longest speech"), c.longest ? tn(c.longest, '{0} word', '{0} words') : '–'),
+        fact(t("Parentheticals"), String(c.parentheticals)),
+        fact(t("Speaks in"), tn(scenes.length, '{1} of {0} scene', '{1} of {0} scenes', c.speaksIn.length)),
+        fact(t("Only mentioned in"), tn(c.mentionedIn.length, '{0} scene', '{0} scenes')),
+        fact(t("First appearance"), sceneLabel(c.firstScene)),
+        fact(t("Last appearance"), sceneLabel(c.lastScene)),
       ),
     );
     if (c.sharedWith.length) {
-      d.append(h('h4', null, 'Shares scenes with'));
+      d.append(h('h4', null, t("Shares scenes with")));
       const max = c.sharedWith[0].scenes;
       const box = h('div', { class: 'ch-shared' });
       for (const o of c.sharedWith.slice(0, 12)) {
@@ -242,7 +243,7 @@ export class CharactersPanel {
         const open = this.openShared === o.name;
         const b = h(
           'button',
-          { class: `ch-shared-row${open ? ' open' : ''}`, title: open ? 'Hide the shared scenes' : `Show the scenes ${c.name} and ${o.name} share`, 'aria-expanded': String(open), onclick: () => {
+          { class: `ch-shared-row${open ? ' open' : ''}`, title: open ? t("Hide the shared scenes") : t("Show the scenes {0} and {1} share", c.name, o.name), 'aria-expanded': String(open), onclick: () => {
             this.openShared = open ? null : o.name;
             this.renderDetail();
           } },
@@ -259,14 +260,14 @@ export class CharactersPanel {
             list.append(
               h(
                 'button',
-                { class: 'ch-scene-row', title: 'Open the scene', onclick: () => this.openScene(sc) },
+                { class: 'ch-scene-row', title: t("Open the scene"), onclick: () => this.openScene(sc) },
                 h('span', { class: 'num' }, sc.number),
                 sc.record?.color ? h('span', { class: 'swatch', style: { background: sc.record.color } }) : null,
                 h('span', { class: 'label' }, sc.heading),
               ),
             );
           }
-          list.append(h('button', { class: 'btn sm ch-shared-go', onclick: () => this.select(o.name) }, `Show ${o.name}`));
+          list.append(h('button', { class: 'btn sm ch-shared-go', onclick: () => this.select(o.name) }, t("Show {0}", o.name)));
           box.append(list);
         }
       }
@@ -274,18 +275,18 @@ export class CharactersPanel {
     }
     const all = [...new Set([...c.speaksIn, ...c.mentionedIn])].sort((a, b) => a - b);
     if (all.length) {
-      d.append(h('h4', null, 'Scenes'));
+      d.append(h('h4', null, t("Scenes")));
       const box = h('div', { class: 'ch-scenes' });
       for (const i of all) {
         const sc = scenes[i];
         const cues = c.cuesByScene.get(i) ?? 0;
         const b = h(
           'button',
-          { class: 'ch-scene-row', title: 'Open the scene', onclick: () => this.openScene(sc) },
+          { class: 'ch-scene-row', title: t("Open the scene"), onclick: () => this.openScene(sc) },
           h('span', { class: 'num' }, sc.number),
           sc.record?.color ? h('span', { class: 'swatch', style: { background: sc.record.color } }) : null,
           h('span', { class: 'label' }, sc.heading),
-          h('span', { class: 'dim' }, cues ? `${cues} ${cues === 1 ? 'speech' : 'speeches'}` : 'mentioned'),
+          h('span', { class: 'dim' }, cues ? tn(cues, '{0} speech', '{0} speeches') : t("mentioned")),
         );
         box.append(b);
       }

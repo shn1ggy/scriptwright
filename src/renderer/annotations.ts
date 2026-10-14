@@ -21,6 +21,7 @@ import {
 import type { HistoryEntry } from './editor/history';
 import { CommentRecord, HighlightColor, HighlightRecord, PassageRecord } from '../shared/types';
 import { uid } from './ui/dom';
+import { t } from '../shared/i18n';
 
 export type AnnKind = 'highlight' | 'comment' | 'passage';
 type AnyRecord = HighlightRecord | CommentRecord | PassageRecord;
@@ -228,7 +229,7 @@ export class Annotations {
   highlight(color: HighlightColor | null): boolean {
     const an = this.selectionAnchor();
     if (!an) return false;
-    return this.app.undoable(() => this.highlightAt(an, color), color ? 'Highlight' : 'Remove Highlight');
+    return this.app.undoable(() => this.highlightAt(an, color), color ? t("Highlight") : t("Remove Highlight"));
   }
 
   private highlightAt(an: LiveAnchor, color: HighlightColor | null): boolean {
@@ -247,7 +248,7 @@ export class Annotations {
   }
 
   addComment(text: string, an: LiveAnchor): CommentRecord {
-    return this.app.undoable(() => this.addCommentNow(text, an), 'Comment');
+    return this.app.undoable(() => this.addCommentNow(text, an), t("Comment"));
   }
 
   private addCommentNow(text: string, an: LiveAnchor): CommentRecord {
@@ -261,12 +262,12 @@ export class Annotations {
   }
 
   addPassage(an: LiveAnchor, name: string): PassageRecord {
-    return this.app.undoable(() => this.addPassageNow(an, name), 'Alternative Passage');
+    return this.app.undoable(() => this.addPassageNow(an, name), t("Alternative Passage"));
   }
 
   private addPassageNow(an: LiveAnchor, name: string): PassageRecord {
     const text = anchorText(an, this.app.editor.lines, keyIndex(this.app.editor.lines));
-    const first = { id: uid(), name: 'Original', text, created: new Date().toISOString() };
+    const first = { id: uid(), name: t('Original'), text, created: new Date().toISOString() };
     const rec: PassageRecord = { id: uid(), name, anchor: this.storedFor(an), activeId: first.id, alternatives: [first], sceneHeading: this.sceneHeadingAt(an) };
     this.meta.passages.push(rec);
     this.live.set(rec.id, cloneAnchor(an));
@@ -281,7 +282,7 @@ export class Annotations {
     const an = this.selectionAnchor();
     const r = this.record(id);
     if (!an || !r) return false;
-    return this.app.undoable(() => this.reattachNow(id, an, r), 'Attach');
+    return this.app.undoable(() => this.reattachNow(id, an, r), t("Attach"));
   }
 
   private reattachNow(id: string, an: LiveAnchor, r: { rec: AnyRecord }): boolean {
@@ -295,7 +296,7 @@ export class Annotations {
   }
 
   removeRecord(id: string, refresh = true) {
-    if (refresh) this.app.undoable(() => this.removeNow(id, true), 'Delete');
+    if (refresh) this.app.undoable(() => this.removeNow(id, true), t("Delete"));
     else this.removeNow(id, false);
   }
 
@@ -314,7 +315,7 @@ export class Annotations {
 
   /** Restores a removed record (used by "Undo" in toasts). */
   restoreRecord(kind: AnnKind, rec: AnyRecord, an: LiveAnchor | null) {
-    this.app.undoable(() => this.restoreNow(kind, rec, an), 'Restore');
+    this.app.undoable(() => this.restoreNow(kind, rec, an), t("Restore"));
   }
 
   private restoreNow(kind: AnnKind, rec: AnyRecord, an: LiveAnchor | null) {

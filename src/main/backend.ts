@@ -32,6 +32,7 @@ export interface ExportInfo {
   revision?: { text: string; sceneIds?: string[]; currentIds: Array<string | undefined>; label: string };
 }
 import { readZip, writeZip } from './zip';
+import { setUiLanguage, t } from '../shared/i18n';
 
 export const META_DIR = '.scriptwright';
 const META_FILE = 'project.json';
@@ -176,7 +177,10 @@ export class Backend extends EventEmitter {
   loadSettings(): Settings {
     const wsFile = this.workspaceSettingsFile();
     const fromWs = wsFile ? this.readJson(wsFile) : null;
-    return mergeSettings(fromWs ?? this.readJson(path.join(this.userData, 'settings.json')));
+    const s = mergeSettings(fromWs ?? this.readJson(path.join(this.userData, 'settings.json')));
+    // Messages from here (errors, export warnings) follow the interface language.
+    setUiLanguage(s.language);
+    return s;
   }
 
   /** Where settings are stored right now (shown in Settings). */
@@ -186,6 +190,7 @@ export class Backend extends EventEmitter {
   }
 
   saveSettings(s: Settings) {
+    setUiLanguage(s.language);
     const json = JSON.stringify(s, null, 2);
     atomicWrite(path.join(this.userData, 'settings.json'), json);
     const wsFile = this.workspaceSettingsFile();
@@ -251,7 +256,7 @@ export class Backend extends EventEmitter {
   }
 
   private ws(): string {
-    if (!this.workspace) throw new Error('No workspace selected');
+    if (!this.workspace) throw new Error(t('No workspace selected'));
     return this.workspace;
   }
 
@@ -357,7 +362,7 @@ export class Backend extends EventEmitter {
     const src = this.resolve(rel);
     // Stays where it is (an archived project stays in the archive).
     const target = path.join(path.dirname(src), safeName(newName));
-    if (fs.existsSync(target)) throw new Error('A project with that name already exists.');
+    if (fs.existsSync(target)) throw new Error(t('A project with that name already exists.'));
     this.unwatch(rel);
     fs.renameSync(src, target);
     // Rename the screenplay file along with the folder when it followed the folder name.
@@ -410,7 +415,7 @@ export class Backend extends EventEmitter {
   /** Creates a new, empty workspace folder and returns its path. */
   createWorkspace(parent: string, name: string): string {
     const dir = path.join(parent, safeName(name));
-    if (fs.existsSync(dir) && fs.readdirSync(dir).filter((f) => !f.startsWith('.')).length) throw new Error('A folder with that name already exists and is not empty.');
+    if (fs.existsSync(dir) && fs.readdirSync(dir).filter((f) => !f.startsWith('.')).length) throw new Error(t('A folder with that name already exists and is not empty.'));
     fs.mkdirSync(path.join(dir, META_DIR), { recursive: true });
     return dir;
   }
@@ -421,7 +426,7 @@ export class Backend extends EventEmitter {
   openProject(rel: string): OpenResult {
     const dir = this.resolve(rel);
     const { file } = this.findScript(dir);
-    if (!file) throw new Error('No screenplay file found in this project.');
+    if (!file) throw new Error(t('No screenplay file found in this project.'));
     const scriptPath = path.join(dir, file);
     const text = fs.readFileSync(scriptPath, 'utf8').replace(/^﻿/, '');
     const hash = sha(text);
@@ -439,7 +444,7 @@ export class Backend extends EventEmitter {
       } catch {
         const keep = metaPath + `.damaged-${stamp()}`;
         fs.copyFileSync(metaPath, keep);
-        warnings.push(`Project information was damaged and has been set aside as ${path.basename(keep)}. The screenplay opened normally.`);
+        warnings.push(t('Project information was damaged and has been set aside as {0}. The screenplay opened normally.', path.basename(keep)));
       }
     }
     if (!meta) {
@@ -449,7 +454,7 @@ export class Backend extends EventEmitter {
         atomicWrite(metaPath, JSON.stringify(meta, null, 2));
         metaHash = sha(fs.readFileSync(metaPath, 'utf8'));
       } catch (e: any) {
-        warnings.push(`Project information could not be created: ${e.message}`);
+        warnings.push(t('Project information could not be created: {0}', e.message));
       }
     }
     const result: OpenResult = { text, hash, file, meta, metaHash, warnings };
@@ -851,7 +856,7 @@ export class Backend extends EventEmitter {
 
   importBackup(zipFile: string): ProjectEntry {
     const entries = readZip(fs.readFileSync(zipFile));
-    if (!entries.length) throw new Error('The backup is empty.');
+    if (!entries.length) throw new Error(t('The backup is empty.'));
     const top = entries[0].name.split('/')[0];
     const single = entries.every((e) => e.name.split('/')[0] === top && e.name.includes('/'));
     const projectName = single ? top : path.basename(zipFile).replace(/\.zip$/i, '');
@@ -976,7 +981,7 @@ export class Backend extends EventEmitter {
   /** Reads a small text file the user chose (e.g. exported shortcuts). */
   readTextFile(file: string): string {
     const st = fs.statSync(file);
-    if (st.size > 2 * 1024 * 1024) throw new Error('The file is too large.');
+    if (st.size > 2 * 1024 * 1024) throw new Error(t('The file is too large.'));
     return fs.readFileSync(file, 'utf8');
   }
 

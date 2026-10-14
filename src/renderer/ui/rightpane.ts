@@ -10,6 +10,7 @@ import { renderReview } from './review';
 import { renderShelf } from './shelf';
 import { saveDraft } from './drafts';
 import { historyEntries, kindToggles, shownKinds } from './history';
+import { t, uiLocale } from '../../shared/i18n';
 
 type Tab = 'notes' | 'scene' | 'comments' | 'shelf' | 'history';
 
@@ -22,7 +23,7 @@ export class RightPane {
 
   constructor(private app: App) {
     const mk = (t: Tab, label: string) => h('button', { class: 'tab', tabindex: '-1', onclick: () => this.switchTo(t) }, label);
-    this.tabBtns = { notes: mk('notes', 'Notes'), scene: mk('scene', 'Scene'), comments: mk('comments', 'Review'), shelf: mk('shelf', 'Shelf'), history: mk('history', 'History') };
+    this.tabBtns = { notes: mk('notes', t("Notes")), scene: mk('scene', t("Scene")), comments: mk('comments', t("Review")), shelf: mk('shelf', t("Shelf")), history: mk('history', t("History")) };
     this.body = h('div', { class: 'rp-body' });
     this.el = h(
       'div',
@@ -73,9 +74,9 @@ export class RightPane {
     const m = this.app.project?.meta;
     const open = m ? m.comments.filter((c) => !c.resolved && !c.detached).length : 0;
     const detached = m ? [...m.comments, ...m.highlights, ...m.passages].filter((r) => r.detached).length : 0;
-    this.tabBtns.comments.replaceChildren('Review', ...(open || detached ? [h('span', { class: 'tab-count' }, String(open + detached))] : []));
+    this.tabBtns.comments.replaceChildren(t('Review'), ...(open || detached ? [h('span', { class: 'tab-count' }, String(open + detached))] : []));
     this.tabBtns.comments.classList.toggle('has-warn', detached > 0);
-    this.tabBtns.comments.title = detached ? `${open} open comments, ${detached} detached items` : `${open} open comments`;
+    this.tabBtns.comments.title = detached ? t("{0} open comments, {1} detached items", open, detached) : t("{0} open comments", open);
   }
 
   historyChanged() {
@@ -86,7 +87,7 @@ export class RightPane {
   focusSummary() {
     if (this.tab !== 'scene') return;
     this.render();
-    const ta = this.body.querySelector<HTMLTextAreaElement>('textarea[aria-label="Scene summary"]');
+    const ta = this.body.querySelector<HTMLTextAreaElement>('textarea[data-field="summary"]');
     ta?.focus();
   }
 
@@ -106,7 +107,7 @@ export class RightPane {
     this.body.classList.remove('rp-history');
     const p = this.app.project;
     if (!p) {
-      this.body.append(h('div', { class: 'notice' }, 'Open a project to see its notes.'));
+      this.body.append(h('div', { class: 'notice' }, t("Open a project to see its notes.")));
       return;
     }
     this.updateBadges();
@@ -126,16 +127,16 @@ export class RightPane {
 
   private renderNotes() {
     const p = this.app.project!;
-    const ta = h('textarea', { class: 'field grow', placeholder: 'Notes for the whole project', 'aria-label': 'Project notes', spellcheck: 'true' });
+    const ta = h('textarea', { class: 'field grow', placeholder: t("Notes for the whole project"), 'aria-label': t("Project notes"), spellcheck: 'true' });
     ta.value = p.meta.notes;
     ta.addEventListener('input', () => {
       p.meta.notes = ta.value;
       this.app.markMetaDirty();
     });
-    this.body.append(h('label', { class: 'cap' }, 'Project notes'), ta);
+    this.body.append(h('label', { class: 'cap' }, t("Project notes")), ta);
     if (p.meta.detached.length) {
-      const box = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } }, h('label', { class: 'cap' }, `Detached scene information (${p.meta.detached.length})`));
-      box.append(h('div', { class: 'notice' }, 'Information whose scene could not be identified. Attach it to the current scene or delete it.'));
+      const box = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } }, h('label', { class: 'cap' }, t("Detached scene information ({0})", p.meta.detached.length)));
+      box.append(h('div', { class: 'notice' }, t("Information whose scene could not be identified. Attach it to the current scene or delete it.")));
       for (const d of p.meta.detached.slice()) {
         const bits = [d.summary, d.notes].filter(Boolean).join(' — ');
         box.append(
@@ -148,23 +149,23 @@ export class RightPane {
               onclick: () => {
                 const cur = this.app.activeScene();
                 if (!cur || cur.kind !== 'scene') {
-                  toast('Place the caret in a scene first.');
+                  toast(t("Place the caret in a scene first."));
                   return;
                 }
                 p.meta.detached = p.meta.detached.filter((x) => x.id !== d.id);
                 this.app.updateSceneRecord(cur, { summary: [cur.record?.summary, d.summary].filter(Boolean).join('\n'), notes: [cur.record?.notes, d.notes].filter(Boolean).join('\n\n'), status: cur.record?.status || d.status, color: cur.record?.color || d.color });
                 this.render();
               },
-            }, 'Attach'),
+            }, t("Attach")),
             h('button', {
               class: 'btn sm',
               onclick: async () => {
-                if (!(await confirmDialog('Delete detached information', 'Delete this scene information permanently?', 'Delete', { danger: true }))) return;
+                if (!(await confirmDialog(t("Delete detached information"), t("Delete this scene information permanently?"), t("Delete"), { danger: true }))) return;
                 p.meta.detached = p.meta.detached.filter((x) => x.id !== d.id);
                 this.app.markMetaDirty();
                 this.render();
               },
-            }, 'Delete'),
+            }, t("Delete")),
           ),
         );
       }
@@ -176,13 +177,13 @@ export class RightPane {
     const item = this.currentScene();
     this.sceneFor = item?.id ?? null;
     if (!item || item.kind !== 'scene') {
-      this.body.append(h('div', { class: 'notice' }, 'Place the caret in a scene to add its summary, status, color and notes.'));
+      this.body.append(h('div', { class: 'notice' }, t("Place the caret in a scene to add its summary, status, color and notes.")));
       return;
     }
     // Always write to the live record (never a captured copy).
     const live = () => this.app.sceneRecord(item)!;
     const rec = live();
-    const summary = h('textarea', { class: 'field', rows: 3, placeholder: 'One or two lines about the scene', 'aria-label': 'Scene summary', style: { minHeight: '60px' } });
+    const summary = h('textarea', { class: 'field', rows: 3, placeholder: t("One or two lines about the scene"), 'aria-label': t("Scene summary"), dataset: { field: 'summary' }, style: { minHeight: '60px' } });
     summary.value = rec.summary ?? '';
     summary.addEventListener('input', () => {
       live().summary = summary.value;
@@ -190,7 +191,7 @@ export class RightPane {
       this.app.outline.render();
       this.app.cards.render();
     });
-    const status = h('select', { class: 'field', 'aria-label': 'Scene status' });
+    const status = h('select', { class: 'field', 'aria-label': t("Scene status") });
     for (const [k, label] of Object.entries(STATUS_LABELS)) status.append(h('option', { value: k }, label));
     status.value = rec.status ?? '';
     status.addEventListener('change', () => this.app.updateSceneRecord(item, { status: status.value as SceneStatus }));
@@ -198,7 +199,7 @@ export class RightPane {
     const drawSwatches = () => {
       sw.textContent = '';
       const cur = live().color;
-      sw.append(h('button', { class: !cur ? 'on' : '', title: 'No color', 'aria-label': 'No color', style: { background: 'transparent' }, onclick: () => setColor(undefined) }));
+      sw.append(h('button', { class: !cur ? 'on' : '', title: t("No color"), 'aria-label': t("No color"), style: { background: 'transparent' }, onclick: () => setColor(undefined) }));
       for (const c of SCENE_COLORS) sw.append(h('button', { class: cur === c.value ? 'on' : '', title: c.name, 'aria-label': c.name, style: { background: c.value }, onclick: () => setColor(c.value) }));
     };
     const setColor = (c: string | undefined) => {
@@ -206,7 +207,7 @@ export class RightPane {
       drawSwatches();
     };
     drawSwatches();
-    const notes = h('textarea', { class: 'field grow', placeholder: 'Notes for this scene', 'aria-label': 'Scene notes' });
+    const notes = h('textarea', { class: 'field grow', placeholder: t("Notes for this scene"), 'aria-label': t("Scene notes") });
     notes.value = rec.notes ?? '';
     notes.addEventListener('input', () => {
       live().notes = notes.value;
@@ -214,9 +215,9 @@ export class RightPane {
     });
     this.body.append(
       h('div', { class: 'notice', title: item.heading }, h('strong', null, `${item.number}. `), item.heading),
-      h('div', null, h('label', { class: 'cap' }, 'Summary'), summary),
-      h('div', { style: { display: 'flex', gap: '10px', alignItems: 'flex-end' } }, h('div', { style: { flex: '1' } }, h('label', { class: 'cap' }, 'Status'), status), h('div', null, h('label', { class: 'cap' }, 'Color'), sw)),
-      h('label', { class: 'cap', style: { marginBottom: '-6px' } }, 'Scene notes'),
+      h('div', null, h('label', { class: 'cap' }, t("Summary")), summary),
+      h('div', { style: { display: 'flex', gap: '10px', alignItems: 'flex-end' } }, h('div', { style: { flex: '1' } }, h('label', { class: 'cap' }, t("Status")), status), h('div', null, h('label', { class: 'cap' }, t("Color")), sw)),
+      h('label', { class: 'cap', style: { marginBottom: '-6px' } }, t("Scene notes")),
       notes,
     );
   }
@@ -230,18 +231,18 @@ export class RightPane {
       const all = (await historyEntries(this.app)).filter((e) => kinds.has(e.kind as 'draft' | 'export' | 'snapshot'));
       list.textContent = '';
       if (!all.length) {
-        list.append(h('div', { class: 'notice' }, 'No versions of this kind yet.'));
+        list.append(h('div', { class: 'notice' }, t("No versions of this kind yet.")));
         return;
       }
       // As many as the pane has room for; the list scrolls for the rest.
       for (const e of all) {
-        const when = new Date(e.time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        const when = new Date(e.time).toLocaleString(uiLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         list.append(
           h(
             'button',
-            { class: 'history-row hist-mini', title: 'Show in History', onclick: () => this.app.openHistoryAt(e.key) },
+            { class: 'history-row hist-mini', title: t("Show in History"), onclick: () => this.app.openHistoryAt(e.key) },
             h('span', { class: `hist-kind k-${e.kind}` }),
-            h('span', { class: 'label' }, e.kind === 'snapshot' ? 'Snapshot' : e.name),
+            h('span', { class: 'label' }, e.kind === 'snapshot' ? t("Snapshot") : e.name),
             h('span', { class: 'dim' }, when),
           ),
         );
@@ -249,8 +250,8 @@ export class RightPane {
     };
     this.body.classList.add('rp-history');
     this.body.append(
-      h('div', { class: 'rv-actions' }, h('button', { class: 'btn', onclick: () => void saveDraft(this.app) }, 'Save as Draft…'), h('button', { class: 'btn', onclick: () => this.snapshotNow() }, 'Snapshot Now')),
-      h('button', { class: 'btn hist-open', onclick: () => this.app.openHistoryAt() }, k ? `Open History (${k})` : 'Open History'),
+      h('div', { class: 'rv-actions' }, h('button', { class: 'btn', onclick: () => void saveDraft(this.app) }, t("Save as Draft…")), h('button', { class: 'btn', onclick: () => this.snapshotNow() }, t("Snapshot Now"))),
+      h('button', { class: 'btn hist-open', onclick: () => this.app.openHistoryAt() }, k ? t("Open History ({0})", k) : t("Open History")),
       kindToggles(this.app, () => void fill()),
       list,
     );
@@ -260,7 +261,7 @@ export class RightPane {
   private async snapshotNow() {
     const p = this.app.project!;
     await bridge.call('snapshotProject', p.rel, this.app.editor.getText(), 'manual');
-    toast('Snapshot saved.');
+    toast(t("Snapshot saved."));
     this.render();
   }
 

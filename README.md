@@ -221,8 +221,8 @@ Distinguishing what was actually run from what was not:
 
 | Area | Status |
 | --- | --- |
-| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, scene numbers, Final Draft, story structure, storage backend | 131 unit tests, run on Linux (Node 22) |
-| Renderer (editor, views, panes, dialogs, export preview, history, cards and timeline) | 19 end-to-end suites (133 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
+| Parser (incl. a 3,000-case fuzz test of incremental parsing), pagination, PDF writer incl. system font embedding, rename, scene matching, scene numbers, Final Draft, story structure, translations, storage backend | 134 unit tests, run on Linux (Node 22) |
+| Renderer (editor, views, panes, dialogs, export preview, history, cards and timeline, language switch) | 20 end-to-end suites (137 checks) in Chromium on Linux through the browser harness, including a macOS key-binding pass |
 | Typing latency | ≈4 ms per keystroke on a 6,200-line (≈130 page) script in Chromium |
 | Electron shell | Run by hand on macOS (Apple silicon) and Windows 11 |
 | Packaging (electron-builder) | Not run; Windows uses a portable launcher that fetches the official Electron runtime |
@@ -250,6 +250,11 @@ Distinguishing what was actually run from what was not:
   on a scene (card menu, or drag its marker in the timeline) to see how far it is from where
   the model typically puts it. Beats with the same name (Midpoint, Climax …) carry over when
   you switch models.
+
+## Languages
+
+The interface is available in English and German (Settings → Appearance → Language). The
+screenplay's printed labels follow the screenplay itself.
 
 ## Roadmap
 

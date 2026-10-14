@@ -1,6 +1,7 @@
 // Menus, dialogs and toasts. All share the same compact styling and keyboard behavior.
 
 import { h, iconButton } from './dom';
+import { t } from '../../shared/i18n';
 
 // ------------------------------------------------------------------------------------
 // Escape stack: the most recently opened overlay handles Escape first.
@@ -193,7 +194,7 @@ export function openDialog(opts: {
   const dlg = h(
     'div',
     { class: `dialog ${opts.cls ?? ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.title, tabindex: '-1' },
-    h('div', { class: 'dialog-head' }, h('span', null, opts.title), h('span', { class: 'spacer' }), iconButton('close', 'Close', () => cancel())),
+    h('div', { class: 'dialog-head' }, h('span', null, opts.title), h('span', { class: 'spacer' }), iconButton('close', t("Close"), () => cancel())),
     body,
     foot,
   );
@@ -264,7 +265,7 @@ export function confirmDialog(title: string, message: string | Node, okLabel = '
       title,
       body: typeof message === 'string' ? h('p', null, message) : message,
       buttons: [
-        { label: opts.cancelLabel ?? 'Cancel' },
+        { label: opts.cancelLabel ?? t("Cancel") },
         { label: okLabel, primary: true, danger: opts.danger, run: () => void (result = true) },
       ],
       onClose: () => resolve(result),
@@ -281,13 +282,13 @@ export function promptDialog(title: string, label: string, value = '', opts: { o
       title,
       body: [h('div', { class: 'form-row' }, h('label', null, label), input), err],
       buttons: [
-        { label: 'Cancel' },
+        { label: t("Cancel") },
         {
-          label: opts.okLabel ?? 'OK',
+          label: opts.okLabel ?? t("OK"),
           primary: true,
           run: () => {
             const v = input.value.trim();
-            const msg = opts.validate?.(v) ?? (v ? null : 'Please enter a value.');
+            const msg = opts.validate?.(v) ?? (v ? null : t('Please enter a value.'));
             if (msg) {
               err.textContent = msg;
               err.classList.remove('hidden');
@@ -317,7 +318,7 @@ export function choiceDialog<T>(title: string, message: string | Node, choices: 
 
 export function alertDialog(title: string, message: string | Node): Promise<void> {
   return new Promise((resolve) => {
-    openDialog({ title, body: typeof message === 'string' ? h('p', null, message) : message, buttons: [{ label: 'OK', primary: true }], onClose: () => resolve() });
+    openDialog({ title, body: typeof message === 'string' ? h('p', null, message) : message, buttons: [{ label: t("OK"), primary: true }], onClose: () => resolve() });
   });
 }
 

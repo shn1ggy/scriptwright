@@ -10,6 +10,7 @@ import { SceneStatus } from '../../shared/types';
 import { cleanText, countWords } from '../../shared/fountain';
 import { Timeline, beatsOn, moveSection, sceneStructureMenu, sectionMenu, sectionRange, sections, positions } from './structure';
 import type { StorySection } from '../../shared/structure';
+import { t, tn } from '../../shared/i18n';
 
 /** Scene length in pages and eighths, e.g. "1 3/8". */
 function eighths(pages: number): string {
@@ -36,7 +37,7 @@ export class SceneCards {
   private hint: HTMLElement;
 
   constructor(private app: App) {
-    this.grid = h('div', { class: 'cards-grid', tabindex: '0', role: 'listbox', 'aria-label': 'Scene cards' });
+    this.grid = h('div', { class: 'cards-grid', tabindex: '0', role: 'listbox', 'aria-label': t("Scene cards") });
     this.grid.addEventListener('keydown', (e) => this.onKey(e));
     // A click on the empty space between cards clears the selection.
     this.grid.addEventListener('click', (e) => {
@@ -52,7 +53,7 @@ export class SceneCards {
       menu: (it, x, y) => this.menu(it, x, y),
       open: (it) => this.openScene(it),
     });
-    this.modeSeg = h('span', { class: 'seg', role: 'group', 'aria-label': 'Show as' });
+    this.modeSeg = h('span', { class: 'seg', role: 'group', 'aria-label': t("Show as") });
     this.hint = h('span', { class: 'dim', style: { fontSize: '11px' } });
     this.el = h(
       'div',
@@ -64,7 +65,7 @@ export class SceneCards {
         this.countEl,
         h('span', { class: 'spacer' }),
         this.hint,
-        iconButton('settings', 'Card display', (e) => this.optionsMenu(e.currentTarget as HTMLElement)),
+        iconButton('settings', t("Card display"), (e) => this.optionsMenu(e.currentTarget as HTMLElement)),
       ),
       this.grid,
       this.timeline.el,
@@ -89,13 +90,13 @@ export class SceneCards {
   private renderMode() {
     const m = this.mode;
     const seg = (v: 'cards' | 'timeline', label: string) => h('button', { class: `seg-btn${m === v ? ' on' : ''}`, 'aria-pressed': String(m === v), 'data-mode': v, onclick: () => this.setMode(v) }, label);
-    this.modeSeg.replaceChildren(seg('cards', 'Cards'), seg('timeline', 'Timeline'));
+    this.modeSeg.replaceChildren(seg('cards', t("Cards")), seg('timeline', t("Timeline")));
     this.grid.classList.toggle('hidden', m !== 'cards');
     this.timeline.el.classList.toggle('hidden', m !== 'timeline');
     this.hint.textContent =
       m === 'cards'
-        ? `↵ open · ${isMac ? '⌘' : 'Ctrl+'}click / ⇧click select several · ⌥⇧ arrows move · drag to reorder · right-click for acts and beats`
-        : 'Scene widths are their length in pages · drag a beat’s marker onto a scene · right-click a scene for acts and beats';
+        ? t("↵ open · {0}click / ⇧click select several · ⌥⇧ arrows move · drag to reorder · right-click for acts and beats", isMac ? '⌘' : 'Ctrl+')
+        : t("Scene widths are their length in pages · drag a beat’s marker onto a scene · right-click a scene for acts and beats");
   }
 
   /** Acts, beats or the model changed. */
@@ -178,11 +179,11 @@ export class SceneCards {
     this.lastSig = sig;
     if (this.mode === 'timeline') {
       const pg = Math.max(1, Math.round(positions(this.app).total));
-      this.countEl.textContent = `${items.length} scenes · ${pg} ${pg === 1 ? 'page' : 'pages'}`;
+      this.countEl.textContent = `${tn(items.length, '{0} scene', '{0} scenes')} · ${tn(pg, '{0} page', '{0} pages')}`;
       this.timeline.render();
       return;
     }
-    this.countEl.textContent = `${items.length} scenes`;
+    this.countEl.textContent = tn(items.length, '{0} scene', '{0} scenes');
     this.grid.textContent = '';
     const o = this.app.settings.cards;
     this.grid.dataset.size = o.size;
@@ -193,9 +194,9 @@ export class SceneCards {
         const n = sec.endScene - sec.firstScene;
         const d = h(
           'div',
-          { class: `cards-divider lvl-${Math.min(3, sec.level)}`, title: 'Drag onto a card to begin here at another scene · right-click to rename or remove', draggable: true },
+          { class: `cards-divider lvl-${Math.min(3, sec.level)}`, title: t("Drag onto a card to begin here at another scene · right-click to rename or remove"), draggable: true },
           h('span', { class: 'cd-title' }, sec.title),
-          h('span', { class: 'cd-meta' }, `${n} scene${n === 1 ? '' : 's'}`),
+          h('span', { class: 'cd-meta' }, tn(n, '{0} scene', '{0} scenes')),
         );
         d.addEventListener('click', () => this.app.setSceneSelection(items.slice(sec.firstScene, sec.endScene).map((s) => s.id), items[sec.firstScene]?.id ?? null));
         d.addEventListener('contextmenu', (e) => {
@@ -232,16 +233,16 @@ export class SceneCards {
           title: it.heading,
           style: color ? { '--scene': color } : undefined,
         },
-        h('div', { class: 'card-top' }, h('span', { class: 'card-num' }, it.number), h('span', { class: 'card-heading' }, it.heading || '(empty heading)')),
+        h('div', { class: 'card-top' }, h('span', { class: 'card-num' }, it.number), h('span', { class: 'card-heading' }, it.heading || t("(empty heading)"))),
         beats.length ? h('div', { class: 'card-beats' }, ...beats.map((b) => h('span', { class: 'card-beat' }, b.name))) : null,
-        o.showSummary ? h('div', { class: `card-summary${rec?.summary ? '' : ' dim'}` }, rec?.summary || 'No summary') : null,
+        o.showSummary ? h('div', { class: `card-summary${rec?.summary ? '' : ' dim'}` }, rec?.summary || t("No summary")) : null,
         o.showCharacters && meta?.characters.length ? h('div', { class: 'card-chars' }, meta.characters.join(', ')) : null,
         h(
           'div',
           { class: 'card-foot' },
           o.showStatus && rec?.status ? h('span', { class: `card-status st-${rec.status}` }, STATUS_LABELS[rec.status]) : null,
           h('span', { class: 'spacer' }),
-          o.showLength && meta ? h('span', { class: 'card-len', title: `${meta.words} words · ${meta.length} pages` }, `${meta.length} pg`) : null,
+          o.showLength && meta ? h('span', { class: 'card-len', title: t("{0} words · {1} pages", meta.words, meta.length) }, t("{0} pg", meta.length)) : null,
         ),
       );
       if (color) card.style.setProperty('--scene', color);
@@ -351,23 +352,23 @@ export class SceneCards {
     const mark = (on: boolean, label: string) => `${on ? '✓' : '  '} ${label}`;
     openMenu(
       [
-        { head: 'Card size' },
-        ...(['small', 'medium', 'large'] as const).map((v) => ({ label: mark(o.size === v, v[0].toUpperCase() + v.slice(1)), run: () => set({ size: v }) })),
-        { head: 'Scene color' },
+        { head: t("Card size") },
+        ...(['small', 'medium', 'large'] as const).map((v) => ({ label: mark(o.size === v, t(v[0].toUpperCase() + v.slice(1))), run: () => set({ size: v }) })),
+        { head: t("Scene color") },
         ...([
           ['stripe', 'Stripe'],
           ['tint', 'Tinted card'],
           ['header', 'Colored header'],
           ['full', 'Filled card'],
-        ] as const).map(([v, l]) => ({ label: mark(o.colorStyle === v, l), run: () => set({ colorStyle: v }) })),
-        { head: 'Show' },
-        { label: mark(o.showSummary, 'Summary'), run: () => set({ showSummary: !o.showSummary }) },
-        { label: mark(o.showCharacters, 'Characters'), run: () => set({ showCharacters: !o.showCharacters }) },
-        { label: mark(o.showStatus, 'Status'), run: () => set({ showStatus: !o.showStatus }) },
-        { label: mark(o.showLength, 'Length in pages'), run: () => set({ showLength: !o.showLength }) },
+        ] as const).map(([v, l]) => ({ label: mark(o.colorStyle === v, t(l)), run: () => set({ colorStyle: v }) })),
+        { head: t("Show") },
+        { label: mark(o.showSummary, t("Summary")), run: () => set({ showSummary: !o.showSummary }) },
+        { label: mark(o.showCharacters, t("Characters")), run: () => set({ showCharacters: !o.showCharacters }) },
+        { label: mark(o.showStatus, t("Status")), run: () => set({ showStatus: !o.showStatus }) },
+        { label: mark(o.showLength, t("Length in pages")), run: () => set({ showLength: !o.showLength }) },
         { sep: true },
-        { label: mark(o.tintOutline, 'Tint scene rows in the outline'), run: () => set({ tintOutline: !o.tintOutline }) },
-        { label: mark(o.actsInOutline, 'Acts and sequences in the scene list'), run: () => set({ actsInOutline: !o.actsInOutline }) },
+        { label: mark(o.tintOutline, t("Tint scene rows in the outline")), run: () => set({ tintOutline: !o.tintOutline }) },
+        { label: mark(o.actsInOutline, t("Acts and sequences in the scene list")), run: () => set({ actsInOutline: !o.actsInOutline }) },
       ],
       anchor.getBoundingClientRect(),
     );
@@ -447,20 +448,20 @@ export class SceneCards {
     if (group.length > 1) return openMenu(sceneGroupMenu(this.app, group), { x, y });
     const rec = it.record;
     const items = [
-      { label: 'Open scene', run: () => this.openScene(it) },
-      { label: 'Edit summary & notes…', run: () => {
+      { label: t("Open scene"), run: () => this.openScene(it) },
+      { label: t("Edit summary & notes…"), run: () => {
         // Stays in Cards: the notes pane shows this scene and takes the typing.
         this.select(it.id);
         this.app.showRightTab('scene');
         this.app.rightPane.focusSummary();
       } },
-      { label: 'Move to Archive', run: () => this.app.archiveScenes([it]) },
+      { label: t("Move to Archive"), run: () => this.app.archiveScenes([it]) },
       { sep: true },
-      { head: 'Status' },
+      { head: t("Status") },
       ...Object.entries(STATUS_LABELS).map(([k, label]) => ({ label: (rec?.status ?? '') === k ? `✓ ${label}` : `   ${label}`, run: () => this.app.updateSceneRecord(it, { status: k as SceneStatus }) })),
-      { head: 'Color' },
+      { head: t("Color") },
       ...SCENE_COLORS.map((c) => ({ label: c.name, dot: c.value, run: () => this.app.updateSceneRecord(it, { color: c.value }) })),
-      { label: 'No color', run: () => this.app.updateSceneRecord(it, { color: undefined }) },
+      { label: t("No color"), run: () => this.app.updateSceneRecord(it, { color: undefined }) },
       ...sceneStructureMenu(this.app, it),
     ];
     openMenu(items, { x, y });

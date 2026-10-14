@@ -12,6 +12,7 @@ import { loadPdfjs, projectExportSettings } from './export';
 import { DraftInfo, ExportRecord, ExportSettings } from '../../shared/types';
 import { compareScenes, scenesOf, ROW_LABELS, CompareRow } from '../../shared/scenecompare';
 import { ElementType, cleanText, parse, titleFields } from '../../shared/fountain';
+import { t, tn, uiLocale } from '../../shared/i18n';
 
 export type EntryKind = 'draft' | 'export' | 'snapshot' | 'now';
 
@@ -40,12 +41,12 @@ export function shownKinds(app: App): Set<ListKind> {
 
 /** Three toggles (Drafts, Exports, Snapshots); at least one stays on. */
 export function kindToggles(app: App, onChange: () => void): HTMLElement {
-  const wrap = h('div', { class: 'kind-toggles', role: 'group', 'aria-label': 'Show' });
+  const wrap = h('div', { class: 'kind-toggles', role: 'group', 'aria-label': t("Show") });
   const draw = () => {
     const on = shownKinds(app);
     wrap.textContent = '';
     for (const [k, label] of [['draft', 'Drafts'], ['export', 'Exports'], ['snapshot', 'Snapshots']] as Array<[ListKind, string]>) {
-      const b = h('button', { class: `kind-toggle${on.has(k) ? ' on' : ''}`, 'aria-pressed': String(on.has(k)), 'data-k': k }, h('span', { class: `hist-kind k-${k}` }), label);
+      const b = h('button', { class: `kind-toggle${on.has(k) ? ' on' : ''}`, 'aria-pressed': String(on.has(k)), 'data-k': k }, h('span', { class: `hist-kind k-${k}` }), t(label));
       b.addEventListener('click', () => {
         const next = shownKinds(app);
         if (next.has(k)) {
@@ -68,12 +69,12 @@ const KIND_LABEL: Record<EntryKind, string> = { draft: 'Draft', export: 'Export'
 
 function fmtDate(t: number, withTime = true): string {
   const d = new Date(t);
-  return d.toLocaleString(undefined, withTime ? { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short', year: 'numeric' });
+  return d.toLocaleString(uiLocale(), withTime ? { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function snapshotLabel(name: string): string {
   const l = name.replace(/^\d{4}-\d{2}-\d{2}_\d{6}\s*/, '').replace(/\.fountain$/, '');
-  return l && l !== 'auto' ? l : '';
+  return l && l !== 'auto' ? t(l) : '';
 }
 
 /** All versions of the open project, newest first ('now' excluded). */
@@ -88,7 +89,7 @@ export async function historyEntries(app: App): Promise<HistoryEntry[]> {
     time: Date.parse(d.created),
     note: d.note,
     pinned: d.pinned,
-    facts: `${d.words.toLocaleString()} words`,
+    facts: t('{0} words', d.words.toLocaleString(uiLocale())),
     sceneIds: d.sceneIds,
   }));
   const exports: HistoryEntry[] = p.meta.exports.map((e: ExportRecord) => ({
@@ -99,7 +100,7 @@ export async function historyEntries(app: App): Promise<HistoryEntry[]> {
     time: Date.parse(e.created),
     note: e.note,
     pinned: e.pinned,
-    facts: `${e.pages} page${e.pages === 1 ? '' : 's'} · ${e.scope}${e.comparedWith ? ` · changes since ${e.comparedWith}` : ''}`,
+    facts: [tn(e.pages, '{0} page', '{0} pages'), e.scope, e.comparedWith ? t('changes since {0}', e.comparedWith) : ''].filter(Boolean).join(' · '),
     sceneIds: e.sceneIds,
     settings: e.settings,
   }));
@@ -112,7 +113,7 @@ export async function historyEntries(app: App): Promise<HistoryEntry[]> {
         key: `snap:${s.name}`,
         kind: 'snapshot' as const,
         id: s.name,
-        name: label ? `Snapshot · ${label}` : 'Snapshot',
+        name: label ? t('Snapshot · {0}', label) : t('Snapshot'),
         time: s.time,
         facts: `${Math.max(1, Math.round(s.size / 1024))} KB`,
       };
@@ -133,15 +134,15 @@ async function readEntry(app: App, e: HistoryEntry): Promise<string> {
 }
 
 /** Time groups: Pinned, Today, Yesterday, This week, Earlier this month, then by month. */
-function groupOf(t: number, now = new Date()): { key: string; label: string; old: boolean } {
-  const d = new Date(t);
+function groupOf(time: number, now = new Date()): { key: string; label: string; old: boolean } {
+  const d = new Date(time);
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((day(now) - day(d)) / 86400000);
-  if (diff <= 0) return { key: 'today', label: 'Today', old: false };
-  if (diff === 1) return { key: 'yesterday', label: 'Yesterday', old: false };
-  if (diff < 7) return { key: 'week', label: 'This week', old: false };
-  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) return { key: 'month', label: 'Earlier this month', old: false };
-  return { key: `m${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }), old: true };
+  if (diff <= 0) return { key: 'today', label: t("Today"), old: false };
+  if (diff === 1) return { key: 'yesterday', label: t("Yesterday"), old: false };
+  if (diff < 7) return { key: 'week', label: t("This week"), old: false };
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) return { key: 'month', label: t("Earlier this month"), old: false };
+  return { key: `m${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' }), old: true };
 }
 
 export interface HistoryHandle {
@@ -163,7 +164,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
   const textCache = new Map<string, string>();
   let token = 0;
 
-  const nowEntry = (): HistoryEntry => ({ key: 'now', kind: 'now', id: 'now', name: 'Current screenplay', time: Date.now(), facts: '', sceneIds: app.scenes.filter((s) => s.kind === 'scene').map((s) => s.id) });
+  const nowEntry = (): HistoryEntry => ({ key: 'now', kind: 'now', id: 'now', name: t('Current screenplay'), time: Date.now(), facts: '', sceneIds: app.scenes.filter((s) => s.kind === 'scene').map((s) => s.id) });
   const entry = (key: string) => (key === 'now' ? nowEntry() : entries.find((e) => e.key === key));
   const text = async (e: HistoryEntry) => {
     if (e.kind === 'now') return app.editor.getText();
@@ -173,25 +174,25 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
 
   // Layout -------------------------------------------------------------------------------
   const countEl = h('span', { class: 'view-head-info' });
-  const search = h('input', { class: 'field', placeholder: 'Search names and notes', 'aria-label': 'Search versions' });
+  const search = h('input', { class: 'field', placeholder: t("Search names and notes"), 'aria-label': t("Search versions") });
   // Opening a snapshot from the notes pane shows snapshots even when they were hidden.
   if (initialKey?.startsWith('snap:') && !shownKinds(app).has('snapshot')) {
     app.state.layout.historyKinds = [...shownKinds(app), 'snapshot'];
   }
   let seg = kindToggles(app, () => renderList());
-  const list = h('div', { class: 'hist-list', role: 'listbox', tabindex: '0', 'aria-label': 'Versions' });
+  const list = h('div', { class: 'hist-list', role: 'listbox', tabindex: '0', 'aria-label': t("Versions") });
   const detail = h('div', { class: 'hist-detail' });
   const root = h(
     'div',
-    { class: 'history-view', role: 'region', 'aria-label': 'History' },
+    { class: 'history-view', role: 'region', 'aria-label': t("History") },
     h(
       'div',
       { class: 'view-head' },
-      h('span', { class: 'view-head-title' }, 'History'),
+      h('span', { class: 'view-head-title' }, t("History")),
       countEl,
       h('span', { class: 'spacer' }),
-      h('button', { class: 'btn', onclick: () => void snapshotNow() }, 'Snapshot Now'),
-      h('button', { class: 'btn', onclick: () => void saveDraftNow() }, 'Save as Draft…'),
+      h('button', { class: 'btn', onclick: () => void snapshotNow() }, t("Snapshot Now")),
+      h('button', { class: 'btn', onclick: () => void saveDraftNow() }, t("Save as Draft…")),
     ),
     h('div', { class: 'hist-body' }, h('div', { class: 'hist-side' }, h('div', { class: 'hist-tools' }, withClear(search), seg), list), detail),
   );
@@ -206,7 +207,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
   async function reload(keepSel = true) {
     entries = await historyEntries(app);
     const named = entries.filter((e) => e.kind !== 'snapshot').length;
-    countEl.textContent = `${named} named · ${entries.length - named} snapshot${entries.length - named === 1 ? '' : 's'}`;
+    countEl.textContent = [t('{0} named', named), tn(entries.length - named, '{0} snapshot', '{0} snapshots')].join(' · ');
     if (!keepSel || !entries.some((e) => e.key === selKey)) selKey = visible()[0]?.key ?? entries[0]?.key ?? '';
     renderList();
     renderDetail();
@@ -216,7 +217,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
     const kinds = shownKinds(app);
     return entries.filter((e) => {
       if (!kinds.has(e.kind as ListKind)) return false;
-      if (query && !`${e.name} ${e.note ?? ''} ${KIND_LABEL[e.kind]}`.toLowerCase().includes(query)) return false;
+      if (query && !`${e.name} ${e.note ?? ''} ${t(KIND_LABEL[e.kind])}`.toLowerCase().includes(query)) return false;
       return true;
     });
   }
@@ -227,14 +228,14 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
     const r = h(
       'div',
       { class: `hist-row${e.key === selKey ? ' selected' : ''}`, role: 'option', 'aria-selected': String(e.key === selKey), 'data-key': e.key },
-      h('span', { class: `hist-kind k-${e.kind}`, title: KIND_LABEL[e.kind] }),
+      h('span', { class: `hist-kind k-${e.kind}`, title: t(KIND_LABEL[e.kind]) }),
       h(
         'span',
         { class: 'hist-main' },
-        h('span', { class: 'hist-name' }, e.kind === 'snapshot' ? new Date(e.time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) + (snapshotLabel(e.id) ? ` · ${snapshotLabel(e.id)}` : '') : e.name),
-        h('span', { class: 'hist-sub' }, [KIND_LABEL[e.kind], fmtDate(e.time, e.kind !== 'snapshot'), e.note ? e.note.split('\n')[0] : ''].filter(Boolean).join(' · ')),
+        h('span', { class: 'hist-name' }, e.kind === 'snapshot' ? new Date(e.time).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' }) + (snapshotLabel(e.id) ? ` · ${snapshotLabel(e.id)}` : '') : e.name),
+        h('span', { class: 'hist-sub' }, [t(KIND_LABEL[e.kind]), fmtDate(e.time, e.kind !== 'snapshot'), e.note ? e.note.split('\n')[0] : ''].filter(Boolean).join(' · ')),
       ),
-      e.pinned ? h('span', { class: 'hist-pin', title: 'Pinned' }, icon('pin')) : null,
+      e.pinned ? h('span', { class: 'hist-pin', title: t("Pinned") }, icon('pin')) : null,
     );
     r.addEventListener('click', () => select(e.key));
     return r;
@@ -244,12 +245,12 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
     const items = visible();
     list.textContent = '';
     if (!items.length) {
-      list.append(h('div', { class: 'notice' }, entries.length ? 'Nothing matches.' : 'No versions yet. Save a draft, export a PDF, or keep writing: snapshots are taken while you write.'));
+      list.append(h('div', { class: 'notice' }, entries.length ? t("Nothing matches.") : t("No versions yet. Save a draft, export a PDF, or keep writing: snapshots are taken while you write.")));
       return;
     }
     const pinned = items.filter((e) => e.pinned);
     if (pinned.length) {
-      list.append(h('div', { class: 'hist-group' }, h('span', null, 'Pinned')));
+      list.append(h('div', { class: 'hist-group' }, h('span', null, t("Pinned"))));
       for (const e of pinned) list.append(row(e));
     }
     let cur = '';
@@ -311,23 +312,23 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
     detail.textContent = '';
     const e = entry(selKey);
     if (!e) {
-      detail.append(h('div', { class: 'notice' }, 'Choose a version on the left.'));
+      detail.append(h('div', { class: 'notice' }, t("Choose a version on the left.")));
       return;
     }
     const meta = e.kind === 'snapshot' ? 'Saved automatically while writing' : e.facts;
     const actions = h('div', { class: 'hist-actions' });
     if (e.kind !== 'snapshot') {
       actions.append(
-        h('button', { class: 'btn', onclick: () => void rename(e) }, 'Rename…'),
-        h('button', { class: 'btn', onclick: () => togglePin(e) }, e.pinned ? 'Unpin' : 'Pin'),
+        h('button', { class: 'btn', onclick: () => void rename(e) }, t("Rename…")),
+        h('button', { class: 'btn', onclick: () => togglePin(e) }, e.pinned ? t("Unpin") : t("Pin")),
       );
-    } else actions.append(h('button', { class: 'btn', onclick: () => void keepAsDraft(e) }, 'Keep as Draft…'));
-    actions.append(h('button', { class: 'btn primary', onclick: () => void restore(e) }, 'Restore…'));
-    if (e.kind !== 'snapshot') actions.append(h('button', { class: 'btn danger', onclick: () => void remove(e) }, 'Delete…'));
+    } else actions.append(h('button', { class: 'btn', onclick: () => void keepAsDraft(e) }, t("Keep as Draft…")));
+    actions.append(h('button', { class: 'btn primary', onclick: () => void restore(e) }, t("Restore…")));
+    if (e.kind !== 'snapshot') actions.append(h('button', { class: 'btn danger', onclick: () => void remove(e) }, t("Delete…")));
 
     let note: HTMLTextAreaElement | null = null;
     if (e.kind === 'draft' || e.kind === 'export') {
-      note = h('textarea', { class: 'field hist-note', rows: 1, placeholder: 'Note (only shown in the app)', 'aria-label': 'Note' });
+      note = h('textarea', { class: 'field hist-note', rows: 1, placeholder: t("Note (only shown in the app)"), 'aria-label': t("Note") });
       note.value = e.note ?? '';
       note.addEventListener('change', () => {
         const rec = e.kind === 'draft' ? p!.meta.drafts.find((d) => d.id === e.id) : p!.meta.exports.find((x) => x.id === e.id);
@@ -339,27 +340,27 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       });
     }
 
-    const cmpSel = h('select', { class: 'field', 'aria-label': 'Compare with' });
-    cmpSel.append(h('option', { value: 'now' }, 'Current screenplay'));
+    const cmpSel = h('select', { class: 'field', 'aria-label': t("Compare with") });
+    cmpSel.append(h('option', { value: 'now' }, t("Current screenplay")));
     const others = entries.filter((x) => x.key !== e.key);
     const named = others.filter((x) => x.kind !== 'snapshot');
     const snaps = others.filter((x) => x.kind === 'snapshot').slice(0, 40);
-    if (named.length) cmpSel.append(h('optgroup', { label: 'Named versions' }, ...named.map((x) => h('option', { value: x.key }, `${x.name} — ${fmtDate(x.time)}`))));
-    if (snaps.length) cmpSel.append(h('optgroup', { label: 'Snapshots' }, ...snaps.map((x) => h('option', { value: x.key }, fmtDate(x.time)))));
+    if (named.length) cmpSel.append(h('optgroup', { label: t("Named versions") }, ...named.map((x) => h('option', { value: x.key }, `${x.name} — ${fmtDate(x.time)}`))));
+    if (snaps.length) cmpSel.append(h('optgroup', { label: t("Snapshots") }, ...snaps.map((x) => h('option', { value: x.key }, fmtDate(x.time)))));
     if (!entry(cmpKey)) cmpKey = 'now';
     cmpSel.value = cmpKey;
     cmpSel.addEventListener('change', () => {
       cmpKey = cmpSel.value;
       void renderBody();
     });
-    const modeBtn = (m: Mode, label: string) => h('button', { class: `seg-btn${mode === m ? ' on' : ''}`, onclick: () => setMode(m) }, label);
-    const modes = h('div', { class: 'seg', role: 'group', 'aria-label': 'View' }, modeBtn('scenes', 'Scenes'), modeBtn('changes', 'All changes'), modeBtn('pages', 'Pages'), modeBtn('text', 'Text'));
-    const mark = h('input', { type: 'checkbox', checked: markChanges, 'aria-label': 'Mark changes' });
+    const modeBtn = (m: Mode, label: string) => h('button', { class: `seg-btn${mode === m ? ' on' : ''}`, dataset: { mode: m }, onclick: () => setMode(m) }, label);
+    const modes = h('div', { class: 'seg', role: 'group', 'aria-label': t("View") }, modeBtn('scenes', t("Scenes")), modeBtn('changes', t("All changes")), modeBtn('pages', t("Pages")), modeBtn('text', t("Text")));
+    const mark = h('input', { type: 'checkbox', checked: markChanges, 'aria-label': t("Mark changes") });
     mark.addEventListener('change', () => {
       markChanges = mark.checked;
       void renderBody();
     });
-    const markLabel = h('label', { class: 'check hist-mark' }, mark, 'Mark changes');
+    const markLabel = h('label', { class: 'check hist-mark' }, mark, t("Mark changes"));
     const summary = h('div', { class: 'hist-summary' });
     const body = h('div', { class: 'hist-content' });
     detail.append(
@@ -372,21 +373,21 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
           h(
             'div',
             { class: 'hist-head' },
-            h('div', { class: 'hist-title' }, h('span', { class: `hist-kind k-${e.kind}` }), h('span', null, e.kind === 'snapshot' ? `Snapshot from ${fmtDate(e.time)}` : e.name)),
-            h('div', { class: 'hist-meta' }, `${KIND_LABEL[e.kind]} · ${fmtDate(e.time)}${meta ? ' · ' + meta : ''}`),
+            h('div', { class: 'hist-title' }, h('span', { class: `hist-kind k-${e.kind}` }), h('span', null, e.kind === 'snapshot' ? t("Snapshot from {0}", fmtDate(e.time)) : e.name)),
+            h('div', { class: 'hist-meta' }, `${t(KIND_LABEL[e.kind])} · ${fmtDate(e.time)}${meta ? ' · ' + meta : ''}`),
           ),
           actions,
         ),
         note,
       ),
-      h('div', { class: 'hist-bar' }, modes, h('span', { class: 'spacer' }), markLabel, h('label', { class: 'hist-cmp' }, h('span', null, 'Compare with'), cmpSel)),
+      h('div', { class: 'hist-bar' }, modes, h('span', { class: 'spacer' }), markLabel, h('label', { class: 'hist-cmp' }, h('span', null, t("Compare with")), cmpSel)),
       summary,
       body,
     );
 
     function setMode(m: Mode) {
       mode = m;
-      for (const b of Array.from(modes.children) as HTMLElement[]) b.classList.toggle('on', b.textContent === { scenes: 'Scenes', changes: 'All changes', pages: 'Pages', text: 'Text' }[m]);
+      for (const b of Array.from(modes.children) as HTMLElement[]) b.classList.toggle('on', b.dataset.mode === m);
       void renderBody();
     }
 
@@ -395,7 +396,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       markLabel.classList.toggle('hidden', mode !== 'pages');
       body.textContent = '';
       summary.textContent = '';
-      body.append(h('div', { class: 'notice' }, 'Loading…'));
+      body.append(h('div', { class: 'notice' }, t("Loading…")));
       const other = entry(cmpKey) ?? nowEntry();
       let a: string;
       let b: string;
@@ -403,7 +404,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
         [a, b] = await Promise.all([text(e!), text(other)]);
       } catch (err: any) {
         if (mine !== token) return;
-        body.replaceChildren(h('div', { class: 'notice warn' }, `This version could not be read: ${err.message}`));
+        body.replaceChildren(h('div', { class: 'notice warn' }, t("This version could not be read: {0}", err.message)));
         return;
       }
       if (mine !== token) return;
@@ -412,9 +413,9 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       const rows = compareScenes(oldS, newS);
       const c: Record<string, number> = {};
       for (const r of rows) c[r.kind] = (c[r.kind] ?? 0) + 1;
-      const otherName = other.kind === 'now' ? 'the current screenplay' : `“${other.name}”`;
+      const otherName = other.kind === 'now' ? t('the current screenplay') : `“${other.name}”`;
       summary.textContent =
-        `Compared with ${otherName}: ${c.changed ?? 0} changed, ${(c.moved ?? 0) + (c.movedChanged ?? 0)} moved, ${c.added ?? 0} added, ${c.removed ?? 0} removed, ${c.same ?? 0} unchanged.`;
+        t("Compared with {0}: {1} changed, {2} moved, {3} added, {4} removed, {5} unchanged.", otherName, c.changed ?? 0, (c.moved ?? 0) + (c.movedChanged ?? 0), c.added ?? 0, c.removed ?? 0, c.same ?? 0);
       body.textContent = '';
       if (mode === 'scenes') renderScenes(body, rows, oldS, newS);
       else if (mode === 'changes') renderChanges(body, a, b);
@@ -427,25 +428,25 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
 
   // Text: the version's plain text, to read or copy from ------------------------------------
   function renderText(body: HTMLElement, a: string, e: HistoryEntry) {
-    const pre = h('pre', { class: 'hist-text', tabindex: '0', 'aria-label': 'Text of this version' }, a);
+    const pre = h('pre', { class: 'hist-text', tabindex: '0', 'aria-label': t("Text of this version") }, a);
     const copy = h('button', {
       class: 'btn',
       onclick: async () => {
         const sel = window.getSelection();
         const part = sel && pre.contains(sel.anchorNode) ? sel.toString() : '';
         await bridge.clipboard.writeText(part || a);
-        toast(part ? 'Selection copied.' : 'The whole text was copied.');
+        toast(part ? t("Selection copied.") : t("The whole text was copied."));
       },
-    }, 'Copy');
+    }, t("Copy"));
     body.append(
-      h('div', { class: 'hist-text-bar' }, h('span', { class: 'hist-summary' }, `The Fountain text of ${e.kind === 'snapshot' ? 'this snapshot' : `“${e.name}”`}. Select a part to copy only that, or copy everything.`), h('span', { class: 'spacer' }), copy),
+      h('div', { class: 'hist-text-bar' }, h('span', { class: 'hist-summary' }, t("The Fountain text of {0}. Select a part to copy only that, or copy everything.", e.kind === 'snapshot' ? t('this snapshot') : `“${e.name}”`)), h('span', { class: 'spacer' }), copy),
       pre,
     );
   }
 
   // Scenes: list of scenes with their differences ----------------------------------------
   function renderScenes(body: HTMLElement, rows: CompareRow[], oldS: ReturnType<typeof scenesOf>, newS: ReturnType<typeof scenesOf>) {
-    const only = h('input', { type: 'checkbox', checked: app.state.layout.historyOnlyDiff !== false, 'aria-label': 'Only differences' });
+    const only = h('input', { type: 'checkbox', checked: app.state.layout.historyOnlyDiff !== false, 'aria-label': t("Only differences") });
     only.addEventListener('change', () => {
       app.state.layout.historyOnlyDiff = only.checked;
       app.saveStateSoon();
@@ -465,7 +466,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
           { class: `row cmp-row${k === sel ? ' selected' : ''}`, role: 'option' },
           h('span', { class: `chip chip-${r.kind}` }, ROW_LABELS[r.kind] + (r.ambiguous ? '?' : '')),
           h('span', { class: 'label' }, (n ?? o)!.heading),
-          h('span', { class: 'meta' }, r.oldIndex !== undefined && r.newIndex !== undefined ? (r.oldIndex !== r.newIndex ? `${r.oldIndex + 1} → ${r.newIndex + 1}` : `${r.newIndex + 1}`) : r.newIndex !== undefined ? `new ${r.newIndex + 1}` : `was ${r.oldIndex! + 1}`),
+          h('span', { class: 'meta' }, r.oldIndex !== undefined && r.newIndex !== undefined ? (r.oldIndex !== r.newIndex ? `${r.oldIndex + 1} → ${r.newIndex + 1}` : `${r.newIndex + 1}`) : r.newIndex !== undefined ? t("new {0}", r.newIndex + 1) : t("was {0}", r.oldIndex! + 1)),
         );
         el.addEventListener('click', () => {
           sel = k;
@@ -473,19 +474,19 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
         });
         sceneList.append(el);
       });
-      if (!sceneList.childElementCount) sceneList.append(h('div', { class: 'notice', style: { padding: '8px' } }, 'No scene differs.'));
+      if (!sceneList.childElementCount) sceneList.append(h('div', { class: 'notice', style: { padding: '8px' } }, t("No scene differs.")));
       diff.textContent = '';
       const r = rows[sel];
       if (!r) return;
       const al = r.oldIndex !== undefined ? oldS[r.oldIndex].lines : [];
       const bl = r.newIndex !== undefined ? newS[r.newIndex].lines : [];
-      if (r.kind === 'moved') diff.append(h('div', { class: 'notice' }, `Moved from position ${r.oldIndex! + 1} to ${r.newIndex! + 1}. The text is unchanged.`));
-      if (r.ambiguous) diff.append(h('div', { class: 'notice warn' }, 'This scene could not be matched with certainty (several scenes look alike).'));
+      if (r.kind === 'moved') diff.append(h('div', { class: 'notice' }, t("Moved from position {0} to {1}. The text is unchanged.", r.oldIndex! + 1, r.newIndex! + 1)));
+      if (r.ambiguous) diff.append(h('div', { class: 'notice warn' }, t("This scene could not be matched with certainty (several scenes look alike).")));
       for (const op of diffLines(al, bl)) diff.append(h('div', { class: op.kind === 'same' ? '' : op.kind }, (op.kind === 'add' ? '+ ' : op.kind === 'del' ? '− ' : '  ') + (op.text || ' ')));
     };
     only.addEventListener('change', draw);
     draw();
-    body.append(h('label', { class: 'check hist-only' }, only, 'Only differences'), h('div', { class: 'cmp-split' }, sceneList, diff));
+    body.append(h('label', { class: 'check hist-only' }, only, t("Only differences")), h('div', { class: 'cmp-split' }, sceneList, diff));
   }
 
   // All changes: only the changed passages, in screenplay layout --------------------------
@@ -538,7 +539,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
         let j = k;
         while (j < ops.length && !show[j]) j++;
         const n = ops.slice(k, j).filter((o) => o.text.trim()).length;
-        if (n) out.append(h('div', { class: 'hist-gap' }, `… ${n} unchanged line${n === 1 ? '' : 's'}`));
+        if (n) out.append(h('div', { class: 'hist-gap' }, tn(n, '… {0} unchanged line', '… {0} unchanged lines')));
         k = j;
         continue;
       }
@@ -554,7 +555,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       }
       out.append(box);
     }
-    if (!hunks) out.replaceChildren(h('div', { class: 'notice' }, 'The text is the same.'));
+    if (!hunks) out.replaceChildren(h('div', { class: 'notice' }, t("The text is the same.")));
     body.append(out);
   }
 
@@ -568,8 +569,8 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
     const note = h(
       'div',
       { class: 'notice' },
-      (e.settings ? 'Printed with the settings used for this export.' : 'Shown with the current print settings (versions saved before this update did not keep theirs).') +
-        (markChanges ? ` Marks show what differs from ${other.kind === 'now' ? 'the current screenplay' : `“${other.name}”`}.` : ''),
+      (e.settings ? t("Printed with the settings used for this export.") : t("Shown with the current print settings (versions saved before this update did not keep theirs).")) +
+        (markChanges ? ' ' + t('Marks show what differs from {0}.', other.kind === 'now' ? t('the current screenplay') : `“${other.name}”`) : ''),
     );
     const pagesEl = h('div', { class: 'hist-pages' });
     body.append(note, pagesEl);
@@ -577,7 +578,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
     try {
       r = await bridge.call('exportPdf', a, { ...settings, revHeaderNote: false }, { kind: 'all' }, { title, extraPrefixes: extra, revision });
     } catch (err: any) {
-      pagesEl.replaceChildren(h('div', { class: 'notice warn' }, `The pages could not be made: ${err.message}`));
+      pagesEl.replaceChildren(h('div', { class: 'notice warn' }, t("The pages could not be made: {0}", err.message)));
       return;
     }
     if (!current()) return;
@@ -586,7 +587,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       pdfjs = await loadPdfjs();
     } catch {
       const url = URL.createObjectURL(new Blob([r.pdf as BlobPart], { type: 'application/pdf' }));
-      pagesEl.replaceChildren(h('iframe', { src: url, style: { width: '100%', height: '100%', border: '0', background: 'white' }, title: 'Pages' }));
+      pagesEl.replaceChildren(h('iframe', { src: url, style: { width: '100%', height: '100%', border: '0', background: 'white' }, title: t("Pages") }));
       return;
     }
     const doc = await pdfjs.getDocument({ data: (r.pdf as Uint8Array).slice() }).promise;
@@ -599,7 +600,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       const vp1 = page.getViewport({ scale: 1 });
       const scale = Math.max(0.3, Math.min(760, pagesEl.clientWidth - 48) / vp1.width);
       const vp = page.getViewport({ scale: scale * dpr });
-      const canvas = h('canvas', { width: Math.floor(vp.width), height: Math.floor(vp.height), 'aria-label': `Page ${i}` });
+      const canvas = h('canvas', { width: Math.floor(vp.width), height: Math.floor(vp.height), 'aria-label': t("Page {0}", i) });
       canvas.style.width = `${Math.floor(vp.width / dpr)}px`;
       canvas.style.height = `${Math.floor(vp.height / dpr)}px`;
       pagesEl.append(canvas, h('div', { class: 'page-label' }, `${i} / ${doc.numPages}`));
@@ -609,7 +610,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
 
   // Actions ------------------------------------------------------------------------------
   async function rename(e: HistoryEntry) {
-    const n = (await promptDialog(`Rename ${e.kind === 'draft' ? 'draft' : 'exported version'}`, 'Name', e.name, { okLabel: 'Rename' }))?.trim();
+    const n = (await promptDialog(e.kind === 'draft' ? t('Rename draft') : t('Rename exported version'), t("Name"), e.name, { okLabel: t("Rename") }))?.trim();
     if (!n) return;
     const rec = e.kind === 'draft' ? p!.meta.drafts.find((d) => d.id === e.id) : p!.meta.exports.find((x) => x.id === e.id);
     if (!rec) return;
@@ -628,18 +629,18 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
   }
 
   async function keepAsDraft(e: HistoryEntry) {
-    const n = (await promptDialog('Keep snapshot as draft', 'Name', `Snapshot ${fmtDate(e.time)}`, { okLabel: 'Keep as Draft' }))?.trim();
+    const n = (await promptDialog(t("Keep snapshot as draft"), t("Name"), t("Snapshot {0}", fmtDate(e.time)), { okLabel: t("Keep as Draft") }))?.trim();
     if (!n) return;
     const d = await saveTextAsDraft(app, n, await text(e));
     if (!d) return;
-    toast(`Kept as the draft “${n}”.`);
+    toast(t("Kept as the draft “{0}”.", n));
     selKey = `draft:${d.id}`;
     await reload();
   }
 
   async function restore(e: HistoryEntry) {
     const label = e.kind === 'snapshot' ? `snapshot from ${fmtDate(e.time)}` : e.name;
-    const ok = await confirmDialog('Restore version', `Replace the screenplay with “${label}”? Your current text is saved as a named draft first, and you can undo the restore.`, 'Restore');
+    const ok = await confirmDialog(t("Restore version"), t("Replace the screenplay with “{0}”? Your current text is saved as a named draft first, and you can undo the restore.", label), t("Restore"));
     if (!ok) return;
     await restoreVersion(app, await text(e), label, e.sceneIds);
     textCache.delete('now');
@@ -648,11 +649,11 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
 
   async function remove(e: HistoryEntry) {
     if (e.kind === 'draft') {
-      if (!(await confirmDialog('Delete draft', `Delete the draft “${e.name}” permanently?`, 'Delete', { danger: true }))) return;
+      if (!(await confirmDialog(t("Delete draft"), t("Delete the draft “{0}” permanently?", e.name), t("Delete"), { danger: true }))) return;
       await bridge.call('deleteDraft', p!.rel, e.id);
       p!.meta.drafts = p!.meta.drafts.filter((x) => x.id !== e.id);
     } else {
-      if (!(await confirmDialog('Delete exported version', `Delete the saved copy of “${e.name}”? The PDF file itself is not affected, but you can no longer mark changes since this version.`, 'Delete', { danger: true }))) return;
+      if (!(await confirmDialog(t("Delete exported version"), t("Delete the saved copy of “{0}”? The PDF file itself is not affected, but you can no longer mark changes since this version.", e.name), t("Delete"), { danger: true }))) return;
       await bridge.call('deleteExportCopy', p!.rel, e.id);
       p!.meta.exports = p!.meta.exports.filter((x) => x.id !== e.id);
       if (p!.meta.lastBaseline === `export:${e.id}`) p!.meta.lastBaseline = undefined;
@@ -665,7 +666,7 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
 
   async function snapshotNow() {
     await bridge.call('snapshotProject', p!.rel, app.editor.getText(), 'manual');
-    toast('Snapshot saved.');
+    toast(t("Snapshot saved."));
     app.rightPane.historyChanged();
     await reload();
   }

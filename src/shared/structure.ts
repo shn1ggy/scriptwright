@@ -6,6 +6,7 @@
 // sees where their beats land compared to it.
 
 import type { ParseResult } from './fountain';
+import { t, tn } from './i18n';
 
 export interface ModelPhase {
   name: string;
@@ -317,9 +318,9 @@ export function placeBeats(model: StoryModel, beatScenes: Record<string, number 
 
 /** "3 pages later", "1.5 pages earlier", "as typical" (within half a page). */
 export function deltaLabel(delta: number): string {
-  if (Math.abs(delta) < 0.5) return 'as typical';
+  if (Math.abs(delta) < 0.5) return t('as typical');
   const v = Math.round(Math.abs(delta) * 2) / 2;
-  return `${v} ${v === 1 ? 'page' : 'pages'} ${delta > 0 ? 'later' : 'earlier'}`;
+  return delta > 0 ? tn(v, '{0} page later', '{0} pages later') : tn(v, '{0} page earlier', '{0} pages earlier');
 }
 
 /** Page number as printed (1-based) for a position in pages. */

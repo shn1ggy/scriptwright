@@ -7,6 +7,7 @@ import { h, icon, iconButton } from './dom';
 import { pushEscape, toast } from './overlay';
 import { cursor } from '../../shared/doc';
 import { buildPattern, findMatches, replacementFor, FindMatch, FindOptions } from '../../shared/findreplace';
+import { t, tn } from '../../shared/i18n';
 
 const LIST_LIMIT = 5000;
 
@@ -32,7 +33,7 @@ export class FindBar {
   private listBtn!: HTMLButtonElement;
 
   constructor(private app: App) {
-    this.input = h('input', { class: 'field', placeholder: 'Find', 'aria-label': 'Find in screenplay', spellcheck: 'false' });
+    this.input = h('input', { class: 'field', placeholder: t("Find"), 'aria-label': t("Find in screenplay"), spellcheck: 'false' });
     this.input.dataset.esc = 'self';
     this.input.addEventListener('input', () => {
       this.compute();
@@ -40,7 +41,7 @@ export class FindBar {
       this.show(false);
     });
     this.input.addEventListener('keydown', (e) => this.onKey(e));
-    this.replaceInput = h('input', { class: 'field', placeholder: 'Replace with', 'aria-label': 'Replace with', spellcheck: 'false' });
+    this.replaceInput = h('input', { class: 'field', placeholder: t("Replace with"), 'aria-label': t("Replace with"), spellcheck: 'false' });
     this.replaceInput.dataset.esc = 'self';
     this.replaceInput.addEventListener('keydown', (e) => this.onReplaceKey(e));
     this.replaceInput.addEventListener('input', () => this.renderResults());
@@ -52,16 +53,16 @@ export class FindBar {
       return b;
     };
     this.optBtns = {
-      caseSensitive: opt('caseSensitive', 'Aa', 'Match case'),
-      wholeWord: opt('wholeWord', 'W', 'Whole words only'),
-      regex: opt('regex', '.*', 'Regular expression ($1 etc. in the replacement)'),
-      preserveCase: opt('preserveCase', 'AB', 'Preserve case: ANDREA → MARIA, Andrea → Maria (when not matching case)'),
+      caseSensitive: opt('caseSensitive', t("Aa"), t("Match case")),
+      wholeWord: opt('wholeWord', 'W', t("Whole words only")),
+      regex: opt('regex', '.*', t("Regular expression ($1 etc. in the replacement)")),
+      preserveCase: opt('preserveCase', t("AB"), t("Preserve case: ANDREA → MARIA, Andrea → Maria (when not matching case)")),
     };
-    this.toggleBtn = h('button', { class: 'icon-btn findbar-toggle', title: 'Toggle Replace (Mod+Alt+F)', 'aria-label': 'Toggle Replace', 'aria-expanded': 'false', tabindex: '-1', onclick: () => this.setReplaceVisible(this.replaceRow.classList.contains('hidden'), true) }, icon('chevronRight'));
+    this.toggleBtn = h('button', { class: 'icon-btn findbar-toggle', title: t("Toggle Replace (Mod+Alt+F)"), 'aria-label': t("Toggle Replace"), 'aria-expanded': 'false', tabindex: '-1', onclick: () => this.setReplaceVisible(this.replaceRow.classList.contains('hidden'), true) }, icon('chevronRight'));
     this.results = h('div', { class: 'list findbar-results', role: 'listbox' });
 
-    const replaceOne = h('button', { class: 'btn sm', title: 'Replace this result (Enter)', onclick: () => this.replaceCurrent() }, 'Replace');
-    const replaceAll = h('button', { class: 'btn sm', title: 'Replace all results (Mod+Enter)', onclick: () => this.replaceAll() }, 'All');
+    const replaceOne = h('button', { class: 'btn sm', title: t("Replace this result (Enter)"), onclick: () => this.replaceCurrent() }, t("Replace"));
+    const replaceAll = h('button', { class: 'btn sm', title: t("Replace all results (Mod+Enter)"), onclick: () => this.replaceAll() }, t("All"));
     for (const b of [replaceOne, replaceAll]) b.addEventListener('mousedown', (e) => e.preventDefault());
     this.replaceRow = h('div', { class: 'findbar-row hidden' }, this.replaceInput, this.optBtns.preserveCase, replaceOne, replaceAll);
 
@@ -83,10 +84,10 @@ export class FindBar {
             this.optBtns.caseSensitive,
             this.optBtns.wholeWord,
             this.optBtns.regex,
-            (this.listBtn = iconButton('list', 'Show all results', () => this.toggleList())),
-            iconButton('up', 'Previous result (Shift+Enter)', () => this.step(-1)),
-            iconButton('down', 'Next result (Enter)', () => this.step(1)),
-            iconButton('close', 'Close (Esc)', () => this.close(true)),
+            (this.listBtn = iconButton('list', t("Show all results"), () => this.toggleList())),
+            iconButton('up', t("Previous result (Shift+Enter)"), () => this.step(-1)),
+            iconButton('down', t("Next result (Enter)"), () => this.step(1)),
+            iconButton('close', t("Close (Esc)"), () => this.close(true)),
           ),
           this.replaceRow,
         ),
@@ -261,11 +262,16 @@ export class FindBar {
     this.compute();
     this.current = this.matches.length ? this.nearestIndex() : -1;
     this.show(false);
-    const where = this.app.view === 'dialogue' ? ' in this dialogue view' : scenes.size > 1 ? ` in ${scenes.size} scenes` : '';
-    toast(`Replaced ${n} occurrence${n === 1 ? '' : 's'}${where}.`, {
+    const msg =
+      this.app.view === 'dialogue'
+        ? tn(n, 'Replaced {0} occurrence in this dialogue view.', 'Replaced {0} occurrences in this dialogue view.')
+        : scenes.size > 1
+          ? tn(n, 'Replaced {0} occurrence in {1} scenes.', 'Replaced {0} occurrences in {1} scenes.', scenes.size)
+          : tn(n, 'Replaced {0} occurrence.', 'Replaced {0} occurrences.');
+    toast(msg, {
       actions: [
         {
-          label: 'Undo',
+          label: t("Undo"),
           run: () => {
             this.app.editor.history.seal();
             this.app.editor.undo();
@@ -278,7 +284,7 @@ export class FindBar {
   /** Updates highlights, the counter and the result list; optionally moves to the current match. */
   private show(go: boolean) {
     const n = this.matches.length;
-    this.count.textContent = this.error ? this.error : this.input.value ? (n ? `${this.current + 1} of ${n > LIST_LIMIT ? LIST_LIMIT + '+' : n}` : 'No results') : '';
+    this.count.textContent = this.error ? this.error : this.input.value ? (n ? t("{0} of {1}", this.current + 1, n > LIST_LIMIT ? LIST_LIMIT + '+' : n) : t("No results")) : '';
     this.count.classList.toggle('warn', !!this.error);
     this.renderResults();
     if (go && this.current >= 0) this.goTo(this.current, false);
@@ -288,7 +294,7 @@ export class FindBar {
   private toggleList() {
     this.showList = !this.showList;
     this.listBtn.classList.toggle('on', this.showList);
-    this.listBtn.title = this.showList ? 'Hide the results' : 'Show all results';
+    this.listBtn.title = this.showList ? t("Hide the results") : t("Show all results");
     this.renderResults();
     this.input.focus();
   }
@@ -317,7 +323,7 @@ export class FindBar {
       const row = h(
         'div',
         { class: `row${k === this.current ? ' selected' : ''}`, role: 'option' },
-        h('span', { class: 'num', style: { width: '34px' }, title: sc?.heading }, sc ? (sc.kind === 'scene' ? `Sc ${sc.order}` : sc.kind === 'title' ? 'Title' : 'Open') : ''),
+        h('span', { class: 'num', style: { width: '34px' }, title: sc?.heading }, sc ? (sc.kind === 'scene' ? t("Sc {0}", sc.order) : sc.kind === 'title' ? t("Title") : t("Open")) : ''),
         h('span', { class: 'label' }, ...parts),
       );
       row.addEventListener('mousedown', (e) => e.preventDefault());

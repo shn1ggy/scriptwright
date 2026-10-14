@@ -6,6 +6,7 @@ import { PdfDocument, TtfInfo, parseTtf } from './pdfwriter';
 import { PaginationResult, S_BOLD, S_CHANGED, S_ITALIC, S_UNDERLINE } from '../shared/paginate';
 import { ExportSettings } from '../shared/types';
 import { FontFamily, loadFontData, pickFace } from './fonts';
+import { t } from '../shared/i18n';
 
 export interface RenderInfo {
   title?: string;
@@ -110,9 +111,9 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
   const warnings = [...result.warnings];
   const used = registerFamily(doc, 'F', s.font, info);
   if (used.name !== s.font)
-    warnings.push(s.font === 'Courier Prime' ? 'Courier Prime font files were not found (they are downloaded by npm install); Courier was used instead.' : `The font "${s.font}" is not installed; Courier was used instead.`);
+    warnings.push(s.font === 'Courier Prime' ? t('Courier Prime font files were not found (they are downloaded by npm install); Courier was used instead.') : t('The font “{0}” is not installed; Courier was used instead.', s.font));
   const titleUsed = registerFamily(doc, 'T', s.titleFont, info);
-  if (titleUsed.name !== s.titleFont && s.titleFont !== s.font) warnings.push(`The title font "${s.titleFont}" is not available; Courier was used.`);
+  if (titleUsed.name !== s.titleFont && s.titleFont !== s.font) warnings.push(t('The title font “{0}” is not available; Courier was used.', s.titleFont));
   // Title page details are set in Courier at 12 pt.
   registerFamily(doc, 'C', s.font === 'Courier Prime' ? 'Courier Prime' : 'Courier', info);
 
@@ -227,6 +228,6 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
   }
   if (doc.pageCount === 0) doc.addPage(W, H);
   const pdf = doc.toBuffer({ title: info.title, author: info.author });
-  if (doc.unencodable > 0) warnings.push(`${doc.unencodable} character(s) cannot be represented in the PDF font and were replaced with "?".`);
+  if (doc.unencodable > 0) warnings.push(t('{0} character(s) cannot be represented in the PDF font and were replaced with “?”.', doc.unencodable));
   return { pdf, warnings, fontUsed: used.name };
 }

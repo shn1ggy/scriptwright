@@ -147,6 +147,10 @@ Help text sits directly under its field (4 px), and the next row follows after 1
   writing cannot delete one.
 - Putting something back from the shelf removes it from the shelf (undoable).
 - Live controls (colour pickers, sliders) preview at most once per frame and save on release.
+- A click on empty space in Cards or the timeline clears the scene selection.
+- The application menus are grouped with separators (File: create · save · export · import ·
+  project · settings · quit; View: tabs · other views · notes pane · panes · text size; Scene:
+  navigate · edit · archive/remove · numbers). Window comes before Help.
 - A key a field or dialog handles (Enter, Mod+Enter) is consumed there and never also runs a
   menu command.
 - Switching views never moves the caret on screen.
@@ -155,6 +159,17 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 - A dialog takes keyboard focus the moment it opens, so nothing typed lands in the script.
 - Feedback after an action is a short toast naming the result ("Moved to the archive."), with
   Undo when possible.
+
+## 7a. Language
+
+- The interface speaks English or German (Settings → Appearance → Language). Every string is
+  written in English in the code and passed through t() / tn(); the German dictionary has an
+  entry for each one (a test checks this). New text must go through t() too.
+- German follows the German conventions of the platform: sentence case, „Anführungszeichen“,
+  a space before the ellipsis (Speichern …), du-form. Film terms that German writers use as
+  they are (Beat, Midpoint, Plot Point, Set-up) stay.
+- The screenplay's own labels (MORE, CONT'D, Changes since …) follow the screenplay, not the
+  interface.
 
 ## 7b. Structure
 
@@ -169,6 +184,12 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 - An act begins where it is dropped: drag its divider onto a card, or its left edge in the
   timeline (snapping to scene boundaries, never past its neighbours).
 - Sections before the first scene are structure, not an "Opening".
+- The scene list can show acts and sequences as foldable groups (on by default; scene pane
+  menu or Cards display menu). A folded act holding the current scene is marked instead.
+- Scenes can be moved to the scene archive instead of being removed: they leave the
+  screenplay with their text and details, are listed (foldable) at the end of the scene list,
+  and go back where they were or after the current scene. Archiving and putting back are one
+  undo step each.
 - Placing beats, starting, moving and removing acts are undoable like any edit.
 
 ## 8. The printed page

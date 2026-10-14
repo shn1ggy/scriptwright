@@ -7,6 +7,7 @@ import { confirmDialog, toast } from './overlay';
 import { ShelfItem } from '../../shared/types';
 import { selFrom, selTo, selEmpty, posAfterInsert, Pos } from '../../shared/doc';
 import { makeOrigin, locateOrigin, OriginMatch } from '../../shared/shelf';
+import { t, uiLocale } from '../../shared/i18n';
 
 function offsetOf(app: App, p: Pos): number {
   const L = app.editor.lines;
@@ -36,7 +37,7 @@ function findOrigin(app: App, it: ShelfItem): OriginMatch | null {
 export function toShelf(app: App, cut: boolean) {
   const ed = app.editor;
   if (selEmpty(ed.sel)) {
-    toast('Select the text to put on the shelf.');
+    toast(t("Select the text to put on the shelf."));
     return;
   }
   const text = ed.selectedText();
@@ -56,8 +57,8 @@ export function toShelf(app: App, cut: boolean) {
   app.markMetaDirty();
   if (cut) ed.insertText('', 'other');
   app.rightPane.shelfChanged();
-  toast(cut ? 'Moved to the shelf.' : 'Copied to the shelf.', {
-    actions: [{ label: 'Show shelf', run: () => app.showRightTab('shelf') }],
+  toast(cut ? t("Moved to the shelf.") : t("Copied to the shelf."), {
+    actions: [{ label: t("Show shelf"), run: () => app.showRightTab('shelf') }],
   });
 }
 
@@ -68,14 +69,14 @@ export function insertFromShelf(app: App, item: ShelfItem) {
   ed.replaceRange(at, at, item.text, 'other', 'command', { anchor: at, head: posAfterInsert(at, item.text) });
   ed.history.seal();
   ed.focus();
-  toast('Inserted from the shelf. The shelf keeps its copy.', { actions: [{ label: 'Undo', run: () => app.run('edit.undo') }] });
+  toast(t("Inserted from the shelf. The shelf keeps its copy."), { actions: [{ label: t("Undo"), run: () => app.run('edit.undo') }] });
 }
 
 /** Puts cut material back where it was cut from. */
 export function putBack(app: App, item: ShelfItem, rerender: () => void) {
   const m = findOrigin(app, item);
   if (!m) {
-    toast('The text around its original place has changed, so the place cannot be found. Use Insert at caret instead.', { warn: true });
+    toast(t("The text around its original place has changed, so the place cannot be found. Use Insert at caret instead."), { warn: true });
     return;
   }
   const at = posAt(app, m.from);
@@ -86,13 +87,13 @@ export function putBack(app: App, item: ShelfItem, rerender: () => void) {
   app.undoable(() => {
     app.project!.meta.shelf = app.project!.meta.shelf.filter((x) => x.id !== item.id);
     app.markMetaDirty();
-  }, 'Put Back');
+  }, t("Put Back"));
   rerender();
   app.revealRange(at, posAfterInsert(at, item.text));
-  toast(m.quality === 'exact' ? 'Put back where it was cut.' : 'Put back next to the text it followed (the other side has changed).', {
+  toast(m.quality === 'exact' ? t("Put back where it was cut.") : t("Put back next to the text it followed (the other side has changed)."), {
     actions: [
       {
-        label: 'Undo',
+        label: t("Undo"),
         run: () => {
           app.run('edit.undo');
           app.run('edit.undo');
@@ -111,11 +112,11 @@ export function revealOrigin(app: App, item: ShelfItem) {
       const sc = app.scenes.find((x) => x.id === item.sceneId);
       if (sc) {
         app.revealRange({ line: sc.line, ch: 0 }, { line: sc.line, ch: 0 }, false);
-        toast('The exact place has changed; showing the scene it came from.');
+        toast(t("The exact place has changed; showing the scene it came from."));
         return;
       }
     }
-    toast(item.origin ? 'The text around its original place has changed, so the place cannot be found.' : 'This item was shelved before places were recorded.');
+    toast(item.origin ? t("The text around its original place has changed, so the place cannot be found.") : t("This item was shelved before places were recorded."));
     return;
   }
   app.revealRange(posAt(app, m.from), posAt(app, m.to), false);
@@ -127,15 +128,15 @@ export function renderShelf(app: App, body: HTMLElement, rerender: () => void) {
     h(
       'div',
       { class: 'notice' },
-      `Cut material stays here until you delete it. Cut to shelf: ${app.commands.label('shelf.cut') || 'context menu'} · copy: ${app.commands.label('shelf.copy') || 'context menu'}.`,
+      t("Cut material stays here until you delete it. Cut to shelf: {0} · copy: {1}.", app.commands.label('shelf.cut') || t('context menu'), app.commands.label('shelf.copy') || t('context menu')),
     ),
   );
   if (!items.length) {
-    body.append(h('div', { class: 'notice' }, 'The shelf is empty.'));
+    body.append(h('div', { class: 'notice' }, t("The shelf is empty.")));
     return;
   }
   for (const it of items) {
-    const note = h('input', { class: 'field sm', placeholder: 'Note', value: it.note ?? '', 'aria-label': 'Note' });
+    const note = h('input', { class: 'field sm', placeholder: t("Note"), value: it.note ?? '', 'aria-label': t("Note") });
     note.addEventListener('change', () => {
       it.note = note.value.trim() || undefined;
       app.markMetaDirty();
@@ -144,8 +145,8 @@ export function renderShelf(app: App, body: HTMLElement, rerender: () => void) {
       h(
         'div',
         { class: 'rv-item' },
-        h('div', { class: 'rv-meta' }, `${it.kind === 'cut' ? 'Cut' : 'Copied'} ${new Date(it.created).toLocaleString()}${it.sceneHeading ? ' · ' + it.sceneHeading : ''}`),
-        h('button', { class: 'shelf-text', title: 'Show where this came from', onclick: () => revealOrigin(app, it) }, it.text),
+        h('div', { class: 'rv-meta' }, [it.kind === 'cut' ? t('Cut {0}', new Date(it.created).toLocaleString(uiLocale())) : t('Copied {0}', new Date(it.created).toLocaleString(uiLocale())), it.sceneHeading].filter(Boolean).join(' · ')),
+        h('button', { class: 'shelf-text', title: t("Show where this came from"), onclick: () => revealOrigin(app, it) }, it.text),
         note,
         h(
           'div',
@@ -156,30 +157,30 @@ export function renderShelf(app: App, body: HTMLElement, rerender: () => void) {
                 return h('button', {
                   class: 'btn sm',
                   disabled: !m,
-                  title: m ? (m.quality === 'exact' ? 'Insert it again where it was cut' : 'One side of the original place has changed; it goes next to the unchanged side') : 'The text around its original place has changed',
+                  title: m ? (m.quality === 'exact' ? t("Insert it again where it was cut") : t("One side of the original place has changed; it goes next to the unchanged side")) : t("The text around its original place has changed"),
                   onclick: () => putBack(app, it, rerender),
-                }, 'Put back');
+                }, t("Put back"));
               })()
             : null,
-          h('button', { class: 'btn sm', title: 'Insert at the caret (never replaces a selection)', onclick: () => insertFromShelf(app, it) }, 'Insert at caret'),
+          h('button', { class: 'btn sm', title: t("Insert at the caret (never replaces a selection)"), onclick: () => insertFromShelf(app, it) }, t("Insert at caret")),
           h('button', {
             class: 'btn sm',
             onclick: async () => {
               await bridge.clipboard.writeText(it.text);
-              toast('Copied to the clipboard.');
+              toast(t("Copied to the clipboard."));
             },
-          }, 'Copy'),
+          }, t("Copy")),
           h('button', {
             class: 'btn sm',
             onclick: async () => {
-              if (!(await confirmDialog('Delete from shelf', 'Delete this material from the shelf? Undo brings it back.', 'Delete', { danger: true }))) return;
+              if (!(await confirmDialog(t("Delete from shelf"), t("Delete this material from the shelf? Undo brings it back."), t("Delete"), { danger: true }))) return;
               app.undoable(() => {
                 app.project!.meta.shelf = app.project!.meta.shelf.filter((x) => x.id !== it.id);
                 app.markMetaDirty();
-              }, 'Delete from Shelf');
+              }, t("Delete from Shelf"));
               rerender();
             },
-          }, 'Delete'),
+          }, t("Delete")),
         ),
       ),
     );

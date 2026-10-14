@@ -4,15 +4,16 @@
 import type { App } from '../app';
 import { h } from './dom';
 import { MenuItem, openDialog } from './overlay';
+import { t, uiLocale } from '../../shared/i18n';
 
 export function archivedSceneMenu(app: App, id: string): MenuItem[] {
   return [
-    { label: 'Read…', run: () => openArchivedScene(app, id) },
+    { label: t("Read…"), run: () => openArchivedScene(app, id) },
     { sep: true },
-    { label: 'Put Back Where It Was', run: () => app.restoreArchivedScene(id, 'original') },
-    { label: 'Put Back After Current Scene', run: () => app.restoreArchivedScene(id, 'current') },
+    { label: t("Put Back Where It Was"), run: () => app.restoreArchivedScene(id, 'original') },
+    { label: t("Put Back After Current Scene"), run: () => app.restoreArchivedScene(id, 'current') },
     { sep: true },
-    { label: 'Delete from Archive…', run: () => void app.deleteArchivedScene(id) },
+    { label: t("Delete from Archive…"), run: () => void app.deleteArchivedScene(id) },
   ];
 }
 
@@ -22,18 +23,18 @@ export function openArchivedScene(app: App, id: string) {
   if (!a) return;
   const details = [a.summary, a.notes].filter(Boolean) as string[];
   openDialog({
-    title: a.heading || 'Archived scene',
+    title: a.heading || t("Archived scene"),
     width: 640,
     body: [
-      h('p', { class: 'muted' }, `Archived ${new Date(a.archivedAt).toLocaleString()} · was scene ${a.number}`),
+      h('p', { class: 'muted' }, t("Archived {0} · was scene {1}", new Date(a.archivedAt).toLocaleString(uiLocale()), a.number)),
       ...details.map((d) => h('p', { class: 'archive-detail' }, d)),
       h('pre', { class: 'archive-text' }, a.lines.join('\n')),
     ],
     buttons: [
-      { label: 'Delete…', run: () => void app.deleteArchivedScene(id) },
-      { label: 'Close' },
-      { label: 'After current scene', run: () => app.restoreArchivedScene(id, 'current') },
-      { label: 'Put back where it was', primary: true, run: () => app.restoreArchivedScene(id, 'original') },
+      { label: t("Delete…"), run: () => void app.deleteArchivedScene(id) },
+      { label: t("Close") },
+      { label: t("After current scene"), run: () => app.restoreArchivedScene(id, 'current') },
+      { label: t("Put back where it was"), primary: true, run: () => app.restoreArchivedScene(id, 'original') },
     ],
   });
 }
