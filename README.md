@@ -251,6 +251,41 @@ Distinguishing what was actually run from what was not:
   the model typically puts it. Beats with the same name (Midpoint, Climax …) carry over when
   you switch models.
 
+## Production
+
+Everything for a script that is being shot is in the **Production** menu.
+
+- **Lock Pages…** keeps every page number as it is printed now (and locks scene numbers).
+  New material that no longer fits continues on A pages (12A, 12B …); a page whose text was
+  removed completely is joined to the page before ("12-13."). Keep the layout settings as they
+  were when you locked, otherwise text moves onto A pages.
+- **Revision colours.** Changes after the lock are the blue revision; **Start Next
+  Revision…** begins pink, then yellow, green, goldenrod, buff, salmon, cherry and the double
+  colours. In Export → Mark changes since → *Revisions*, changed lines get an asterisk (only
+  the current round, or every round), each revised page names its colour and date in the
+  header, and *Only pages changed in this round* prints just the pages to hand out. Revised
+  text prints black, as productions expect (the paper colour tells the round); colour can be
+  switched on for reading on screen. For
+  reading on screen, revised pages can be tinted in their colour. The lock and each round keep
+  a copy of the screenplay in `.scriptwright/production/`.
+- **Sides…** prints the pages of chosen scenes as they are in the script (with their real
+  page numbers); everything else on those pages is struck through, and a cover sheet lists the
+  scenes, their lengths in eighths and the cast.
+- **Reports** (also a tab next to History): scenes (int./ext., location, time, page, length in
+  eighths, cast), cast (scenes, speeches, words, pages), locations, breakdown sheets per scene
+  and all breakdown elements. Every report exports as PDF or CSV (for Excel, Numbers, Google
+  Sheets or scheduling software that imports spreadsheets).
+- **Tag for Breakdown…** (⇧⌘B, or right-click selected words): props, wardrobe, vehicles,
+  extras, stunts, effects … A tag can be repeated for every other mention of the same words at
+  once. Tags live in the project information like highlights and follow the text as you edit.
+
+**Importing PDFs.** File → Import Screenplay… also reads PDF screenplays (for example a draft
+someone sent you). Scriptwright reads the page layout: scene headings, action, character cues,
+parentheticals, dialogue, transitions, dual dialogue, the title page and written scene numbers
+come back as Fountain; page numbers, (MORE)/(CONT'D), revision asterisks and headers are left
+out. Bold, italics and underlining are not carried over, and scanned PDFs (pictures of pages)
+cannot be read.
+
 ## Languages
 
 The interface is available in English and German (Settings → Appearance → Language). The
@@ -312,5 +347,5 @@ source package.
 | §15 Named drafts and draft/scene comparison | Done (stage 2); production revision marks are part of §24 |
 | §16 Comments, highlights, detached-annotation review | Done (stage 2) |
 | §21 Collaboration | Not started |
-| §24 Production tools (revision sets, locked numbering, reports, Final Draft) | Locked scene numbers and Final Draft import/export done; revision sets and reports not started |
+| §24 Production tools (revision sets, locked numbering, reports, Final Draft) | Done: locked scene numbers and pages, coloured revision rounds, sides, reports, breakdown tags, Final Draft and PDF import |
 | Story structure (acts, sequences, story models, beats, timeline) | Done |

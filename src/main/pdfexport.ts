@@ -16,7 +16,12 @@ export interface RenderInfo {
   families?: () => FontFamily[];
   /** "Changes since …" when revision marks are shown. */
   revisionLabel?: string;
+  /** Production revisions: header text and paper colour per revision round (index = round). */
+  revisionRounds?: Array<{ label: string; tint: string }>;
 }
+
+/** Text of other scenes on sides. */
+const STRUCK: [number, number, number] = [0.55, 0.55, 0.55];
 
 function hexRgb(hex: string): [number, number, number] {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
@@ -157,6 +162,13 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
   const footerY = Math.min(H - lineH, cap.textBottom + (H - cap.textBottom) / 2) + baseline - lineH / 2;
 
   const revRgb = hexRgb(s.revColor);
+  // Production revisions are printed like Final Draft prints them: black text with asterisks
+  // (the paper colour tells the round). Draft comparisons use the marking styles chosen.
+  const prod = !!info.revisionRounds;
+  const colorText = prod ? !!s.revProdColor : s.revColorText;
+  const revHighlight = !prod && s.revHighlight;
+  const revUnderline = !prod && s.revUnderline;
+  const revBold = !prod && s.revBold;
   // Light tint of the revision color for highlighting.
   const revTint: [number, number, number] = revRgb.map((c) => 1 - (1 - c) * 0.22) as [number, number, number];
   const leftGap = Math.max(0, s.sceneNumberLeftGap ?? 4);
@@ -165,6 +177,9 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
 
   for (const page of result.pages) {
     doc.addPage(W, H);
+    const round = page.revision && info.revisionRounds ? info.revisionRounds[page.revision] : undefined;
+    // Revised pages printed in their colour (for reading on screen; paper is coloured in print).
+    if (round && s.revTintPages && !page.title) doc.rect(0, 0, W, H, hexRgb(round.tint));
     if (s.watermark.trim()) {
       const wm = s.watermark.trim();
       const unit = doc.measure('F1', wm, 1);
@@ -175,8 +190,8 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
       const inset = Math.max(24, s.titleInset ?? 70);
       for (const item of page.title) {
         const isTitle = !!item.title;
-        let size = isTitle ? s.titleSize : 12;
-        const font = isTitle ? `T${s.titleBold ? 1 : 0}` : 'C0';
+        let size = isTitle ? s.titleSize : item.size ?? 12;
+        const font = isTitle ? `T${s.titleBold ? 1 : 0}` : item.bold ? 'C1' : 'C0';
         const n = Math.max(0, [...item.text].length - 1);
         // Letter spacing is added after every character except the last.
         const trackPct = isTitle ? s.titleTracking ?? 0 : s.titleDetailsTracking ?? 0;
@@ -189,25 +204,25 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
           tracking *= f;
           w *= f;
         }
-        let x = inset;
+        let x = item.x ?? inset;
         if (item.align === 'center') x = (W - w) / 2;
-        else if (item.align === 'right') x = W - inset - w;
+        else if (item.align === 'right') x = (item.x ?? W - inset) - w;
         doc.text(x, item.y, item.text, font, size, 0, undefined, tracking);
         if (isTitle && s.titleUnderline && item.text.trim()) doc.line(x, item.y + size * 0.15, x + w, item.y + size * 0.15, Math.max(0.5, size / 24));
       }
       continue;
     }
-    const showNumber = s.pageNumbers && (page.number > 1 || s.pageNumberFirstPage);
-    const label = showNumber ? fillTemplate(s.pageNumberFormat || '{n}.', { n: String(page.number) }) : '';
+    const showNumber = s.pageNumbers && (page.number > 1 || s.pageNumberFirstPage || page.label !== '1');
+    const label = showNumber ? fillTemplate(s.pageNumberFormat || '{n}.', { n: page.label || String(page.number) }) : '';
     const wOf = (t: string) => doc.measure('F0', t, s.fontSize);
     if (showNumber) {
       if (s.pageNumberPosition === 'top-right') doc.text(actionRight - wOf(label), headerY, label, 'F0', s.fontSize);
       else if (s.pageNumberPosition === 'bottom-right') doc.text(actionRight - wOf(label), footerY, label, 'F0', s.fontSize);
       else doc.text((W - wOf(label)) / 2, footerY, label, 'F0', s.fontSize);
     }
-    const revNote = info.revisionLabel && s.revHeaderNote ? info.revisionLabel : '';
+    const revNote = s.revHeaderNote ? (info.revisionRounds ? round?.label ?? '' : info.revisionLabel ?? '') : '';
     const headerText = [s.header.trim() ? fillTemplate(s.header, vars(page.number)) : '', revNote].filter(Boolean).join(' · ');
-    if (headerText) doc.text(left, headerY, headerText, 'F0', s.fontSize, 0, revNote && !s.header.trim() ? revRgb : undefined);
+    if (headerText) doc.text(left, headerY, headerText, 'F0', s.fontSize, 0, revNote && !s.header.trim() && (colorText || !prod) ? revRgb : undefined);
     if (s.label.trim()) {
       const l = fillTemplate(s.label, vars(page.number));
       doc.text((W - wOf(l)) / 2, headerY, l, 'F0', s.fontSize);
@@ -227,21 +242,21 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
       const x0 = left + line.col * charW;
       // Changed passages are marked as one span: words separated only by spaces join up.
       const spans = changedSpans(line.runs);
-      if (s.revHighlight) for (const [a, b] of spans) doc.rect(x0 + a * charW - 0.5, y - s.fontSize * 0.72, (b - a) * charW + 1, lineH * 0.98, revTint);
+      if (revHighlight) for (const [a, b] of spans) doc.rect(x0 + a * charW - 0.5, y - s.fontSize * 0.72, (b - a) * charW + 1, lineH * 0.98, revTint);
       let x = x0;
       for (const run of line.runs) {
         if (!run.text) continue;
         const changed = !!(run.style & S_CHANGED);
-        const style = changed && s.revBold ? run.style | S_BOLD : run.style;
+        const style = changed && revBold ? run.style | S_BOLD : run.style;
         const font = `F${styleIndex(style)}`;
         const w = run.text.length * charW;
-        doc.text(x, y, run.text, font, s.fontSize, 0, changed && s.revColorText ? revRgb : undefined);
-        if (run.style & S_UNDERLINE) doc.line(x, y + s.fontSize * 0.14, x + w, y + s.fontSize * 0.14, Math.max(0.5, s.fontSize / 20), changed && s.revColorText ? revRgb : undefined);
+        doc.text(x, y, run.text, font, s.fontSize, 0, line.struck ? STRUCK : changed && colorText ? revRgb : undefined);
+        if (run.style & S_UNDERLINE) doc.line(x, y + s.fontSize * 0.14, x + w, y + s.fontSize * 0.14, Math.max(0.5, s.fontSize / 20), changed && colorText ? revRgb : undefined);
         x += w;
       }
-      if (s.revUnderline) for (const [a, b] of spans) doc.line(x0 + a * charW, y + s.fontSize * 0.2, x0 + b * charW, y + s.fontSize * 0.2, Math.max(0.6, s.fontSize / 16), revRgb);
-      if (line.mark && s.revMargin && s.revMarkChar.trim()) doc.text(markX, y, s.revMarkChar.trim().slice(0, 3), 'F1', s.fontSize, 0, s.revColorText || s.revHighlight || s.revUnderline ? revRgb : undefined);
-      if (line.sceneNumber && s.sceneNumbers !== 'off') {
+      if (revUnderline) for (const [a, b] of spans) doc.line(x0 + a * charW, y + s.fontSize * 0.2, x0 + b * charW, y + s.fontSize * 0.2, Math.max(0.6, s.fontSize / 16), revRgb);
+      if (line.mark && s.revMargin && s.revMarkChar.trim()) doc.text(markX, y, s.revMarkChar.trim().slice(0, 3), 'F1', s.fontSize, 0, colorText || revHighlight || revUnderline ? revRgb : undefined);
+      if (line.sceneNumber && s.sceneNumbers !== 'off' && !line.struck) {
         const num = line.sceneNumber;
         // Numbers are set like the heading they belong to.
         const nf = s.boldHeadings ? 'F1' : 'F0';
@@ -250,6 +265,26 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
         if (s.sceneNumbers === 'right' || s.sceneNumbers === 'both') doc.text(Math.min(actionRight + rightGap * charW, W - 36 - num.length * charW), y, num, nf, s.fontSize);
       }
     }
+    // Sides: one diagonal stroke through each stretch of text that is not part of the chosen scenes.
+    const rows = page.lines.slice().sort((a, b) => a.row - b.row);
+    let from = -1;
+    let to = -1;
+    const strike = () => {
+      if (from < 0) return;
+      const y1 = top + from * lineH + baseline - s.fontSize * 1.05;
+      const y2 = top + to * lineH + baseline + s.fontSize * 0.45;
+      doc.line(left - charW, y1, actionRight, y2, 1.2, STRUCK);
+      doc.line(left - charW, y1, actionRight, y1, 0.6, STRUCK);
+      doc.line(left - charW, y2, actionRight, y2, 0.6, STRUCK);
+      from = to = -1;
+    };
+    for (const l of rows) {
+      if (l.struck) {
+        if (from < 0) from = l.row;
+        to = l.row;
+      } else if (l.row !== to) strike();
+    }
+    strike();
   }
   if (doc.pageCount === 0) doc.addPage(W, H);
   const pdf = doc.toBuffer({ title: info.title, author: info.author });

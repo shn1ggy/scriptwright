@@ -2,7 +2,8 @@
 // development harness so both run exactly the same code.
 
 import { Backend, ExportInfo } from './backend';
-import { AppState, ExportScope, ExportSettings, ProjectMeta, Settings } from '../shared/types';
+import { AppState, ExportScope, ExportSettings, PaperSize, ProjectMeta, Settings } from '../shared/types';
+import type { ReportDoc } from '../shared/reports';
 
 export function createApi(b: Backend) {
   return {
@@ -45,8 +46,12 @@ export function createApi(b: Backend) {
     saveExportCopy: (rel: string, id: string, text: string) => b.saveExportCopy(rel, id, text),
     readExportCopy: (rel: string, id: string) => b.readExportCopy(rel, id),
     deleteExportCopy: (rel: string, id: string) => b.deleteExportCopy(rel, id),
+    exportReportPdf: (rep: ReportDoc, paper: PaperSize) => b.exportReportPdf(rep, paper),
+    saveProductionCopy: (rel: string, id: string, text: string) => b.saveProductionCopy(rel, id, text),
+    readProductionCopy: (rel: string, id: string) => b.readProductionCopy(rel, id),
     writeFile: (file: string, data: Uint8Array | string) => b.writeFile(file, typeof data === 'string' ? data : Buffer.from(data)),
     readTextFile: (file: string) => b.readTextFile(file),
+    readBinaryFile: (file: string) => b.readBinaryFile(file),
     fontsAvailable: () => b.fontsAvailable(),
     scriptFontFaces: () => b.scriptFontFaces(),
     listFonts: () => b.listFonts(),

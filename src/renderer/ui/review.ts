@@ -3,7 +3,7 @@
 import type { App } from '../app';
 import { h, icon } from './dom';
 import { confirmDialog, openDialog, toast } from './overlay';
-import { CommentRecord, HighlightRecord, PassageRecord } from '../../shared/types';
+import { TagRecord, CommentRecord, HighlightRecord, PassageRecord } from '../../shared/types';
 import { uid } from './dom';
 import { namePassage, openRewriteFor, passageLabel, passageName, passageText } from './rewrite';
 import { t, tn, uiLocale } from '../../shared/i18n';
@@ -140,7 +140,14 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
     secDet.append(h('div', { class: 'rv-head warn' }, h('span', null, t("Detached ({0})", detached.length))));
     secDet.append(h('div', { class: 'notice' }, t("The text these belonged to was deleted or changed. Select the right text and attach them again, or delete them.")));
     for (const { kind, rec } of detached) {
-      const label = kind === 'comment' ? `Comment: ${quote((rec as CommentRecord).text, 50)}` : kind === 'passage' ? `Passage: ${passageLabel(app, rec as PassageRecord)}` : `Highlight: ${app.settings.highlights[(rec as HighlightRecord).color]?.label ?? ''}`;
+      const label =
+        kind === 'comment'
+          ? `Comment: ${quote((rec as CommentRecord).text, 50)}`
+          : kind === 'passage'
+            ? `Passage: ${passageLabel(app, rec as PassageRecord)}`
+            : kind === 'tag'
+              ? `${t('Breakdown')}: ${(rec as TagRecord).name}`
+              : `Highlight: ${app.settings.highlights[(rec as HighlightRecord).color]?.label ?? ''}`;
       secDet.append(
         h(
           'div',

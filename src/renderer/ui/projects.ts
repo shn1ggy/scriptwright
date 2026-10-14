@@ -45,7 +45,7 @@ export class ProjectsPane {
     openMenu(
       [
         { label: t("New Project…"), kbd: this.app.commands.label('project.new'), run: () => this.app.newProject() },
-        { label: t("Import Fountain File…"), kbd: this.app.commands.label('project.importFountain'), run: () => this.app.run('project.importFountain') },
+        { label: t("Import Screenplay…"), kbd: this.app.commands.label('project.importFountain'), run: () => this.app.run('project.importFountain') },
         { label: t("Import Project Backup…"), kbd: this.app.commands.label('project.importBackup'), run: () => this.app.run('project.importBackup') },
         { sep: true },
         { label: this.archiveOpen ? t("Hide Archive") : t("Show Archive ({0})", archived), disabled: !archived, run: () => this.setArchiveOpen(!this.archiveOpen) },

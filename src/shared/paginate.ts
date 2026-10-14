@@ -15,6 +15,7 @@ import {
 import { sceneNumberList } from './scenenumbers';
 import { ExportScope, ExportSettings, paperDims } from './types';
 import { t, tn } from './i18n';
+import { PageLock, pageLetters } from './production';
 
 export const S_BOLD = 1;
 export const S_ITALIC = 2;
@@ -52,6 +53,8 @@ export interface PageLine {
   sourceLine: number;
   /** Revision mark in the margin. */
   mark?: boolean;
+  /** Sides: not part of the chosen scenes (struck through). */
+  struck?: boolean;
 }
 
 export interface TitleItem {
@@ -60,11 +63,20 @@ export interface TitleItem {
   y: number;
   align: 'center' | 'left' | 'right';
   title?: boolean;
+  /** Left edge (or right edge when right-aligned) in points, instead of the title page insets. */
+  x?: number;
+  /** Size in points (default 12) and bold, for cover sheets. */
+  size?: number;
+  bold?: boolean;
 }
 
 export interface Page {
-  /** Printed page number (1-based within the full script). */
+  /** Position of the page in the full script (1-based); the title page is 0. */
   number: number;
+  /** Printed page number: the position, or with locked pages "12", "12A", "12-13". */
+  label: string;
+  /** Highest revision round with a change on this page (production revisions). */
+  revision?: number;
   lines: PageLine[];
   title?: TitleItem[];
   /** Index of scenes (heading lines) that start on this page. */
@@ -150,6 +162,11 @@ interface Unit {
   sourceLine: number;
   newPage?: boolean;
   dualParts?: [Para[], Para[]];
+  /** Locked pages: this unit begins locked page `lockTo`; pages from `lockFrom` on are empty. */
+  lockFrom?: number;
+  lockTo?: number;
+  /** A (MORE) follows the unit: it was cut at a locked page break. */
+  moreAfter?: boolean;
 }
 
 function flagsToStyle(f: number): number {
@@ -334,6 +351,8 @@ export interface RevisionMarks {
   marked: Set<number>;
   /** Keep only pages that contain a change. */
   changedPagesOnly?: boolean;
+  /** Revision round (1 = blue …) in which each line last changed, for coloured revisions. */
+  levels?: Map<number, number>;
 }
 
 export function paginate(
@@ -343,6 +362,7 @@ export function paginate(
   scope: ExportScope = { kind: 'all' },
   advanceEm = 0.6,
   revisions?: RevisionMarks,
+  lock?: PageLock,
 ): PaginationResult {
   const { cap, warnings } = capacity(s, advanceEm);
   const sty = (i: number, keepNotes = false) => styledText(lines[i], parse.lines[i].flags, keepNotes, revisions?.chars.get(i));
@@ -615,15 +635,46 @@ export function paginate(
   // ---------------------------------------------------------------------------------
   // Page filling
 
+  // Locked pages: cut units where a locked page began, so each locked page starts where it did.
+  const trailingLocked = lock && lock.starts.length ? applyLock(lock) : 0;
+
   const LPP = cap.linesPerPage;
   const pages: Page[] = [];
-  let cur: Page = { number: 1, lines: [], sceneLines: [] };
+  let cur: Page = { number: 1, label: '1', lines: [], sceneLines: [] };
   let used = 0;
   pages.push(cur);
+  // Locked page number of the current run of pages, and how many A pages follow it.
+  let lockNo = 0;
+  let letter = 0;
   const newPage = () => {
-    cur = { number: pages.length + 1, lines: [], sceneLines: [] };
+    const number = pages.length + 1;
+    let label = String(number);
+    if (lockNo > 0) label = `${lockNo}${pageLetters(++letter)}`;
+    const prev = cur;
+    cur = { number, label, lines: [], sceneLines: [] };
+    // An A page exists because its locked page grew: it goes out with that page's revision.
+    if (lockNo > 0) {
+      if (prev.revision) cur.revision = prev.revision;
+      if (prev.changed) cur.changed = true;
+    }
     pages.push(cur);
     used = 0;
+  };
+  /** A unit that begins a locked page: start that page (and join emptied pages to the one before). */
+  const startLockedPage = (from: number, to: number) => {
+    if (used > 0) {
+      newPage();
+      // A locked page of its own: it is revised only if its own lines changed.
+      cur.revision = undefined;
+      cur.changed = undefined;
+    }
+    const gone = to - 1 >= lockNo + 1;
+    const prev = pages.length > 1 ? pages[pages.length - 2] : null;
+    if (gone && prev) prev.label = `${prev.label}-${to - 1}`;
+    cur.label = gone && !prev ? `${lockNo + 1}-${to}` : String(to);
+    lockNo = to;
+    letter = 0;
+    void from;
   };
   // Margin marks: rows with changed text, plus the first row of lines marked for removed text.
   const markedRowDone = new Set<number>();
@@ -645,10 +696,21 @@ export function paginate(
     cur.lines.push({ row: used, col: ol.col, runs: ol.runs, kind: ol.kind, sceneNumber: ol.sceneNumber, sourceLine: ol.sourceLine, mark: mark || undefined });
     if (ol.dual) cur.lines.push({ row: used, col: ol.dual.col, runs: ol.dual.runs, kind: ol.dual.kind, sourceLine: ol.dual.sourceLine });
     if (mark) cur.changed = true;
+    if (revisions?.levels) {
+      const lv = Math.max(revisions.levels.get(ol.sourceLine) ?? 0, ol.dual ? revisions.levels.get(ol.dual.sourceLine) ?? 0 : 0);
+      if (lv > (cur.revision ?? 0)) cur.revision = lv;
+    }
     used++;
   };
+  const placeMore = (un: Unit) => place({ col: cap.parentheticalCol, runs: [{ text: s.moreLabel, style: 0 }], kind: 'more', breakAfter: false, sourceLine: un.sourceLine });
+  /** All lines of a unit that fits (and its (MORE) if it was cut at a locked page). */
+  const placeUnit = (un: Unit) => {
+    if (un.kind === 'heading') cur.sceneLines.push(un.sceneLine);
+    for (const ol of unitLines(un)) place(ol);
+    if (un.moreAfter) placeMore(un);
+  };
   const unitLines = (u: Unit) => u.fixed ?? layoutParas(u.paras);
-  const unitCount = (u: Unit) => (u.fixed ? u.fixed.length : countLines(u.paras));
+  const unitCount = (u: Unit) => (u.fixed ? u.fixed.length : countLines(u.paras)) + (u.moreAfter ? 1 : 0);
   const moreLabel = (u: Unit) => u.kind === 'dialogue' && s.useMoreContd;
 
   const queue = units.slice();
@@ -659,6 +721,13 @@ export function paginate(
       break;
     }
     const un = queue[u];
+    if (un.lockTo !== undefined) {
+      const from = un.lockFrom ?? un.lockTo;
+      const to = un.lockTo;
+      delete un.lockFrom;
+      delete un.lockTo;
+      startLockedPage(from, to);
+    }
     if (un.kind === 'pageBreak') {
       if (used > 0) newPage();
       continue;
@@ -684,8 +753,7 @@ export function paginate(
     }
     if (count + keep <= avail) {
       used += space;
-      if (un.kind === 'heading') cur.sceneLines.push(un.sceneLine);
-      for (const ol of unitLines(un)) place(ol);
+      placeUnit(un);
       continue;
     }
     if (un.splittable && used > 0) {
@@ -703,8 +771,7 @@ export function paginate(
     }
     // Empty page
     if (count <= LPP) {
-      if (un.kind === 'heading') cur.sceneLines.push(un.sceneLine);
-      for (const ol of unitLines(un)) place(ol);
+      placeUnit(un);
       continue;
     }
     // Taller than a page: split at a sentence if possible, otherwise at any line.
@@ -734,6 +801,7 @@ export function paginate(
     if (un.fixed) return null;
     const ps = un.paras;
     const more = moreLabel(un) ? 1 : 0;
+    // A unit already cut at a locked page keeps its (MORE) for the last part.
     const maxFirst = avail - more;
     if (maxFirst < 1) return null;
     const isDialogue = un.kind === 'dialogue';
@@ -796,9 +864,7 @@ export function paginate(
     if (un.kind === 'heading') cur.sceneLines.push(un.sceneLine);
     for (const ol of layoutParas(split.first)) place(ol);
     const isDialogue = un.kind === 'dialogue';
-    if (moreLabel(un)) {
-      place({ col: cap.parentheticalCol, runs: [{ text: s.moreLabel, style: 0 }], kind: 'more', breakAfter: false, sourceLine: un.sourceLine });
-    }
+    if (moreLabel(un)) placeMore(un);
     newPage();
     let rest = split.rest;
     if (isDialogue) {
@@ -815,6 +881,88 @@ export function paginate(
   }
 
   if (pages.length > 1 && pages[pages.length - 1].lines.length === 0) pages.pop();
+  // Locked pages after the end of the text are gone: the last page stands for them.
+  if (trailingLocked > lockNo && lockNo > 0) {
+    const last = pages[pages.length - 1];
+    last.label = `${last.label}-${trailingLocked}`;
+  }
+
+  /**
+   * Marks the units where locked pages begin; a unit that a locked page began inside is cut
+   * there (dialogue gets (MORE) and (CONT'D) as at any page break). Returns the last locked
+   * page whose start lies after all text (removed pages at the end), or 0.
+   */
+  function applyLock(lk: PageLock): number {
+    const starts = lk.starts;
+    const out: Unit[] = [];
+    let si = 0;
+    const range = (u: Unit): [number, number] => {
+      const src: number[] = u.fixed ? u.fixed.flatMap((l) => (l.dual ? [l.sourceLine, l.dual.sourceLine] : [l.sourceLine])) : u.paras.flatMap((p) => p.raw.map((r) => r.source));
+      if (!src.length) return [u.sourceLine, u.sourceLine];
+      return [Math.min(u.sourceLine, ...src), Math.max(...src)];
+    };
+    const assign = (u: Unit, page: number) => {
+      if (u.lockFrom === undefined) u.lockFrom = page;
+      u.lockTo = page;
+    };
+    for (let k = 0; k < units.length; k++) {
+      let u = units[k];
+      while (si < starts.length) {
+        const st = starts[si];
+        const [mn, mx] = range(u);
+        if (st.line > mx) break;
+        if (st.line <= mn) {
+          assign(u, st.page);
+          si++;
+          continue;
+        }
+        const parts = cutAt(u, st.line);
+        if (parts) {
+          out.push(parts[0]);
+          u = parts[1];
+        }
+        assign(u, st.page);
+        si++;
+      }
+      out.push(u);
+    }
+    units.length = 0;
+    units.push(...out);
+    return si < starts.length ? starts[starts.length - 1].page : 0;
+  }
+
+  /** Cuts a unit before the first hard line at or after `line`; null if it cannot be cut there. */
+  function cutAt(u: Unit, line: number): [Unit, Unit] | null {
+    if (u.fixed || u.kind === 'pageBreak') return null;
+    let pi = -1;
+    let r = -1;
+    for (let a = 0; a < u.paras.length && pi < 0; a++)
+      for (let b = 0; b < u.paras[a].raw.length; b++)
+        if (u.paras[a].raw[b].source >= line) {
+          pi = a;
+          r = b;
+          break;
+        }
+    if (pi < 0 || (pi === 0 && r === 0)) return null;
+    const p = u.paras[pi];
+    const first = [...u.paras.slice(0, pi), ...(r > 0 ? [{ ...p, raw: p.raw.slice(0, r) }] : [])];
+    let rest = [r > 0 ? { ...p, raw: p.raw.slice(r), sceneNumber: undefined } : p, ...u.paras.slice(pi + 1)];
+    const isDialogue = u.kind === 'dialogue';
+    if (isDialogue) {
+      // Only the cue (and a parenthetical) would stay behind: move the whole speech instead.
+      if (!first.some((q) => q.kind === 'dialogue' || q.kind === 'lyric')) return null;
+      const cue = u.paras[0];
+      if (s.useMoreContd) {
+        let cueText = cue.raw[0].text;
+        if (s.contdLabel.trim() && !cueText.includes(s.contdLabel)) cueText = cueText + ' ' + s.contdLabel;
+        rest = [{ ...cue, raw: [{ text: cueText, styles: new Array(cueText.length).fill(0), source: cue.raw[0].source }] }, ...rest];
+      } else rest = [cue, ...rest];
+    }
+    const a: Unit = { ...u, paras: first, keepNext: 0, moreAfter: isDialogue && s.useMoreContd ? true : u.moreAfter };
+    const b: Unit = { ...u, paras: rest, spaceBefore: 0, newPage: false, kind: u.kind === 'heading' ? 'other' : u.kind, lockFrom: undefined, lockTo: undefined, moreAfter: u.moreAfter };
+    if (isDialogue) a.moreAfter = s.useMoreContd;
+    return [a, b];
+  }
 
   let result = pages;
   if (scope.kind === 'pages') {
@@ -824,9 +972,125 @@ export function paginate(
   if (revisions?.changedPagesOnly) result = result.filter((p) => p.changed);
 
   const out: Page[] = [];
+  if (scope.kind === 'sides') {
+    const chosen = new Set(scope.sceneLines);
+    const inScene = (l: PageLine) => chosen.has(sceneOfLine[l.sourceLine]);
+    result = result.filter((pg) => pg.lines.some((l) => l.kind !== 'more' && inScene(l)));
+    for (const pg of result) {
+      for (const l of pg.lines) {
+        // A (MORE) belongs to the speech above it.
+        const owner = l.kind === 'more' ? pg.lines.filter((x) => x.row < l.row && x.kind !== 'more').pop() : l;
+        if (!owner || !inScene(owner)) l.struck = true;
+      }
+    }
+    if (scope.cover) out.push(buildSidesCover(scope, parse, pages, sceneOfLine, sceneNum, cap));
+    out.push(...result);
+    return { pages: out, capacity: cap, warnings, bodyPageCount: result.length };
+  }
   if (s.titlePage && parse.titleEnd > 0 && scope.kind !== 'pages' && !revisions?.changedPagesOnly) out.push(buildTitlePage(lines, parse, s, cap));
   out.push(...result);
   return { pages: out, capacity: cap, warnings, bodyPageCount: result.length };
+}
+
+/** Length of each scene in eighths of a page, from the laid-out pages (at least 1/8). */
+/**
+ * Length of each scene in eighths of a page, as productions count it: the vertical space the
+ * scene takes on its pages (blank lines included), from its first line to where the next scene
+ * begins or the page ends. At least 1/8 for any scene.
+ */
+export function sceneEighths(pages: Page[], sceneOfLine: ArrayLike<number>, linesPerPage: number): Map<number, number> {
+  const rows = new Map<number, number>();
+  for (const pg of pages) {
+    if (pg.title) continue;
+    // First row of every scene stretch on this page, in order.
+    const stretches: Array<{ sc: number; row: number }> = [];
+    let lastRow = -1;
+    for (const l of [...pg.lines].sort((x, y) => x.row - y.row)) {
+      lastRow = Math.max(lastRow, l.row);
+      if (l.kind === 'more') continue;
+      const sc = sceneOfLine[l.sourceLine];
+      if (sc === undefined || sc < 0) continue;
+      if (!stretches.length || stretches[stretches.length - 1].sc !== sc) stretches.push({ sc, row: l.row });
+    }
+    stretches.forEach((st, i) => {
+      const end = i + 1 < stretches.length ? stretches[i + 1].row : lastRow + 1;
+      rows.set(st.sc, (rows.get(st.sc) ?? 0) + Math.max(1, end - st.row));
+    });
+  }
+  const out = new Map<number, number>();
+  for (const [sc, n] of rows) out.set(sc, Math.max(1, Math.round((n / linesPerPage) * 8)));
+  return out;
+}
+export function formatEighths(e: number): string {
+  const whole = Math.floor(e / 8);
+  const rest = e % 8;
+  if (!rest) return String(whole);
+  return `${whole ? whole + ' ' : ''}${rest}/8`;
+}
+
+/** Cover sheet for sides: title, shooting day, the scenes with their lengths, and the cast. */
+function buildSidesCover(
+  scope: { sceneLines: number[]; title: string; day: string },
+  parse: ParseResult,
+  pages: Page[],
+  sceneOfLine: Int32Array,
+  sceneNum: Map<number, string>,
+  cap: Capacity,
+): Page {
+  const items: TitleItem[] = [];
+  const L = cap.left;
+  const R = cap.left + cap.actionChars * cap.charWidth;
+  let y = 120;
+  if (scope.title.trim()) {
+    items.push({ text: scope.title.trim().toUpperCase(), y, align: 'center', size: 20, bold: true });
+    y += 30;
+  }
+  items.push({ text: t('SIDES'), y, align: 'center', size: 14, bold: true });
+  y += 20;
+  if (scope.day.trim()) {
+    items.push({ text: scope.day.trim(), y, align: 'center' });
+    y += 16;
+  }
+  y += 40;
+  const eighths = sceneEighths(pages, sceneOfLine, cap.linesPerPage);
+  const chosen = parse.scenes.filter((sc) => scope.sceneLines.includes(sc.line));
+  items.push({ text: t('Sc.'), y, align: 'left', x: L, bold: true }, { text: t('Scene'), y, align: 'left', x: L + 48, bold: true }, { text: t('Pages'), y, align: 'right', x: R, bold: true });
+  y += 18;
+  let total = 0;
+  for (const sc of chosen) {
+    const e = eighths.get(sc.line) ?? 1;
+    total += e;
+    const heading = sc.heading.toUpperCase();
+    const max = Math.max(10, Math.floor((R - L - 48 - 60) / 7.2));
+    items.push(
+      { text: sceneNum.get(sc.line)?.replace(/\.$/, '') ?? '', y, align: 'left', x: L },
+      { text: heading.length > max ? heading.slice(0, max - 1) + '…' : heading, y, align: 'left', x: L + 48 },
+      { text: formatEighths(e), y, align: 'right', x: R },
+    );
+    y += 14;
+    if (y > cap.pageHeight - 200) break;
+  }
+  y += 4;
+  items.push({ text: t('Total'), y, align: 'left', x: L + 48, bold: true }, { text: formatEighths(total), y, align: 'right', x: R, bold: true });
+  y += 36;
+  // Cast: everyone who speaks in these scenes, in order of appearance.
+  const cast: string[] = [];
+  for (const b of parse.blocks) {
+    if (!scope.sceneLines.includes(sceneOfLine[b.cueLine])) continue;
+    const name = (b.cue ?? '').trim();
+    if (name && !cast.includes(name)) cast.push(name);
+  }
+  if (cast.length) {
+    items.push({ text: t('Cast'), y, align: 'left', x: L, bold: true });
+    y += 18;
+    const perLine = Math.max(1, Math.floor((R - L) / 150));
+    for (let k = 0; k < cast.length; k += perLine) {
+      cast.slice(k, k + perLine).forEach((c, j) => items.push({ text: c, y, align: 'left', x: L + j * 150 }));
+      y += 14;
+      if (y > cap.pageHeight - 60) break;
+    }
+  }
+  return { number: 0, label: '', lines: [], title: items, sceneLines: [] };
 }
 
 function expandTabStyles(text: string, styles: number[]): number[] {
@@ -908,7 +1172,7 @@ function buildTitlePage(lines: string[], parse: ParseResult, s: ExportSettings, 
   const contactAlign = s.contactPosition === 'bottom-right' ? 'right' : 'left';
   place(contactLines, contactAlign);
   place(split(other), contactAlign === 'left' ? 'right' : 'left');
-  return { number: 0, lines: [], title: items, sceneLines: [] };
+  return { number: 0, label: '', lines: [], title: items, sceneLines: [] };
 }
 
 function strip(v: string): string {

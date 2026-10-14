@@ -203,6 +203,55 @@ export interface ProjectMeta {
   numbersLocked?: boolean;
   /** Story structure: the chosen model, which scene carries each beat, and an own model's beats. */
   structure?: StructureState;
+  /** Locked pages and revision rounds (see shared/production.ts). */
+  production?: ProductionState;
+  /** Breakdown tags on the text (props, costumes …) for production reports. */
+  tags?: TagRecord[];
+}
+
+/** Pages locked for production and the revision rounds since. */
+export interface ProductionState {
+  lockedAt: string;
+  /** Copy of the screenplay when the pages were locked (in .scriptwright/production/). */
+  lockId: string;
+  /** Line (of that copy) on which each body page began; index 0 is page 1. */
+  pageStarts: number[];
+  /** Scene ids of that copy, to follow scenes that moved. */
+  sceneIds: string[];
+  /**
+   * Revision rounds, oldest first; the last one is the current round. Round n has the n-th
+   * revision colour (1 = blue). `id` is the copy of the screenplay when the round began.
+   */
+  rounds: Array<{ id: string; started: string; sceneIds: string[] }>;
+}
+
+/** Categories of a production breakdown. */
+export type TagCategory =
+  | 'extras'
+  | 'stunts'
+  | 'vehicles'
+  | 'props'
+  | 'sfx'
+  | 'wardrobe'
+  | 'makeup'
+  | 'animals'
+  | 'music'
+  | 'sound'
+  | 'setDressing'
+  | 'equipment'
+  | 'vfx'
+  | 'notes';
+
+/** A breakdown element marked in the text. */
+export interface TagRecord {
+  id: string;
+  category: TagCategory;
+  /** The element's name in reports (the tagged words unless renamed). */
+  name: string;
+  anchor: StoredAnchorRec;
+  created: string;
+  /** Why the tag could not be found in the text any more. */
+  detached?: string;
 }
 
 /** A copy of the screenplay saved with every PDF export, to compare later versions against. */
@@ -435,6 +484,12 @@ export interface ExportSettings {
   revHeaderNote: boolean;
   /** Header note for marked changes; {version} is the version compared with. */
   revHeaderText: string;
+  /** Production revisions: print revised pages in their revision colour (for reading on screen). */
+  revTintPages: boolean;
+  /** Production revisions: asterisks for the changes of every round, not only the current one. */
+  revAllRounds: boolean;
+  /** Production revisions: changed text and asterisks in the marking colour (normally black). */
+  revProdColor: boolean;
   // Content -----------------------------------------------------------------------------
   includeNotes: boolean;
   includeSections: boolean;
@@ -528,6 +583,9 @@ export function defaultExportSettings(paper: PaperSize = 'Letter', lang: ScriptL
     revChangedPagesOnly: false,
     revHeaderNote: true,
     revHeaderText: lang === 'de' ? 'Änderungen seit {version}' : 'Changes since {version}',
+    revTintPages: false,
+    revAllRounds: false,
+    revProdColor: false,
     includeNotes: false,
     includeSections: false,
     includeSynopses: false,
@@ -628,7 +686,9 @@ export type ExportScope =
   | { kind: 'pages'; pages: string }
   | { kind: 'scenesNewPage' }
   | { kind: 'character'; name: string }
-  | { kind: 'dialogue'; name: string; action: boolean; headings: boolean };
+  | { kind: 'dialogue'; name: string; action: boolean; headings: boolean }
+  /** Sides: the pages with these scenes as they are in the script, other scenes struck through. */
+  | { kind: 'sides'; sceneLines: number[]; cover: boolean; title: string; day: string };
 
 export interface PaperDims {
   width: number;
@@ -672,6 +732,10 @@ export interface LayoutState {
   previewBrightness?: number;
   /** Export settings groups that are open. */
   exportOpen?: string[];
+  /** Reports view: the table shown last. */
+  reportMode?: string;
+  /** Breakdown tags are shown in the text. */
+  showTags?: boolean;
   /** Scene list: the archive group is open. */
   sceneArchiveOpen?: boolean;
   /** Scene list: acts and sequences folded closed (by level and title). */
