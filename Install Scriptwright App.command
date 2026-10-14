@@ -6,6 +6,15 @@ source ~/.zshrc 2>/dev/null || true
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 set -e
 here="$(cd "$(dirname "$0")" && pwd)"
+# A newer scriptwright-findreplace.zip next to this folder (in Downloads) is unpacked first.
+zip="$here/../scriptwright-findreplace.zip"
+if [[ -f "$zip" && "$zip" -nt "$here/.updated" ]]; then
+  echo "== Updating the Scriptwright folder"
+  rm -rf /tmp/sw-update && mkdir -p /tmp/sw-update
+  unzip -q -o "$zip" -d /tmp/sw-update
+  rsync -a --exclude node_modules --exclude .git /tmp/sw-update/scriptwright/ "$here/"
+  touch "$here/.updated"
+fi
 cd "$here"
 arch=$(uname -m); [[ "$arch" == "arm64" ]] || arch=x64
 echo "== Installing dependencies (quick if nothing changed)"
