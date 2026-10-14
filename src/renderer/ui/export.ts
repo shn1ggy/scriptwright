@@ -3,7 +3,7 @@
 import type { App } from '../app';
 import { bridge } from '../bridge';
 import { formatCombo } from '../commands';
-import { h, debounce, icon, uid } from './dom';
+import { h, debounce, icon, rangeFill, uid } from './dom';
 import { alertDialog, confirmDialog, promptDialog, pushEscape, toast } from './overlay';
 import { ExportScope, ExportSettings, PaperSize, ScriptLanguage, defaultExportSettings, normalizeExportSettings, paperLines } from '../../shared/types';
 import { characterLabel, characterList, titleFields } from '../../shared/fountain';
@@ -121,7 +121,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       (() => {
         // A white page is very bright next to a dark theme: dim the preview (not the PDF).
         const b = Math.max(40, Math.min(100, app.state.layout.previewBrightness ?? 100));
-        const range = h('input', { type: 'range', min: '40', max: '100', step: '1', value: String(b), 'aria-label': t("Preview brightness"), title: t("Brightness of the preview page (the PDF is not changed)") });
+        const range = rangeFill(h('input', { type: 'range', min: '40', max: '100', step: '1', value: String(b), 'aria-label': t("Preview brightness"), title: t("Brightness of the preview page (the PDF is not changed)") }));
         const apply = () => preview.style.setProperty('--preview-b', String(Number(range.value) / 100));
         range.addEventListener('input', () => {
           apply();

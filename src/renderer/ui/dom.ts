@@ -45,6 +45,7 @@ const PATHS: Record<string, string> = {
   chevronDown: 'M6 8l4 4 4-4',
   chevronRight: 'M8 6l4 4-4 4',
   folder: 'M3 6h5l1.5 1.5H17V15H3z',
+  document: 'M5.5 3h6l3 3v11h-9zM11.5 3v3h3M8 10h4.5M8 13h4.5',
   minimal: 'M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4',
   restore: 'M5 10a5 5 0 1 0 1.5-3.5M5 4v3h3',
   list: 'M7 5.5h9M7 10h9M7 14.5h9M4 5.5h.01M4 10h.01M4 14.5h.01',
@@ -130,4 +131,17 @@ export function withClear(input: HTMLInputElement): HTMLElement {
   input.addEventListener('keyup', sync);
   setTimeout(sync, 0);
   return wrap;
+}
+
+/** Keeps a slider's filled part (CSS --fill) in step with its value. */
+export function rangeFill(input: HTMLInputElement): HTMLInputElement {
+  const set = () => {
+    const min = Number(input.min || 0);
+    const max = Number(input.max || 100);
+    const pct = max > min ? ((Number(input.value) - min) / (max - min)) * 100 : 0;
+    input.style.setProperty('--fill', `${pct}%`);
+  };
+  input.addEventListener('input', set);
+  set();
+  return input;
 }

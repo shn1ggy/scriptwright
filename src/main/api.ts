@@ -2,6 +2,7 @@
 // development harness so both run exactly the same code.
 
 import { Backend, ExportInfo } from './backend';
+import type { DocumentPdfOptions } from './docexport';
 import { AppState, ExportScope, ExportSettings, ProjectMeta, Settings } from '../shared/types';
 
 export function createApi(b: Backend) {
@@ -48,6 +49,12 @@ export function createApi(b: Backend) {
     writeFile: (file: string, data: Uint8Array | string) => b.writeFile(file, typeof data === 'string' ? data : Buffer.from(data)),
     readTextFile: (file: string) => b.readTextFile(file),
     readBinaryFile: (file: string) => b.readBinaryFile(file),
+    createDocument: (rel: string, title: string, text?: string) => b.createDocument(rel, title, text),
+    readDocument: (rel: string, file: string) => b.readDocument(rel, file),
+    saveDocument: (rel: string, file: string, text: string, expectedHash: string | null) => b.saveDocument(rel, file, text, expectedHash),
+    renameDocument: (rel: string, file: string, title: string) => b.renameDocument(rel, file, title),
+    deleteDocument: (rel: string, file: string) => b.deleteDocument(rel, file),
+    exportDocumentPdf: (text: string, opts: DocumentPdfOptions) => b.exportDocumentPdf(text, opts),
     fontsAvailable: () => b.fontsAvailable(),
     scriptFontFaces: () => b.scriptFontFaces(),
     listFonts: () => b.listFonts(),

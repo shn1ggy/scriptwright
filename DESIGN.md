@@ -200,6 +200,13 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 - Changed text in an exported PDF is marked as passages: words separated only by spaces share one highlight or underline.
 - History: every action for a version sits in one row of buttons, Restore last and primary; no overflow menu.
 
+## 7d. Documents
+
+- The left pane is three foldable sections: Projects, Scenes, Documents. Documents stay a short list at the foot of the pane; nothing appears until the writer adds one.
+- A document replaces the screenplay in the centre; no tab is marked while it is open. Prose is set in a serif (Charter / Iowan / Georgia), 68 characters wide, headings by size and weight only.
+- The status line belongs to the writing column: the side panes run the full height of the window. Full-window views (Export, History) take it across the whole width.
+- Minimal view keeps the window buttons on a strip in the writing area's colour.
+
 ## 8. The printed page
 
 Export defaults are taken from a finished screenplay (DRUCK, 2026) and should stay that way

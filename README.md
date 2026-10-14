@@ -251,6 +251,17 @@ Distinguishing what was actually run from what was not:
   the model typically puts it. Beats with the same name (Midpoint, Climax …) carry over when
   you switch models.
 
+## Documents
+
+Besides the screenplay a project can hold documents: an exposé, a treatment, a synopsis, an
+outline or notes. They are listed under **Documents** in the left pane (below Projects and
+Scenes; every section folds away). Add one with **+**; right-click to rename, colour, archive,
+delete or export it as PDF. A document opens in place of the screenplay in a calm prose view:
+`# Heading`, `## Subheading`, `- list item`, `*italic*`, `**bold**`, `_underline_` and
+`[[notes]]` work as in Fountain. Clicking a scene or the Script tab goes back to the screenplay.
+Documents are plain Markdown files in the project folder (`Exposé.md`), saved automatically
+like the screenplay; Export while a document is open makes a PDF of it.
+
 ## Importing
 
 File → Import Screenplay… reads Fountain, Final Draft (.fdx) and PDF screenplays into a new

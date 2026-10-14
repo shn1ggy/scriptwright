@@ -129,6 +129,8 @@ export class Editor {
   private filterKind: 'scene' | 'dialogue' | null = null;
   private hidden: Set<number> | null = null;
   private sourceMode = false;
+  /** Prose documents (exposé, treatment): paragraphs and headings instead of screenplay elements. */
+  private proseMode = false;
   private focused = false;
   private composing = false;
   private views = new Map<number | string, LineView>();
@@ -200,10 +202,19 @@ export class Editor {
     this.settings = s;
     this.extraPrefixes = s.extraPrefixes;
     const st = this.dom.style;
-    st.setProperty('--ed-font', `'${s.fontFamily}', 'Courier Prime', 'Courier New', Courier, monospace`);
-    st.setProperty('--ed-size', `${s.fontSize}px`);
-    st.setProperty('--ed-lh', `${s.lineHeight}px`);
-    st.setProperty('--ed-measure', String(s.measure));
+    if (this.proseMode) {
+      // Documents read like a book page: a serif face, a little larger, airy lines.
+      const size = Math.round(s.fontSize * 1.06);
+      st.setProperty('--ed-font', `'Iowan Old Style', 'Charter', 'Georgia', 'Cambria', 'Times New Roman', serif`);
+      st.setProperty('--ed-size', `${size}px`);
+      st.setProperty('--ed-lh', `${Math.round(size * 1.62)}px`);
+      st.setProperty('--ed-measure', '68');
+    } else {
+      st.setProperty('--ed-font', `'${s.fontFamily}', 'Courier Prime', 'Courier New', Courier, monospace`);
+      st.setProperty('--ed-size', `${s.fontSize}px`);
+      st.setProperty('--ed-lh', `${s.lineHeight}px`);
+      st.setProperty('--ed-measure', String(s.measure));
+    }
     // Screenplay geometry scaled from the classic 60-character page.
     const k = s.measure / 60;
     st.setProperty('--ed-cue', `${Math.round(20 * k)}ch`);
@@ -215,6 +226,18 @@ export class Editor {
     this.views.clear();
     this.content.textContent = '';
     this.render();
+  }
+
+  /** Switches this editor to prose (documents) or back to screenplay writing. */
+  setProse(on: boolean) {
+    this.proseMode = on;
+    this.dom.classList.toggle('ed-prose', on);
+    this.input.setAttribute('aria-label', on ? 'Document' : 'Screenplay');
+    this.applySettings(this.settings);
+  }
+
+  get prose() {
+    return this.proseMode;
   }
 
   setSource(on: boolean) {
@@ -522,13 +545,13 @@ export class Editor {
   private parsedActive = -1;
 
   private reparse() {
-    this.parsed = parse(this.lineTexts, { extraPrefixes: this.extraPrefixes, activeLine: this.sel.head.line });
+    this.parsed = parse(this.lineTexts, { extraPrefixes: this.extraPrefixes, activeLine: this.sel.head.line, prose: this.proseMode });
     this.parsedActive = this.sel.head.line;
   }
 
   /** Re-parses after steps; uses the single-line fast path when possible. Returns the changed line or -1. */
   private reparseAfter(steps: Step[]): number {
-    if (steps.length >= 1 && this.parsedActive === this.sel.head.line) {
+    if (steps.length >= 1 && this.parsedActive === this.sel.head.line && !this.proseMode) {
       // All steps edit the same single line in place?
       const st = steps[steps.length - 1];
       const first = steps[0];

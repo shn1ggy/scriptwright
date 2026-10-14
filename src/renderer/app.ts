@@ -22,6 +22,7 @@ import { ExportPreset, FontEntry, loadFonts, loadPdfjs, openExport, projectExpor
 import { pdfToFountain, readPdfText } from '../shared/pdfimport';
 import { paginate } from '../shared/paginate';
 import { openRename } from './ui/rename';
+import { Documents } from './ui/documents';
 import { compareDialog } from './ui/compare';
 import { SceneCards } from './ui/cards';
 import { CharactersPanel } from './ui/characters';
@@ -122,6 +123,10 @@ export class App {
   panel: PanelName | null = null;
   private alignStatus: () => void = () => {};
   private mainEl!: HTMLElement;
+  /** Exposé, treatment … of the open project (the Documents section of the left pane). */
+  docs!: Documents;
+  private centerCol!: HTMLElement;
+  private statusEl!: HTMLElement;
   private exportHandle: { close(): void } | null = null;
   private historyHandle: HistoryHandle | null = null;
   characters!: CharactersPanel;
@@ -285,7 +290,10 @@ export class App {
     this.center = h('div', { class: 'center' });
     this.leftResizer = h('div', { class: 'resizer', title: t("Drag to resize") });
     this.rightResizer = h('div', { class: 'resizer', title: t("Drag to resize") });
-    const main = h('div', { class: 'main' }, this.leftPane, this.leftResizer, this.center, this.rightResizer, this.rightPaneEl);
+    // The writing column: the text and, under it, the status line. The panes on either side
+    // run the full height of the window.
+    this.centerCol = h('div', { class: 'center-col' }, this.center);
+    const main = h('div', { class: 'main' }, this.leftPane, this.leftResizer, this.centerCol, this.rightResizer, this.rightPaneEl);
     this.mainEl = main;
 
     this.statusSave = h('button', { class: 'save-state', tabindex: '-1', onclick: () => this.onSaveStateClick() });
@@ -300,8 +308,8 @@ export class App {
       iconButton('right', t("Next scene"), () => this.stepScene(1)),
     );
     const status = h('div', { class: 'statusbar' }, this.statusSave, this.statusCount, h('span', { class: 'spacer' }), this.statusView, this.statusScene, this.statusNav);
-    // The status line stays under the writing area: it starts and ends where the text view
-    // does (full width when both panes are hidden or a full-window tab is open).
+    this.statusEl = status;
+    this.centerCol.append(status);
     const alignStatus = () => {
       if (!this.editor) return;
       const r = this.editor.dom.getBoundingClientRect();
@@ -314,14 +322,11 @@ export class App {
         const shift = Math.round(Math.max(-room, Math.min(room, want)));
         this.editor.dom.style.setProperty('--center-shift', `${shift}px`);
       }
-      const full = !r.width || document.body.classList.contains('in-export');
-      status.style.paddingLeft = `${(full ? 0 : Math.max(0, r.left)) + 14}px`;
-      status.style.paddingRight = `${(full ? 0 : Math.max(0, window.innerWidth - r.right)) + 14}px`;
     };
     window.addEventListener('resize', alignStatus);
     this.alignStatus = alignStatus;
 
-    this.root = h('div', { id: 'app' }, titlebar, viewbar, main, status);
+    this.root = h('div', { id: 'app' }, titlebar, viewbar, main);
     document.body.append(this.root);
 
     this.editor = new Editor(this.center, this.settings.editor);
@@ -340,7 +345,8 @@ export class App {
     this.projectsPane = new ProjectsPane(this);
     this.outline = new OutlinePane(this);
     this.workspaceBar = h('div', { class: 'workspace-bar' });
-    this.leftPane.append(this.projectsPane.el, this.outline.el, this.workspaceBar);
+    this.docs = new Documents(this);
+    this.leftPane.append(this.projectsPane.el, this.outline.el, this.docs.el, this.workspaceBar);
     this.rightPane = new RightPane(this);
     this.rightPaneEl.append(this.rightPane.el);
     this.findbar = new FindBar(this);
@@ -391,6 +397,8 @@ export class App {
     this.leftToggle.classList.toggle('on', l.leftVisible);
     this.rightToggle.classList.toggle('on', l.rightVisible);
     this.projectsPane.setCollapsed(l.projectsCollapsed);
+    this.outline.setCollapsed(!!l.scenesCollapsed);
+    this.docs.setCollapsed(!!l.documentsCollapsed);
     this.rightPane.setTab(l.rightTab);
     // Keep the caret line steady when the writing column re-centers.
     this.editor.restoreCaretOffset(caretOffset);
@@ -486,6 +494,7 @@ export class App {
     this.syncTitleBar();
     const offset = this.editor.measureCaretOffset();
     this.editor.applySettings(this.settings.editor);
+    this.docs?.applySettings(this.settings.editor);
     this.editor.restoreCaretOffset(offset);
     this.setupSpell();
     this.refreshDerived(true);
@@ -822,6 +831,7 @@ export class App {
     const p = this.project;
     if (!p) return;
     await this.flush();
+    await this.docs.reset();
     this.captureSession();
     try {
       await bridge.call('closeProject', p.rel);
@@ -845,6 +855,7 @@ export class App {
   /** Saves everything (screenplay, project information, session). */
   async flush(): Promise<boolean> {
     let ok = true;
+    if (this.docs && !(await this.docs.flush())) ok = false;
     if (this.project) {
       clearTimeout(this.saveTimer);
       if (this.isDirty() && this.saveState !== 'conflict' && !this.project.missing) ok = await this.save();
@@ -1653,6 +1664,15 @@ export class App {
    * the new view (as far as the new view's content allows), so switching never jumps.
    */
   setView(v: ViewName, opts: { quiet?: boolean } = {}) {
+    // Every view shows the screenplay: leave an open document.
+    if (this.docs?.isOpen) {
+      void this.docs.close(false);
+      if (v === this.view && !this.panel) {
+        this.updateChrome();
+        if (!opts.quiet) this.editor.focus();
+        return;
+      }
+    }
     // Only Script and Scene are written in minimal view; every other tab leaves it.
     if (this.minimal && v !== 'script' && v !== 'scene' && !opts.quiet) this.toggleMinimal();
     if (this.panel) {
@@ -1724,6 +1744,7 @@ export class App {
   enterScene(item: SceneItem, opts: { restoreContext?: boolean; caret?: Pos; screenOffset?: number | null } = {}) {
     const p = this.project;
     if (!p) return;
+    if (this.docs.isOpen) void this.docs.close(false);
     this.storeSceneContext();
     this.view = 'scene';
     this.focus = item.kind === 'scene' ? { kind: 'scene', key: item.key } : item.kind === 'title' ? { kind: 'title' } : { kind: 'opening' };
@@ -1813,6 +1834,7 @@ export class App {
   /** Navigates to a scene: Script view scrolls, Scene view focuses it. */
   goToScene(item: SceneItem, opts: { focusEditor?: boolean } = {}) {
     if (!this.project) return;
+    if (this.docs.isOpen) void this.docs.close(false);
     if (this.view === 'scene' || (item.kind === 'title' && !this.settings.editor.titlePageInScript)) {
       this.enterScene(item);
     } else {
@@ -2064,6 +2086,14 @@ export class App {
 
   openPanel(p: PanelName, preset: ExportPreset = {}) {
     if (!this.project) return;
+    if (this.docs.isOpen) {
+      // Export while writing a document exports the document.
+      if (p === 'export') {
+        void this.docs.exportPdf();
+        return;
+      }
+      void this.docs.close(false);
+    }
     if (this.panel === p) return;
     if (this.panel) this.closePanel(false);
     this.findbar.close(false);
@@ -2085,6 +2115,7 @@ export class App {
     else if (p === 'characters') this.characters.open();
     // Export and History cover both panes.
     document.body.classList.toggle('in-export', p === 'export' || p === 'history');
+    this.placeStatus();
     this.alignStatus();
     this.updateChrome();
     this.saveStateSoon();
@@ -2105,6 +2136,7 @@ export class App {
       this.exportHandle = null;
     }
     document.body.classList.remove('in-export');
+    this.placeStatus();
     this.alignStatus();
     this.updateChrome();
     if (focusEditor) this.editor.focus();
@@ -2582,10 +2614,11 @@ export class App {
   updateChrome() {
     const p = this.project;
     this.titleEl.textContent = p ? p.name : t("Scriptwright");
-    this.subEl.textContent = p ? p.file : '';
+    this.subEl.textContent = p ? (this.docs?.isOpen ? this.docs.title : p.file) : '';
+    this.docs?.render();
     bridge.window('setTitle', p ? `${p.name} — Scriptwright` : 'Scriptwright');
     for (const [v, b] of Object.entries(this.tabs)) {
-      b.classList.toggle('on', this.panel ? v === this.panel : v === this.view);
+      b.classList.toggle('on', !this.docs?.isOpen && (this.panel ? v === this.panel : v === this.view));
       b.disabled = !p;
     }
     // The panes are hidden under Export, so their toggles rest.
@@ -2678,7 +2711,7 @@ export class App {
   private updateStatusScene() {
     this.updateViewHeadScene();
     const p = this.project;
-    if (!p) {
+    if (!p || this.docs?.isOpen) {
       this.statusScene.textContent = '';
       this.statusView.textContent = '';
       return;
@@ -2694,6 +2727,11 @@ export class App {
   updateCounts() {
     if (!this.project) {
       this.statusCount.textContent = '';
+      return;
+    }
+    if (this.docs?.isOpen) {
+      this.statusCount.textContent = this.docs.countText();
+      this.statusCount.title = '';
       return;
     }
     const parsed = this.editor.parsed;
@@ -2909,7 +2947,7 @@ export class App {
     reg('edit.undo', t("Undo"), t("Edit"), [], () => this.undoRedo('undo'), { inFields: true });
     reg('edit.redo', t("Redo"), t("Edit"), [], () => this.undoRedo('redo'), { inFields: true });
     reg('edit.selectAll', t("Select All"), t("Edit"), [], () => this.selectAll(), { inFields: true });
-    reg('search.script', t("Find in Screenplay"), t("Search"), ['Mod+F'], () => this.findbar.open(), { inFields: true, enabled: hasProject, menu: 'Edit' });
+    reg('search.script', t("Find in Screenplay"), t("Search"), ['Mod+F'], () => this.findbar.open(), { inFields: true, enabled: () => hasProject() && !this.docs.isOpen, menu: 'Edit' });
     reg('search.replace', t("Find and Replace"), t("Search"), ['Mod+Alt+F'], () => this.findbar.open(true), { inFields: true, enabled: hasProject, menu: 'Edit' });
     reg('search.scenes', t("Search Scenes"), t("Search"), ['Mod+Shift+F'], () => this.outline.focusSearch(), { inFields: true, enabled: hasProject, menu: 'Edit' });
     reg('search.next', t("Find Next"), t("Search"), ['F3', 'Mod+G'], () => this.findbar.step(1), { enabled: () => this.findbar.hasQuery() });
@@ -2926,6 +2964,7 @@ export class App {
     reg('view.titlePage', t("Title Page"), t("View"), ['Mod+T'], () => this.toggleTitlePage(), { inFields: true, enabled: hasProject, menu: 'View' });
     reg('view.source', t("Source View"), t("View"), ['Mod+6'], () => this.setView('source'), { enabled: hasProject, menu: 'View' });
     reg('view.minimal', t("Minimal View"), t("View"), ['Mod+M'], () => this.toggleMinimal(), { inFields: true, menu: 'View' });
+    reg('view.fullScreen', t("Full Screen"), t("View"), [isMac ? 'Ctrl+Mod+F' : 'F11'], () => void bridge.window('fullscreen'), { inFields: true, enabled: () => bridge.isElectron, menu: 'View' });
     reg('view.toggleMaximize', t("Maximize / Restore Window"), t("View"), ['Mod+Ö'], () => bridge.window('toggleMaximize'), { inFields: true, menu: 'View' });
     reg('view.leftPane', t("Toggle Scene Pane"), t("View"), ['Mod+0'], () => this.togglePane('left'), { inFields: true, menu: 'View', enabled: () => this.panel !== 'export' });
     reg('view.rightPane', t("Toggle Notes Pane"), t("View"), ['Mod+Shift+0'], () => this.togglePane('right'), { inFields: true, menu: 'View', enabled: () => this.panel !== 'export' });
@@ -2984,6 +3023,14 @@ export class App {
     // Text fields undo their own typing; everywhere else (buttons, lists, panes) undo goes to
     // the screenplay history, which also holds comments, highlights, the shelf and scene details.
     const typing = !!a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'button'].includes((a as HTMLInputElement).type)) || a.isContentEditable);
+    const doc = this.docs?.hasFocus() ? this.docs.docEditor : null;
+    if (doc) {
+      if (which === 'undo') {
+        doc.history.seal();
+        doc.undo();
+      } else doc.redo();
+      return;
+    }
     if (this.editor.hasFocus() || !typing) {
       if (which === 'undo') {
         this.editor.history.seal();
@@ -2993,6 +3040,10 @@ export class App {
   }
 
   private selectAll() {
+    if (this.docs?.hasFocus()) {
+      this.docs.docEditor!.selectAll();
+      return;
+    }
     const a = document.activeElement as HTMLElement | null;
     if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && !this.editor.hasFocus()) (a as HTMLInputElement).select();
     else this.editor.selectAll();
@@ -3165,13 +3216,16 @@ export class App {
     if (this.minimal) this.editor.focus();
   }
 
-  /** The window buttons sit on the app's top bar: match its colors; hide them in minimal view (macOS). */
+  /**
+   * The window buttons sit on the app's top bar: match its colors. In minimal view they stay
+   * (to maximise or go full screen) on a quiet strip in the writing area's colour.
+   */
   syncTitleBar() {
     if (!bridge.isElectron) return;
     const cs = getComputedStyle(document.body);
-    const color = cs.getPropertyValue('--panel').trim();
+    const color = cs.getPropertyValue(this.minimal ? '--bg' : '--panel').trim();
     const symbolColor = cs.getPropertyValue('--text-2').trim();
-    bridge.window('titleBar', { color: toHex(color), symbolColor: toHex(symbolColor), buttons: !this.minimal }).catch(() => {});
+    bridge.window('titleBar', { color: toHex(color), symbolColor: toHex(symbolColor), buttons: true }).catch(() => {});
   }
 
   private zoom(dir: number) {
@@ -3181,6 +3235,24 @@ export class App {
     e.fontSize = size;
     e.lineHeight = Math.round(size * ratio);
     this.applySettings();
+  }
+
+  /** The spell checker for other editors (documents). */
+  spellHook(): ((w: string) => boolean) | undefined {
+    return bridge.spell ? (w) => this.isMisspelled(w) : undefined;
+  }
+
+  /** A document opens: panels and the find bar belong to the screenplay and close. */
+  leaveForDocument() {
+    if (this.panel) this.closePanel(false);
+    this.findbar.close(false);
+  }
+
+  /** Full-window views (Export, History) show the status line across the whole window. */
+  private placeStatus() {
+    const full = document.body.classList.contains('in-export');
+    if (full && this.statusEl.parentElement !== this.root) this.root.append(this.statusEl);
+    else if (!full && this.statusEl.parentElement !== this.centerCol) this.centerCol.append(this.statusEl);
   }
 
   async quit() {
@@ -3345,7 +3417,7 @@ export class App {
         ['view.script', 'view.scene', 'view.cards', 'view.dialogue', 'view.characters'],
         ['view.source', 'view.history', 'view.titlePage', 'view.toggleScriptScene'],
         ['project.notes', 'scene.notes', 'project.review', 'project.shelf'],
-        ['view.leftPane', 'view.rightPane', 'view.minimal'],
+        ['view.leftPane', 'view.rightPane', 'view.minimal', 'view.fullScreen'],
         ['view.zoomIn', 'view.zoomOut'],
       ]],
       ['Scene', [
@@ -3451,7 +3523,7 @@ export class App {
         return;
       }
       const a = document.activeElement as HTMLElement | null;
-      if (a && !this.editor.hasFocus() && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.classList.contains('list'))) {
+      if (a && !this.editor.hasFocus() && !this.docs?.hasFocus() && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.classList.contains('list'))) {
         this.editor.focus();
         e.preventDefault();
       }

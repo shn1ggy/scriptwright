@@ -21,6 +21,7 @@ import {
   mergeSettings,
 } from '../shared/types';
 import { RenderInfo, renderPdf, scriptFontAdvance } from './pdfexport';
+import { DocumentPdfOptions, renderDocumentPdf } from './docexport';
 import { FontFamily, listFontFamilies } from './fonts';
 import { computeChanges } from '../shared/revisions';
 
@@ -831,6 +832,82 @@ export class Backend extends EventEmitter {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.renameSync(file, dest);
     return path.relative(dir, dest);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Documents: exposé, treatment … as Markdown files beside the screenplay
+
+  private docPath(rel: string, file: string): string {
+    const dir = this.resolve(rel);
+    const full = path.resolve(dir, file);
+    if (path.dirname(full) !== dir || !/\.md$/i.test(full)) throw new Error('Invalid document');
+    return full;
+  }
+
+  private freeDocName(dir: string, title: string, except?: string): string {
+    const base = safeName(title) || 'Document';
+    for (let n = 1; ; n++) {
+      const name = n === 1 ? `${base}.md` : `${base} ${n}.md`;
+      if (name === except || !fs.existsSync(path.join(dir, name))) return name;
+    }
+  }
+
+  /** Creates an empty document; returns its file name (unique in the project folder). */
+  createDocument(rel: string, title: string, text = ''): { file: string; hash: string } {
+    const dir = this.resolve(rel);
+    const file = this.freeDocName(dir, title);
+    atomicWrite(path.join(dir, file), text);
+    return { file, hash: sha(text) };
+  }
+
+  readDocument(rel: string, file: string): { text: string; hash: string } | null {
+    const full = this.docPath(rel, file);
+    if (!fs.existsSync(full)) return null;
+    const text = fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, '');
+    return { text, hash: sha(text) };
+  }
+
+  /** Saves a document unless it was changed on disk since it was read (another computer). */
+  saveDocument(rel: string, file: string, text: string, expectedHash: string | null): SaveResult {
+    try {
+      const full = this.docPath(rel, file);
+      if (fs.existsSync(full) && expectedHash) {
+        const disk = fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, '');
+        const diskHash = sha(disk);
+        if (diskHash !== expectedHash && diskHash !== sha(text)) return { ok: false, reason: 'conflict', diskText: disk, diskHash };
+      }
+      atomicWrite(full, text);
+      return { ok: true, hash: sha(text) };
+    } catch (e: any) {
+      return { ok: false, reason: 'error', message: e?.message ?? String(e) };
+    }
+  }
+
+  /** Renames a document's file after its new title; returns the new file name. */
+  renameDocument(rel: string, file: string, title: string): string {
+    const dir = this.resolve(rel);
+    const from = this.docPath(rel, file);
+    const name = this.freeDocName(dir, title, file);
+    if (name !== file) fs.renameSync(from, path.join(dir, name));
+    return name;
+  }
+
+  /** A document as PDF (see docexport.ts). */
+  exportDocumentPdf(text: string, opts: DocumentPdfOptions): Buffer {
+    return renderDocumentPdf(text, opts, this.renderInfo({ title: opts.title, author: opts.author }));
+  }
+
+  /** Deletes a document: to the Trash, or into the project's deleted-files folder. */
+  async deleteDocument(rel: string, file: string) {
+    const full = this.docPath(rel, file);
+    if (!fs.existsSync(full)) return;
+    if (this.trash) {
+      await this.trash(full);
+      return;
+    }
+    const dest = path.join(this.resolve(rel), META_DIR, 'deleted', `${stamp()} ${file}`);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.renameSync(full, dest);
   }
 
   // ---------------------------------------------------------------------------------

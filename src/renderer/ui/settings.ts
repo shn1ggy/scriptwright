@@ -2,7 +2,7 @@
 
 import type { App } from '../app';
 import { bridge } from '../bridge';
-import { h } from './dom';
+import { h, rangeFill } from './dom';
 import { openDialog, toast } from './overlay';
 import { CommandList } from './palette';
 import { loadFonts } from './export';
@@ -193,7 +193,7 @@ export function openSettings(app: App, section: Section = 'editor') {
       contrastNote.style.color = r < 4.5 ? 'var(--warn)' : '';
     };
     const slider = (k: 'h' | 's' | 'b', max: number, label: string) => {
-      const s = h('input', { type: 'range', min: '0', max: String(max), step: k === 'h' ? '1' : '0.5', value: String(c.background[k]), 'aria-label': label, style: { width: '220px' } });
+      const s = rangeFill(h('input', { type: 'range', min: '0', max: String(max), step: k === 'h' ? '1' : '0.5', value: String(c.background[k]), 'aria-label': label, style: { width: '220px' } }));
       const out = h('span', { class: 'dim', style: { width: '40px' } }, String(c.background[k]));
       s.addEventListener('input', () => {
         c.background[k] = Number(s.value);

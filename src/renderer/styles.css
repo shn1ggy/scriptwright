@@ -93,7 +93,21 @@ select.field { padding-right: 22px; appearance: none; background-image: linear-g
 .field:focus, .field:focus-visible { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .field::placeholder { color: var(--text-3); }
 input[type='color'] { width: 34px; height: var(--ctl-h); padding: 2px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--field); }
-input[type='range'] { accent-color: var(--accent); }
+/* Sliders: a thin track filled up to the value (--fill, set by rangeFill()) and a small knob. */
+input[type='range'] { -webkit-appearance: none; appearance: none; height: 16px; margin: 0; background: transparent; cursor: pointer; }
+input[type='range']::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--accent) 0 var(--fill, 50%), var(--line-2) var(--fill, 50%) 100%);
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%;
+  background: var(--text); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); transition: transform 0.1s;
+}
+input[type='range']:hover::-webkit-slider-thumb { transform: scale(1.2); }
+input[type='range']:focus { outline: none; }
+input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--accent-tint-2); }
+/* Every control brightens its border on hover, like buttons. */
+.field:hover:not(:focus) { border-color: color-mix(in srgb, var(--text) 18%, transparent); }
 .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border: 1px solid var(--line-2); border-radius: 3px; font-size: 11px; color: var(--text-2); white-space: nowrap; font-family: var(--ui-font); }
 .muted { color: var(--text-2); }
 .dim { color: var(--text-3); }
@@ -105,7 +119,8 @@ input[type='range'] { accent-color: var(--accent); }
 
 body { user-select: none; -webkit-user-select: none; }
 input, textarea, [contenteditable='true'] { user-select: text; -webkit-user-select: text; }
-#app { display: grid; grid-template-rows: 38px 40px minmax(0, 1fr) 26px; height: 100vh; }
+#app { display: grid; grid-template-rows: 38px 40px minmax(0, 1fr); height: 100vh; }
+body.in-export #app { grid-template-rows: 38px 40px minmax(0, 1fr) 26px; }
 .titlebar, .viewbar { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--panel); min-width: 0; }
 /* Outer edge: text in the tab bar starts and ends 14 px from the window edge, like the panes below. */
 .viewbar { padding: 0; }
@@ -140,7 +155,8 @@ input, textarea, [contenteditable='true'] { user-select: text; -webkit-user-sele
 .pane-right { border-left: 1px solid var(--line); }
 .resizer { width: 6px; margin: 0 -3px; cursor: col-resize; z-index: 5; flex: none; position: relative; }
 .resizer:hover::after, .resizer.dragging::after { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; background: var(--accent-tint-2); }
-.center { flex: 1; position: relative; min-width: 0; background: var(--bg); }
+.center-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.center { flex: 1; position: relative; min-width: 0; min-height: 0; background: var(--bg); }
 
 .section-head { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px 0 14px; color: var(--text-2); font-size: 12px; font-weight: 600; flex: none; }
 .section-head .icon-btn { width: 26px; height: 26px; }
@@ -173,10 +189,13 @@ input, textarea, [contenteditable='true'] { user-select: text; -webkit-user-sele
 .projects { max-height: 38%; flex: none; display: flex; flex-direction: column; border-bottom: 1px solid var(--line); }
 .projects .list { flex: 1; }
 .outline { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* Folded: only the header, and the workspace bar stays at the bottom of the pane. */
+.outline.collapsed { flex: none; }
+.workspace-bar { margin-top: auto; }
 .outline .list { flex: 1; padding-bottom: 12px; }
 .empty-note { padding: 8px 12px; color: var(--text-3); font-size: var(--ui-small); }
 
-.statusbar { display: flex; align-items: center; gap: 18px; padding: 0 14px; background: var(--panel); border-top: 1px solid var(--line); color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.statusbar { height: 26px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 14px; background: var(--panel); border-top: 1px solid var(--line); color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .statusbar .save-state.unsaved { color: var(--text-2); }
 .statusbar .save-state.error { color: var(--danger); }
 .statusbar button { border: 0; background: none; color: inherit; font: inherit; padding: 0; cursor: default; }
@@ -272,9 +291,10 @@ body.frameless .titlebar { -webkit-app-region: drag; user-select: none; }
 body.frameless .titlebar button, body.frameless .titlebar input, body.frameless .titlebar select { -webkit-app-region: no-drag; }
 body.frameless.platform-darwin:not(.fullscreen) .titlebar { padding-left: 82px; }
 body.frameless:not(.platform-darwin) .titlebar { padding-right: 144px; }
-/* Windows/Linux keep their window buttons in minimal view: leave them a strip to sit in. */
-body.minimal.frameless:not(.platform-darwin) #app { grid-template-rows: 38px minmax(0, 1fr); }
-body.minimal.frameless:not(.platform-darwin) #app::before { content: ''; -webkit-app-region: drag; }
+/* The window buttons stay in minimal view (to maximise or go full screen): they sit on a quiet
+   strip in the writing area's colour, which also moves the window. Full screen needs none. */
+body.minimal.frameless:not(.fullscreen) #app { grid-template-rows: 38px minmax(0, 1fr); }
+body.minimal.frameless:not(.fullscreen) #app::before { content: ''; -webkit-app-region: drag; background: var(--bg); }
 body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.minimal .pane, body.minimal .resizer, body.minimal .floating { display: none !important; }
 
 /* ------------------------------------------------------------------------------------ */
@@ -865,3 +885,29 @@ label.check > input[type='checkbox'] { margin: 0; flex: none; }
 .about-notes p, .about-notes ul { margin: 0 0 6px; }
 .about-notes ul { padding-left: 18px; }
 .about-credits p { margin: 0 0 6px; font-size: var(--ui-small); color: var(--text-2); }
+
+/* Documents (exposé, treatment …) ---------------------------------------------------- */
+.documents { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 40%; }
+.documents .list { flex: 1; padding-bottom: 8px; }
+.docs-empty { padding: 2px 14px 10px; font-size: var(--ui-small); color: var(--text-3); line-height: 1.5; white-space: normal; }
+.doc-row .doc-icon { display: inline-flex; color: var(--text-3); flex: none; }
+.doc-row .doc-icon svg { width: 15px; height: 15px; }
+.doc-row.active .doc-icon { color: var(--text-2); }
+.doc-row.archived .label { color: var(--text-3); }
+.documents .archive-head { color: var(--text-3); font-size: var(--ui-small); gap: 6px; }
+.documents .archive-head .collapse-mark svg { width: 12px; height: 12px; }
+
+/* One editor shows at a time: the screenplay, or the open document. */
+.center.doc-open > .ed-scroller:not(.ed-prose) { display: none; }
+.center:not(.doc-open) > .ed-scroller.ed-prose { display: none; }
+.center.doc-open .view-head { display: none; }
+.center.has-view-head .ed-scroller.ed-prose { top: 0; }
+
+/* Prose: a book page, not a screenplay. */
+.ed-prose .ed-column { color: var(--text); font-variant-ligatures: common-ligatures; font-kerning: normal; padding-top: 56px; }
+.ed-prose .el-section { color: var(--text); font-weight: 600; }
+.ed-prose .el-section.lvl-1 { font-size: 1.5em; line-height: 1.35; }
+.ed-prose .el-section.lvl-2 { font-size: 1.22em; line-height: 1.45; }
+.ed-prose .el-section.lvl-3 { font-size: 1.05em; font-style: italic; }
+.ed-prose .el-listItem { padding-left: 1.3em; }
+.ed-prose .el-listItem:not(.is-active)::before { content: '•'; position: absolute; left: 0.25em; color: var(--text-2); }

@@ -305,6 +305,9 @@ function setup() {
       }
       case 'isFullScreen':
         return win.isFullScreen();
+      case 'fullscreen':
+        win.setFullScreen(!win.isFullScreen());
+        return;
       case 'closeReady':
         allowClose = true;
         win.close();

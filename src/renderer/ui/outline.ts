@@ -28,6 +28,10 @@ export class OutlinePane {
   private search: HTMLInputElement;
   private countEl: HTMLElement;
   private lockEl: HTMLElement;
+  private collapser: HTMLButtonElement;
+  private chevron: HTMLElement;
+  private searchBox: HTMLElement;
+  private collapsed = false;
   private rows = new Map<string, HTMLElement>();
   private selectedId: string | null = null;
   private lastSig = '';
@@ -63,16 +67,35 @@ export class OutlinePane {
       }
     });
     this.countEl = h('span', { class: 'dim' });
+    this.chevron = h('span', { class: 'collapse-mark', 'aria-hidden': 'true' }, icon('chevronDown'));
+    this.collapser = h('button', { class: 'collapser', tabindex: '-1', title: t("Show or hide the scenes"), 'aria-expanded': 'true', onclick: () => this.toggleCollapsed() }, t("Scenes"), this.chevron);
+    this.searchBox = h('div', { class: 'outline-search' }, withClear(this.search));
     this.lockEl = h('span', { class: 'lock-mark hidden', title: t("Scene numbers are locked: new scenes get letters (12A), removed scenes stay as omitted.") }, icon('lock'));
     this.list = h('div', { class: 'list', tabindex: '0', role: 'listbox', 'aria-label': t("Scenes") });
     this.list.addEventListener('keydown', (e) => this.onKey(e));
     this.el = h(
       'div',
       { class: 'outline' },
-      h('div', { class: 'section-head' }, h('span', null, t("Scenes")), this.countEl, this.lockEl, h('span', { class: 'spacer' }), iconButton('plus', t("New scene after current"), () => this.app.run('scene.new')), iconButton('more', t("Scene actions"), (e) => this.moreMenu(e.currentTarget as HTMLElement))),
-      h('div', { class: 'outline-search' }, withClear(this.search)),
+      h('div', { class: 'section-head' }, this.collapser, this.countEl, this.lockEl, h('span', { class: 'spacer' }), iconButton('plus', t("New scene after current"), () => this.app.run('scene.new')), iconButton('more', t("Scene actions"), (e) => this.moreMenu(e.currentTarget as HTMLElement))),
+      this.searchBox,
       this.list,
     );
+  }
+
+  /** Folds the scene list away (like Projects), leaving only its header. */
+  setCollapsed(c: boolean) {
+    this.collapsed = c;
+    this.el.classList.toggle('collapsed', c);
+    this.searchBox.classList.toggle('hidden', c);
+    this.list.classList.toggle('hidden', c);
+    this.chevron.replaceChildren(icon(c ? 'chevronRight' : 'chevronDown'));
+    this.collapser.setAttribute('aria-expanded', String(!c));
+  }
+
+  private toggleCollapsed() {
+    this.app.state.layout.scenesCollapsed = !this.collapsed;
+    this.setCollapsed(!this.collapsed);
+    this.app.saveStateSoon();
   }
 
   private moreMenu(anchor: HTMLElement) {

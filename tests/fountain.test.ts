@@ -175,3 +175,12 @@ test('large document parses quickly', () => {
   assert.equal(r.scenes.length, 800);
   assert.ok(dt < 250, `parse took ${dt}ms for ${lines.length} lines`);
 });
+
+test('prose documents: headings, paragraphs, list items and emphasis, never screenplay elements', () => {
+  const lines = ['# Logline', '', 'INT. KITCHEN - NIGHT is just a sentence here.', 'LISA', '- a *point*', '## Figuren', '[[a note]]'];
+  const p = parse(lines, { prose: true });
+  assert.deepEqual(p.lines.map((l) => l.type), ['section', 'blank', 'action', 'action', 'listItem', 'section', 'note']);
+  assert.equal(p.lines[5].level, 2);
+  assert.equal(p.scenes.length, 0);
+  assert.ok(p.lines[4].flags);
+});

@@ -116,7 +116,7 @@ await check('the interface switches to German and back', async () => {
   await sleep(500);
   const tab = await page.locator('.viewbar .tab').first().textContent();
   assert(tab === 'Drehbuch', tab);
-  const count = await page.locator('.outline .section-head span').first().textContent();
+  const count = (await page.locator('.outline .section-head .collapser').textContent()).trim();
   assert(count === 'Szenen', count);
   if (shots) {
     await page.screenshot({ path: path.join(shots, 'de-script.png') });

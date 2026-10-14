@@ -22,7 +22,9 @@ export type ElementType =
   | 'synopsis'
   | 'note'
   | 'boneyard'
-  | 'blank';
+  | 'blank'
+  /** Prose documents only: a "- " list item. */
+  | 'listItem';
 
 // Per-character flags.
 export const F_MARKER = 1; // formatting operator, hidden in clean mode
@@ -92,6 +94,11 @@ export interface ParseOptions {
   activeLine?: number;
   /** Parse a fragment that cannot contain a title page. */
   noTitle?: boolean;
+  /**
+   * Prose (an exposé or treatment, not a screenplay): every line is a paragraph except
+   * "# Heading" lines and blank lines; emphasis, notes and boneyard work as in Fountain.
+   */
+  prose?: boolean;
 }
 
 const STANDARD_PREFIXES = ['INT./EXT', 'INT/EXT', 'INT', 'EXT', 'EST', 'I/E'];
@@ -347,6 +354,7 @@ function markLeading(pl: ParsedLine, text: string, opLen: number, includeSpace: 
 }
 
 export function parse(lines: string[], opts: ParseOptions = {}): ParseResult {
+  if (opts.prose) return parseProse(lines);
   const n = lines.length;
   const result: ParsedLine[] = new Array(n);
   const headingRe = headingRegex(opts.extraPrefixes);
@@ -736,6 +744,58 @@ const SPANNING = /\/\*|\*\/|\[\[|\]\]/;
  * for everything else. Returns null when a full parse is needed (the change could affect
  * other lines), so callers fall back to `parse`.
  */
+/** Prose documents: paragraphs, headings (# … ###), list items ("- "), emphasis and notes. */
+function parseProse(lines: string[]): ParseResult {
+  const n = lines.length;
+  const result: ParsedLine[] = new Array(n);
+  const spanByLine = new Map<number, BlockRange[]>();
+  for (const r of findSpanningRanges(lines)) {
+    let arr = spanByLine.get(r.line);
+    if (!arr) spanByLine.set(r.line, (arr = []));
+    arr.push(r);
+  }
+  for (let i = 0; i < n; i++) {
+    const text = lines[i];
+    const pl: ParsedLine = { type: 'action', flags: null };
+    result[i] = pl;
+    const spans = spanByLine.get(i);
+    if (spans) {
+      const flags = ensureFlags(pl, text.length);
+      for (const sp of spans) {
+        markRange(flags, sp.from, sp.to, sp.flag);
+        for (const [a, b] of sp.markers) markRange(flags, a, b, F_MARKER);
+      }
+      let outside = '';
+      for (let k = 0; k < text.length; k++) if (!(flags[k] & (F_NOTE | F_BONEYARD))) outside += text[k];
+      if (outside.trim() === '' && text.trim() !== '') {
+        pl.type = spans.every((sp) => sp.flag === F_BONEYARD) ? 'boneyard' : 'note';
+        continue;
+      }
+    }
+    if (text.trim() === '') {
+      pl.type = 'blank';
+      continue;
+    }
+    const lead = leadingSpaces(text);
+    if (text[lead] === '#') {
+      let k = lead;
+      while (text[k] === '#') k++;
+      pl.type = 'section';
+      pl.level = Math.min(3, k - lead);
+      addMarker(pl, text.length, lead, k + (text[k] === ' ' ? 1 : 0));
+      applyInline(text, pl);
+      continue;
+    }
+    if (/^\s*[-•]\s/.test(text)) {
+      const m = /^\s*[-•]\s/.exec(text)!;
+      pl.type = 'listItem';
+      addMarker(pl, text.length, 0, m[0].length);
+    }
+    applyInline(text, pl);
+  }
+  return { lines: result, titleEnd: 0, bodyStart: 0, scenes: [], blocks: [] };
+}
+
 export function reparseLine(lines: string[], prev: ParseResult, line: number, oldText: string, opts: ParseOptions = {}): ParseResult | null {
   const n = lines.length;
   if (prev.lines.length !== n || line < prev.titleEnd || line <= 0) return null;

@@ -8,7 +8,7 @@ export interface Bridge {
   call<M extends keyof Api>(method: M, ...args: Parameters<Api[M]>): Promise<Awaited<ReturnType<Api[M]>>>;
   on(name: string, cb: (payload: any) => void): void;
   dialog(kind: 'folder' | 'open' | 'save', opts?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; defaultPath?: string }): Promise<string | null>;
-  window(op: 'toggleMaximize' | 'minimize' | 'setTitle' | 'reload' | 'closeReady' | 'quit' | 'reveal' | 'titleBar' | 'isFullScreen', arg?: unknown): Promise<any>;
+  window(op: 'toggleMaximize' | 'minimize' | 'setTitle' | 'reload' | 'closeReady' | 'quit' | 'reveal' | 'titleBar' | 'isFullScreen' | 'fullscreen', arg?: unknown): Promise<any>;
   clipboard: { readText(): Promise<string>; writeText(t: string): Promise<void> };
   spell?: {
     check(words: string[]): boolean[];

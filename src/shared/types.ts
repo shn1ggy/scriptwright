@@ -201,8 +201,21 @@ export interface ProjectMeta {
   lastBaseline?: string;
   /** Scene numbers are locked for production (see shared/scenenumbers.ts). */
   numbersLocked?: boolean;
+  /** Documents beside the screenplay (exposé, treatment …), in their order in the list. */
+  documents?: DocumentRecord[];
   /** Story structure: the chosen model, which scene carries each beat, and an own model's beats. */
   structure?: StructureState;
+}
+
+/** A document of the project: a Markdown file in the project folder. */
+export interface DocumentRecord {
+  id: string;
+  title: string;
+  /** File name in the project folder ("Exposé.md"). */
+  file: string;
+  color?: string;
+  archived?: boolean;
+  created: string;
 }
 
 /** A copy of the screenplay saved with every PDF export, to compare later versions against. */
@@ -663,6 +676,10 @@ export interface LayoutState {
   rightVisible: boolean;
   rightTab: 'notes' | 'scene' | 'comments' | 'shelf' | 'history';
   projectsCollapsed: boolean;
+  /** Scene list folded away in the left pane. */
+  scenesCollapsed?: boolean;
+  /** Documents list folded away in the left pane. */
+  documentsCollapsed?: boolean;
   /** Characters view: width of the detail pane and of the name column. */
   charDetailWidth?: number;
   charNameWidth?: number;
