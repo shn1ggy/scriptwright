@@ -1341,4 +1341,13 @@ export const DE: Record<string, string> = {
   "Saved automatically while writing": "Beim Schreiben automatisch gesichert",
   "More actions": "Weitere Aktionen",
   "About": "Über",
+  "Move Scriptwright into the Applications folder first, then start it from there.": "Verschiebe Scriptwright zuerst in den Ordner „Programme“ und starte es von dort.",
+  "Scriptwright cannot write to {0}.": "Scriptwright kann nicht in {0} schreiben.",
+  "This release cannot be installed here; download it from the release page.": "Diese Version lässt sich hier nicht installieren; lade sie von der Release-Seite.",
+  "The download does not match its checksum; nothing was changed.": "Der Download passt nicht zu seiner Prüfsumme; es wurde nichts verändert.",
+  "The release has no checksum for {0}; nothing was changed.": "Die Version hat keine Prüfsumme für {0}; es wurde nichts verändert.",
+  "The update could not be unpacked.": "Das Update konnte nicht entpackt werden.",
+  "The update package does not contain the app.": "Das Update-Paket enthält die App nicht.",
+  "Mac app": "Mac-App",
+  "Windows app": "Windows-App",
 };

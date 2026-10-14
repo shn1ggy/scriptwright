@@ -9,7 +9,13 @@
 //   portable  – the Windows folder with "Run Scriptwright.cmd": the package's dist/ and
 //               package.json become the new "app" folder, copied into the runtime on the next start.
 //
-// Anything else (an installer build) is pointed to the release page.
+//   mac-app       – Scriptwright.app built by electron-builder: the release's
+//                   Scriptwright-<version>-mac-<arch>.zip is unpacked next to the app and swapped
+//                   in after the app has quit.
+//   win-installer – the installed Windows app: the release's Scriptwright-Setup-<version>.exe runs
+//                   silently after the app has quit and starts it again.
+//
+// Anything else is pointed to the release page.
 
 import fs from 'fs';
 import path from 'path';
@@ -31,7 +37,7 @@ export interface ReleaseInfo {
   assets: ReleaseAsset[];
 }
 
-export type InstallKind = 'source' | 'portable' | 'none';
+export type InstallKind = 'source' | 'portable' | 'mac-app' | 'win-installer' | 'none';
 
 /** "v1.2.3" / "1.2.3-beta.1" → comparable parts. */
 function parts(v: string): { nums: number[]; pre: string } {
@@ -73,9 +79,16 @@ export function parseRelease(json: any): ReleaseInfo {
   };
 }
 
-/** The installable package of a release and its checksum file. */
-export function packageAssets(r: ReleaseInfo): { zip?: ReleaseAsset; sha?: ReleaseAsset } {
-  const zip = r.assets.find((a) => /^scriptwright-v?[\d.]+(-[\w.]+)?\.zip$/i.test(a.name));
+/** The asset of a release this kind of installation takes, and its checksum file. */
+export function packageAssets(r: ReleaseInfo, kind: InstallKind = 'source', arch = 'x64'): { zip?: ReleaseAsset; sha?: ReleaseAsset } {
+  const v = '-v?\\d+(?:\\.\\d+)*(?:-[0-9A-Za-z.]+)?';
+  const pattern =
+    kind === 'mac-app'
+      ? new RegExp(`^Scriptwright${v}-mac-${arch}\\.zip$`)
+      : kind === 'win-installer'
+        ? new RegExp(`^Scriptwright-Setup${v}\\.exe$`)
+        : new RegExp(`^scriptwright${v}\\.zip$`);
+  const zip = r.assets.find((a) => pattern.test(a.name));
   const sha = zip ? r.assets.find((a) => a.name.toLowerCase() === `${zip.name.toLowerCase()}.sha256`) : undefined;
   return { zip, sha };
 }
@@ -84,7 +97,11 @@ export function packageAssets(r: ReleaseInfo): { zip?: ReleaseAsset; sha?: Relea
  * How this copy of the app is installed. `appPath` is the folder with package.json and dist/;
  * `resourcesPath` is Electron's resources folder.
  */
-export function detectInstall(appPath: string, resourcesPath: string): { kind: InstallKind; root: string } {
+export function detectInstall(
+  appPath: string,
+  resourcesPath: string,
+  env: { packaged?: boolean; platform?: string; execPath?: string } = {},
+): { kind: InstallKind; root: string } {
   // Source checkout run with npm start: package.json, src/ and scripts/build.mjs side by side.
   if (fs.existsSync(path.join(appPath, 'src')) && fs.existsSync(path.join(appPath, 'scripts', 'build.mjs')) && fs.existsSync(path.join(appPath, 'package.json'))) {
     return { kind: 'source', root: appPath };
@@ -94,7 +111,37 @@ export function detectInstall(appPath: string, resourcesPath: string): { kind: I
   if (fs.existsSync(path.join(root, 'Run Scriptwright.cmd')) && fs.existsSync(path.join(root, 'app', 'package.json'))) {
     return { kind: 'portable', root };
   }
+  if (env.packaged && env.execPath) {
+    if (env.platform === 'darwin') {
+      const m = /^(.*?\.app)\/Contents\/MacOS\//.exec(env.execPath);
+      if (m) return { kind: 'mac-app', root: m[1] };
+    }
+    if (env.platform === 'win32') return { kind: 'win-installer', root: path.dirname(env.execPath) };
+  }
   return { kind: 'none', root: '' };
+}
+
+/** Why a Mac app cannot replace itself where it is, or '' when it can. */
+export function macAppProblem(bundle: string, canWrite: (dir: string) => boolean): '' | 'translocated' | 'readonly' {
+  // Started straight from a download or a disk image: macOS runs it from a hidden read-only copy.
+  if (bundle.includes('/AppTranslocation/') || bundle.startsWith('/Volumes/')) return 'translocated';
+  if (!canWrite(path.dirname(bundle))) return 'readonly';
+  return '';
+}
+
+/** Shell script that waits for the app to quit, puts the new bundle in place and starts it. */
+export function macSwapScript(pid: number, bundle: string, fresh: string, backup: string): string {
+  const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+  return [
+    '#!/bin/sh',
+    `while kill -0 ${pid} 2>/dev/null; do sleep 0.3; done`,
+    `rm -rf ${q(backup)}`,
+    `if mv ${q(bundle)} ${q(backup)}; then`,
+    `  if mv ${q(fresh)} ${q(bundle)}; then rm -rf ${q(backup)}; else mv ${q(backup)} ${q(bundle)}; fi`,
+    'fi',
+    `open ${q(bundle)}`,
+    '',
+  ].join('\n');
 }
 
 export function sha256(buf: Buffer): string {

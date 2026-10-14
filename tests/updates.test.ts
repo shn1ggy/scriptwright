@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { applyPackage, compareVersions, detectInstall, normalizeRepo, packageAssets, parseRelease, sha256, verifyChecksum } from '../src/main/updates';
+import { applyPackage, compareVersions, detectInstall, macAppProblem, macSwapScript, normalizeRepo, packageAssets, parseRelease, sha256, verifyChecksum } from '../src/main/updates';
+import { spawnSync } from 'child_process';
 import { writeZip } from '../src/main/zip';
 
 test('versions compare numerically, pre-releases before the release', () => {
@@ -84,5 +85,61 @@ test('an incomplete package is refused and nothing is written', () => {
   assert.throws(() => applyPackage(bad, 'source', dir), /incomplete/);
   assert.deepEqual(fs.readdirSync(dir), []);
   assert.throws(() => applyPackage(pkgZip(), 'none', dir));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('each kind of installation picks its own asset', () => {
+  const names = [
+    'scriptwright-0.18.0.zip',
+    'Scriptwright-0.18.0-mac-arm64.zip',
+    'Scriptwright-0.18.0-mac-x64.zip',
+    'Scriptwright-0.18.0-mac-arm64.dmg',
+    'Scriptwright-Setup-0.18.0.exe',
+  ];
+  const r = parseRelease({ tag_name: 'v0.18.0', assets: [...names, ...names.map((n) => `${n}.sha256`)].map((n) => ({ name: n, browser_download_url: n })) });
+  assert.equal(packageAssets(r, 'source').zip?.name, 'scriptwright-0.18.0.zip');
+  assert.equal(packageAssets(r, 'portable').zip?.name, 'scriptwright-0.18.0.zip');
+  assert.equal(packageAssets(r, 'mac-app', 'arm64').zip?.name, 'Scriptwright-0.18.0-mac-arm64.zip');
+  assert.equal(packageAssets(r, 'mac-app', 'x64').sha?.name, 'Scriptwright-0.18.0-mac-x64.zip.sha256');
+  assert.equal(packageAssets(r, 'win-installer').zip?.name, 'Scriptwright-Setup-0.18.0.exe');
+});
+
+test('packaged apps are recognised from their executable', () => {
+  const none = fs.mkdtempSync(path.join(os.tmpdir(), 'sw-up-'));
+  const mac = detectInstall(path.join(none, 'app.asar'), none, { packaged: true, platform: 'darwin', execPath: '/Applications/Scriptwright.app/Contents/MacOS/Scriptwright' });
+  assert.deepEqual(mac, { kind: 'mac-app', root: '/Applications/Scriptwright.app' });
+  const win = detectInstall(path.join(none, 'app.asar'), none, { packaged: true, platform: 'win32', execPath: path.join(none, 'Scriptwright.exe') });
+  assert.equal(win.kind, 'win-installer');
+  assert.equal(detectInstall(path.join(none, 'app.asar'), none, { packaged: false, platform: 'darwin', execPath: '/x/Electron.app/Contents/MacOS/Electron' }).kind, 'none');
+  fs.rmSync(none, { recursive: true });
+});
+
+test('a Mac app run from a download or a disk image is asked to move first', () => {
+  const yes = () => true;
+  assert.equal(macAppProblem('/private/var/folders/x/AppTranslocation/ABC/d/Scriptwright.app', yes), 'translocated');
+  assert.equal(macAppProblem('/Volumes/Scriptwright/Scriptwright.app', yes), 'translocated');
+  assert.equal(macAppProblem('/Applications/Scriptwright.app', () => false), 'readonly');
+  assert.equal(macAppProblem('/Applications/Scriptwright.app', yes), '');
+});
+
+test('the Mac swap script replaces the bundle and keeps the old one if the move fails', { skip: process.platform === 'win32' }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sw it's "));
+  const bundle = path.join(dir, 'Scriptwright.app');
+  const fresh = path.join(dir, '.Scriptwright-0.18.0.app');
+  fs.mkdirSync(bundle);
+  fs.writeFileSync(path.join(bundle, 'v'), 'old');
+  fs.mkdirSync(fresh);
+  fs.writeFileSync(path.join(fresh, 'v'), 'new');
+  // A pid that is not running, and "open" replaced by a no-op.
+  const script = macSwapScript(999999, bundle, fresh, path.join(dir, 'previous.app')).replace(/^open .*$/m, 'true');
+  const r = spawnSync('/bin/sh', ['-c', script]);
+  assert.equal(r.status, 0, String(r.stderr));
+  assert.equal(fs.readFileSync(path.join(bundle, 'v'), 'utf8'), 'new');
+  assert.ok(!fs.existsSync(fresh));
+  assert.ok(!fs.existsSync(path.join(dir, 'previous.app')));
+  // The new bundle is missing: the old one stays in place.
+  const again = macSwapScript(999999, bundle, path.join(dir, 'missing.app'), path.join(dir, 'previous.app')).replace(/^open .*$/m, 'true');
+  spawnSync('/bin/sh', ['-c', again]);
+  assert.equal(fs.readFileSync(path.join(bundle, 'v'), 'utf8'), 'new');
   fs.rmSync(dir, { recursive: true });
 });

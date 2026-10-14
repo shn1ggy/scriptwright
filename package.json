@@ -56,21 +56,44 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        "dmg",
-        "zip"
-      ]
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Scriptwright-${version}-mac-${arch}.${ext}",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "win": {
       "target": [
-        "nsis"
-      ]
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Scriptwright-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "category": "Office"
+      "category": "Office",
+      "artifactName": "Scriptwright-${version}-linux-${arch}.${ext}"
     },
     "fileAssociations": [
       {
@@ -78,7 +101,20 @@
         "name": "Fountain screenplay",
         "role": "Editor"
       }
-    ]
+    ],
+    "icon": "assets/icon.png",
+    "afterPack": "scripts/after-pack.cjs",
+    "publish": null,
+    "dmg": {
+      "artifactName": "Scriptwright-${version}-mac-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Scriptwright"
+    }
   },
   "scriptwright": {
     "updateRepo": ""

@@ -25,6 +25,7 @@ interface CheckResult {
   none?: boolean;
   release?: ReleaseInfo;
   installable?: boolean;
+  blocked?: string;
 }
 
 /** The repository updates come from: the writer's choice, else the one the app was built with. */
@@ -119,7 +120,13 @@ export function renderAbout(app: App, content: HTMLElement, row: (label: string,
       fact(t('System'), `${a.os} · ${a.platform}`);
       fact('Electron', `${a.electron} · Chromium ${a.chrome} · Node ${a.node}`);
       fact(t('App data'), a.userData);
-      fact(t('Installed as'), a.install === 'source' ? t('Project folder (npm start)') : a.install === 'portable' ? t('Portable folder (Run Scriptwright.cmd)') : t('Application'));
+      const kinds: Record<string, string> = {
+        source: t('Project folder (npm start)'),
+        portable: t('Portable folder (Run Scriptwright.cmd)'),
+        'mac-app': t('Mac app'),
+        'win-installer': t('Windows app'),
+      };
+      fact(t('Installed as'), kinds[a.install] ?? t('Application'));
     });
   } else fact(t('Running in'), t('Browser (development)'));
 
@@ -162,7 +169,9 @@ export function renderAbout(app: App, content: HTMLElement, row: (label: string,
           },
         }, t('Skip this version')),
       );
-    result.append(h('div', { class: 'about-release' }, rel.name || rel.version), notesView(rel.notes || ''), buttons);
+    result.append(h('div', { class: 'about-release' }, rel.name || rel.version), notesView(rel.notes || ''));
+    if (r.blocked) result.append(h('div', { class: 'notice' }, r.blocked));
+    result.append(buttons);
   };
   checkBtn.addEventListener('click', async () => {
     if (!updateRepo(app)) {

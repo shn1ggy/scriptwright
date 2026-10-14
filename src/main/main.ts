@@ -2,12 +2,13 @@
 
 import { app, BrowserWindow, Menu, MenuItemConstructorOptions, clipboard, dialog, ipcMain, net, screen, session, shell } from 'electron';
 import os from 'os';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { Backend } from './backend';
 import { createApi, ApiMethod } from './api';
-import { applyPackage, compareVersions, detectInstall, normalizeRepo, packageAssets, parseRelease, ReleaseInfo, verifyChecksum } from './updates';
+import { applyPackage, compareVersions, detectInstall, macAppProblem, macSwapScript, normalizeRepo, packageAssets, parseRelease, ReleaseInfo, verifyChecksum } from './updates';
+import { t } from '../shared/i18n';
 
 declare const __APP_VERSION__: string;
 declare const __BUILD_DATE__: string;
@@ -320,7 +321,21 @@ function setup() {
     }
   });
   // About and updates ---------------------------------------------------------------------
-  const install = () => detectInstall(app.getAppPath(), process.resourcesPath);
+  const install = () => detectInstall(app.getAppPath(), process.resourcesPath, { packaged: app.isPackaged, platform: process.platform, execPath: process.execPath });
+  const canWrite = (dir: string) => {
+    try {
+      fs.accessSync(dir, fs.constants.W_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const macProblemText = (p: string, bundle: string) =>
+    p === 'translocated'
+      ? t('Move Scriptwright into the Applications folder first, then start it from there.')
+      : t('Scriptwright cannot write to {0}.', path.dirname(bundle));
+  /** What the restart has to do after an installer-style update was downloaded. */
+  let pending: { kind: 'mac-app'; script: string } | { kind: 'win-installer'; exe: string } | null = null;
   const getBuffer = async (url: string) => {
     const r = await net.fetch(url, { headers: { 'User-Agent': 'Scriptwright' } });
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
@@ -348,18 +363,52 @@ function setup() {
       if (r.status === 404) return { available: false, none: true };
       if (!r.ok) throw new Error(`GitHub answered ${r.status} ${r.statusText}`);
       const rel: ReleaseInfo = parseRelease(await r.json());
-      const { zip } = packageAssets(rel);
-      return { available: compareVersions(rel.version, __APP_VERSION__) > 0, release: rel, installable: !!zip && install().kind !== 'none' };
+      const where = install();
+      const { zip } = packageAssets(rel, where.kind, process.arch);
+      const blocked = where.kind === 'mac-app' ? macAppProblem(where.root, canWrite) : '';
+      return { available: compareVersions(rel.version, __APP_VERSION__) > 0, release: rel, installable: !!zip && where.kind !== 'none' && !blocked, blocked: blocked ? macProblemText(blocked, where.root) : '' };
     }
     if (op === 'install') {
       const rel = arg as ReleaseInfo;
-      const { zip, sha } = packageAssets(rel);
       const where = install();
-      if (!zip || where.kind === 'none') throw new Error('This release cannot be installed here; download it from the release page.');
+      const { zip, sha } = packageAssets(rel, where.kind, process.arch);
+      if (!zip || where.kind === 'none') throw new Error(t('This release cannot be installed here; download it from the release page.'));
       const buf = await getBuffer(zip.url);
       if (sha) {
         const shaText = (await getBuffer(sha.url)).toString('utf8');
-        if (!verifyChecksum(buf, shaText)) throw new Error('The download does not match its checksum; nothing was changed.');
+        if (!verifyChecksum(buf, shaText)) throw new Error(t('The download does not match its checksum; nothing was changed.'));
+      } else if (where.kind === 'mac-app' || where.kind === 'win-installer') {
+        throw new Error(t('The release has no checksum for {0}; nothing was changed.', zip.name));
+      }
+      if (where.kind === 'mac-app') {
+        const problem = macAppProblem(where.root, canWrite);
+        if (problem) throw new Error(macProblemText(problem, where.root));
+        // Unpack next to the app (same volume, so the swap is a rename), keeping symlinks.
+        const parent = path.dirname(where.root);
+        const work = fs.mkdtempSync(path.join(os.tmpdir(), 'scriptwright-update-'));
+        const zipFile = path.join(work, zip.name);
+        fs.writeFileSync(zipFile, buf);
+        const unpack = path.join(work, 'app');
+        const r = spawnSync('/usr/bin/ditto', ['-x', '-k', zipFile, unpack]);
+        if (r.status !== 0) throw new Error(t('The update could not be unpacked.'));
+        const bundleName = fs.readdirSync(unpack).find((n) => n.endsWith('.app'));
+        if (!bundleName || !fs.existsSync(path.join(unpack, bundleName, 'Contents', 'Info.plist'))) throw new Error(t('The update package does not contain the app.'));
+        const fresh = path.join(parent, `.Scriptwright-${rel.version}.app`);
+        fs.rmSync(fresh, { recursive: true, force: true });
+        const mv = spawnSync('/bin/mv', [path.join(unpack, bundleName), fresh]);
+        if (mv.status !== 0) throw new Error(t('Scriptwright cannot write to {0}.', parent));
+        spawnSync('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', fresh]);
+        const script = path.join(work, 'swap.sh');
+        fs.writeFileSync(script, macSwapScript(process.pid, where.root, fresh, path.join(work, 'previous.app')), { mode: 0o755 });
+        fs.rmSync(zipFile, { force: true });
+        pending = { kind: 'mac-app', script };
+        return { files: 1, kind: where.kind };
+      }
+      if (where.kind === 'win-installer') {
+        const exe = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'scriptwright-update-')), zip.name);
+        fs.writeFileSync(exe, buf);
+        pending = { kind: 'win-installer', exe };
+        return { files: 1, kind: where.kind };
       }
       const n = applyPackage(buf, where.kind, where.root);
       return { files: n, kind: where.kind };
@@ -368,7 +417,12 @@ function setup() {
       // The renderer has saved everything. Start again: the Windows launcher copies the new
       // app into the runtime; a source checkout runs the new build.
       const where = install();
-      if (where.kind === 'portable') {
+      if (pending?.kind === 'mac-app') {
+        spawn('/bin/sh', [pending.script], { detached: true, stdio: 'ignore' }).unref();
+      } else if (pending?.kind === 'win-installer') {
+        // Silent install over the running copy, then the installer starts the app again.
+        spawn(pending.exe, ['/S', '--updated', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
+      } else if (where.kind === 'portable') {
         spawn('cmd.exe', ['/c', 'start', '""', 'Run Scriptwright.cmd'], { cwd: where.root, detached: true, stdio: 'ignore', windowsHide: true }).unref();
       } else app.relaunch();
       quitting = true;
@@ -427,7 +481,8 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
   app.whenReady().then(() => {
-    if (isMac && app.dock && fs.existsSync(appIconPath())) app.dock.setIcon(appIconPath());
+    // The packaged app has its icon in the bundle; npm start runs inside Electron's own.
+    if (isMac && !app.isPackaged && app.dock && fs.existsSync(appIconPath())) app.dock.setIcon(appIconPath());
     setup();
     createWindow();
     app.on('activate', () => {

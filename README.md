@@ -256,23 +256,52 @@ Distinguishing what was actually run from what was not:
 The interface is available in English and German (Settings → Appearance → Language). The
 screenplay's printed labels follow the screenplay itself.
 
+## Installing
+
+Download the newest version from the project's GitHub releases page.
+
+**Mac:** take `Scriptwright-<version>-mac-arm64.dmg` (Apple Silicon, M1 and later) or
+`…-mac-x64.dmg` (Intel), open it and drag Scriptwright into Applications. The app is not signed
+with a paid Apple developer ID, so macOS asks once on the first start: open it, choose "Done",
+then System Settings → Privacy & Security → "Open Anyway". (Or in Terminal:
+`xattr -cr /Applications/Scriptwright.app`.) Later updates install from inside the app without
+asking again.
+
+**Windows:** run `Scriptwright-Setup-<version>.exe`. It installs for your user only (no admin
+rights) and adds a Start menu entry. SmartScreen may warn about an unknown publisher the first
+time: "More info" → "Run anyway".
+
+Your projects, settings and history stay where they are; the installed app finds them, also when
+you used the project folder or the portable Windows folder before.
+
 ## Updates and releases
 
 Settings → About shows the version, build, system and credits, and looks for new versions on
 GitHub (automatically once a day at start, or with "Check now"). Set the repository either in
 About ("Releases from") or for every build in `package.json` → `scriptwright.updateRepo`
-(`owner/name`).
+(`owner/name`). The repository must be public: the app asks GitHub without signing in.
 
 To publish a version:
 
 1. Raise `version` in `package.json` and commit.
-2. `npm run release` builds and writes `release/scriptwright-<version>.zip` and its `.sha256`.
-3. `gh release create v<version> release/scriptwright-<version>.zip release/scriptwright-<version>.zip.sha256 --notes "…"`
+2. `git tag v<version> && git push origin main v<version>`
 
-The app installs that package in place when it runs from the project folder (`npm start`,
-"Run Scriptwright.command") or from the portable Windows folder (`packaging/windows`): it checks
-the checksum, writes the new files next to the old ones, swaps them in and starts again.
-node_modules, .git and your settings are never touched. Other installs get a link to the release page.
+GitHub Actions (`.github/workflows/release.yml`) then builds the Mac app (Apple Silicon and
+Intel), the Windows installer and the source package, adds a `.sha256` for each file and
+publishes the release. That takes about ten minutes.
+
+What "Install and restart" does depends on how Scriptwright runs:
+
+| Installed as | Takes from the release | How |
+| --- | --- | --- |
+| Mac app | `Scriptwright-<v>-mac-<arch>.zip` | unpacked next to the app, swapped in after it quits, started again |
+| Windows app | `Scriptwright-Setup-<v>.exe` | runs silently after the app quits and starts it again |
+| Project folder (`npm start`) | `scriptwright-<v>.zip` | files written over the folder (node_modules and .git stay) |
+| Portable Windows folder | `scriptwright-<v>.zip` | new `app` folder, copied into the runtime on the next start |
+
+Every download is checked against its checksum before anything changes. To build locally instead:
+`npm run dist:mac` / `npm run dist:win` (results in `release/`) and `npm run release` for the
+source package.
 
 ## Roadmap
 
