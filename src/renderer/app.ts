@@ -16,7 +16,8 @@ import { ProjectsPane } from './ui/projects';
 import { RightPane } from './ui/rightpane';
 import { FindBar } from './ui/findbar';
 import { openPalette } from './ui/palette';
-import { openSettings } from './ui/settings';
+import { openSettings, Section as SettingsSection } from './ui/settings';
+import { checkForUpdates, checkForUpdatesSoon } from './ui/about';
 import { ExportPreset, FontEntry, loadFonts, openExport, projectExportSettings, scriptLanguage } from './ui/export';
 import { paginate } from '../shared/paginate';
 import { openRename } from './ui/rename';
@@ -189,7 +190,8 @@ export class App {
       }
       setUiLanguage(lang);
       if (stored) {
-        location.reload();
+        if (bridge.isElectron) void bridge.window('reload').catch(() => location.reload());
+        else location.reload();
         return;
       }
     }
@@ -231,6 +233,7 @@ export class App {
     this.updateWelcome();
     this.updateChrome();
     this.ready = true;
+    checkForUpdatesSoon(this);
   }
 
   // ---------------------------------------------------------------------------------
@@ -395,6 +398,10 @@ export class App {
   // ---------------------------------------------------------------------------------
   // Settings & state persistence
 
+  openSettings(section: SettingsSection = 'editor') {
+    openSettings(this, section);
+  }
+
   /** Switches the interface language: saved, then the window loads again in it. */
   async setInterfaceLanguage(lang: UiLanguage) {
     if (lang === uiLanguage()) return;
@@ -404,11 +411,17 @@ export class App {
     } catch {
       /* no storage */
     }
-    await bridge.call('saveSettings', this.settings).catch(() => {});
-    await this.flush();
-    this.saveStateNow();
+    try {
+      await bridge.call('saveSettings', this.settings);
+    } catch (e: any) {
+      toast(t('Settings could not be saved: {0}', e?.message ?? e), { warn: true });
+      return;
+    }
+    await this.flush().catch(() => false);
     await new Promise((r) => setTimeout(r, 150));
-    location.reload();
+    // The desktop app reloads the window itself; location.reload alone did not always do it.
+    if (bridge.isElectron) await bridge.window('reload').catch(() => location.reload());
+    else location.reload();
   }
 
   saveSettings = debounce(() => {
@@ -2871,6 +2884,8 @@ export class App {
       C.register({ id, title, category, keys, run, ...extra });
 
     reg('app.commands', t("Commands & Shortcuts…"), t("App"), ['Mod+K'], () => openPalette(this), { inFields: true, menu: 'Help' });
+    reg('app.about', t('About Scriptwright'), t('App'), [], () => this.openSettings('about'), { inFields: true, menu: isMac ? undefined : 'Help' });
+    reg('app.updates', t('Check for Updates…'), t('App'), [], () => void checkForUpdates(this, false).then((r) => r?.available && this.openSettings('about')), { inFields: true, menu: isMac ? undefined : 'Help' });
     reg('app.settings', t("Settings…"), t("App"), ['Mod+P', 'Mod+,'], () => openSettings(this), { inFields: true, menu: isMac ? undefined : 'File' });
     reg('app.quit', t("Quit"), t("App"), ['Mod+Q'], () => this.quit(), { inFields: true, menu: isMac ? undefined : 'File' });
     reg('file.save', t("Save"), t("File"), ['Mod+S'], async () => {
@@ -3314,7 +3329,7 @@ export class App {
         ['scene.archive', 'scene.delete'],
         ['scene.lockNumbers', 'scene.unlockNumbers', 'scene.writtenNumbers'],
       ]],
-      ['Help', [['app.commands']]],
+      ['Help', [['app.commands'], ['app.updates', 'app.about']]],
     ];
     // Shown elsewhere: the Window menu has Maximize; History has its tab in View.
     const skip = new Set(['view.toggleMaximize', 'project.history']);
@@ -3340,6 +3355,7 @@ export class App {
     // Items the main process adds itself (app menu, standard Edit and Window entries).
     const labels: Record<string, string> = {
       about: t('About {app}'),
+      updates: t('Check for Updates…'),
       settings: t('Settings…'),
       services: t('Services'),
       hide: t('Hide {app}'),

@@ -89,6 +89,26 @@ await check('a click on empty space in Cards clears the selection', async () => 
   await app(() => window.__app.closePanel());
 });
 
+await check('Settings has an About page with the version and credits', async () => {
+  await app(() => window.__app.openSettings('about'));
+  await sleep(300);
+  const txt = await page.locator('.dialog').textContent();
+  assert(/Version \d+\.\d+\.\d+/.test(txt), 'no version');
+  assert(txt.includes('Courier Prime'), 'no credits');
+  const icon = await page.locator('.about-icon').evaluate((i) => i.decode().then(() => i.naturalWidth, () => 0));
+  assert(icon > 0, 'icon not loaded');
+  if (shots) await page.screenshot({ path: path.join(shots, 'about.png') });
+  await page.keyboard.press('Escape');
+});
+
+await check('History keeps its actions in one row and at the foot of the list', async () => {
+  await app(() => window.__app.openPanel('history'));
+  await sleep(500);
+  assert((await page.locator('.hist-foot .btn').count()) === 2, 'foot buttons');
+  if (shots) await page.screenshot({ path: path.join(shots, 'history.png') });
+  await app(() => window.__app.closePanel());
+});
+
 await check('the interface switches to German and back', async () => {
   await app(() => window.__app.setInterfaceLanguage('de'));
   await page.waitForLoadState('load');

@@ -256,6 +256,24 @@ Distinguishing what was actually run from what was not:
 The interface is available in English and German (Settings → Appearance → Language). The
 screenplay's printed labels follow the screenplay itself.
 
+## Updates and releases
+
+Settings → About shows the version, build, system and credits, and looks for new versions on
+GitHub (automatically once a day at start, or with "Check now"). Set the repository either in
+About ("Releases from") or for every build in `package.json` → `scriptwright.updateRepo`
+(`owner/name`).
+
+To publish a version:
+
+1. Raise `version` in `package.json` and commit.
+2. `npm run release` builds and writes `release/scriptwright-<version>.zip` and its `.sha256`.
+3. `gh release create v<version> release/scriptwright-<version>.zip release/scriptwright-<version>.zip.sha256 --notes "…"`
+
+The app installs that package in place when it runs from the project folder (`npm start`,
+"Run Scriptwright.command") or from the portable Windows folder (`packaging/windows`): it checks
+the checksum, writes the new files next to the old ones, swaps them in and starts again.
+node_modules, .git and your settings are never touched. Other installs get a link to the release page.
+
 ## Roadmap
 
 | Brief section | Status |

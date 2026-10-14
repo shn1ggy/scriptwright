@@ -50,6 +50,8 @@ export interface SavingSettings {
 export interface Settings {
   /** Interface language (the screenplay's own language is a project setting). */
   language: 'en' | 'de';
+  /** Updates from GitHub releases. */
+  updates: UpdateSettings;
   version: 1;
   editor: EditorSettings;
   appearance: AppearanceSettings;
@@ -99,6 +101,7 @@ export function defaultSettings(): Settings {
   return {
     version: 1,
     language: 'en',
+    updates: { auto: true, repo: '', lastCheck: '', skip: '' },
     editor: {
       fontFamily: 'Courier Prime',
       fontSize: 16,
@@ -738,4 +741,15 @@ export interface ArchivedScene {
   beforeId?: string;
   /** It was the first scene of an act or sequence (goes back after that section line). */
   opensSection?: boolean;
+}
+
+export interface UpdateSettings {
+  /** Look for a new version once a day when the app starts. */
+  auto: boolean;
+  /** GitHub repository (owner/name) the releases come from; empty = the one built in. */
+  repo: string;
+  /** When updates were last looked for (ISO). */
+  lastCheck: string;
+  /** A version the writer chose to skip. */
+  skip: string;
 }

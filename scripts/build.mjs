@@ -1,6 +1,7 @@
 // Build: bundles the Electron main process, preload, renderer and the dev harness.
 import { build, context } from 'esbuild';
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, copyFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, copyFileSync, readFileSync } from 'fs';
+import { execSync } from 'child_process';
 import path from 'path';
 import { createRequire } from 'module';
 
@@ -13,7 +14,18 @@ const prod = process.argv.includes('--prod');
 rmSync(out, { recursive: true, force: true });
 mkdirSync(path.join(out, 'renderer', 'fonts'), { recursive: true });
 
-const common = { bundle: true, sourcemap: prod ? false : 'inline', minify: prod, logLevel: 'warning', target: 'es2022' };
+const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+let commit = '';
+try {
+  commit = execSync('git rev-parse --short HEAD', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+} catch {}
+const define = {
+  __APP_VERSION__: JSON.stringify(pkg.version),
+  __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  __COMMIT__: JSON.stringify(commit),
+  __UPDATE_REPO__: JSON.stringify(pkg.scriptwright?.updateRepo ?? ''),
+};
+const common = { bundle: true, sourcemap: prod ? false : 'inline', minify: prod, logLevel: 'warning', target: 'es2022', define };
 
 const configs = [
   { ...common, entryPoints: [path.join(root, 'src/main/main.ts')], outfile: path.join(out, 'main.js'), platform: 'node', format: 'cjs', external: ['electron'] },
@@ -40,6 +52,7 @@ const configs = [
 // Static files
 cpSync(path.join(root, 'src/renderer/index.html'), path.join(out, 'renderer', 'index.html'));
 cpSync(path.join(root, 'src/renderer/styles.css'), path.join(out, 'renderer', 'styles.css'));
+cpSync(path.join(root, 'assets/icon.svg'), path.join(out, 'renderer', 'icon.svg'));
 const fontsDir = path.join(root, 'resources', 'fonts');
 if (existsSync(fontsDir)) {
   for (const f of readdirSync(fontsDir)) if (/\.(ttf|txt)$/i.test(f)) copyFileSync(path.join(fontsDir, f), path.join(out, 'renderer', 'fonts', f));

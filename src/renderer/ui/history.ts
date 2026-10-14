@@ -4,8 +4,8 @@
 
 import type { App } from '../app';
 import { bridge } from '../bridge';
-import { h, icon, withClear } from './dom';
-import { confirmDialog, promptDialog, pushEscape, toast } from './overlay';
+import { h, icon, iconButton, withClear } from './dom';
+import { MenuItem, confirmDialog, openMenu, promptDialog, pushEscape, toast } from './overlay';
 import { diffLines } from './compare';
 import { restoreVersion, saveDraft, saveTextAsDraft } from './drafts';
 import { loadPdfjs, projectExportSettings } from './export';
@@ -190,11 +190,25 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       { class: 'view-head' },
       h('span', { class: 'view-head-title' }, t("History")),
       countEl,
-      h('span', { class: 'spacer' }),
-      h('button', { class: 'btn', onclick: () => void snapshotNow() }, t("Snapshot Now")),
-      h('button', { class: 'btn', onclick: () => void saveDraftNow() }, t("Save as Draft…")),
     ),
-    h('div', { class: 'hist-body' }, h('div', { class: 'hist-side' }, h('div', { class: 'hist-tools' }, withClear(search), seg), list), detail),
+    h(
+      'div',
+      { class: 'hist-body' },
+      h(
+        'div',
+        { class: 'hist-side' },
+        h('div', { class: 'hist-tools' }, withClear(search), seg),
+        list,
+        // Making a version belongs with the list of versions, like Export's button below its settings.
+        h(
+          'div',
+          { class: 'hist-foot' },
+          h('button', { class: 'btn', title: t('Keep the screenplay as it is now under a name'), onclick: () => void saveDraftNow() }, t('Save as Draft…')),
+          h('button', { class: 'btn', title: t('Keep an automatic copy of the screenplay as it is now'), onclick: () => void snapshotNow() }, t('Snapshot Now')),
+        ),
+      ),
+      detail,
+    ),
   );
   host.append(root);
   search.addEventListener('input', () => {
@@ -315,16 +329,21 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       detail.append(h('div', { class: 'notice' }, t("Choose a version on the left.")));
       return;
     }
-    const meta = e.kind === 'snapshot' ? 'Saved automatically while writing' : e.facts;
-    const actions = h('div', { class: 'hist-actions' });
-    if (e.kind !== 'snapshot') {
-      actions.append(
-        h('button', { class: 'btn', onclick: () => void rename(e) }, t("Rename…")),
-        h('button', { class: 'btn', onclick: () => togglePin(e) }, e.pinned ? t("Unpin") : t("Pin")),
-      );
-    } else actions.append(h('button', { class: 'btn', onclick: () => void keepAsDraft(e) }, t("Keep as Draft…")));
-    actions.append(h('button', { class: 'btn primary', onclick: () => void restore(e) }, t("Restore…")));
-    if (e.kind !== 'snapshot') actions.append(h('button', { class: 'btn danger', onclick: () => void remove(e) }, t("Delete…")));
+    const meta = e.kind === 'snapshot' ? t('Saved automatically while writing') : e.facts;
+    // One clear action (Restore); the rest of what can be done with a version is in its menu.
+    const more = iconButton('more', t('More actions'), (ev) => {
+      const items: MenuItem[] =
+        e.kind === 'snapshot'
+          ? [{ label: t('Keep as Draft…'), run: () => void keepAsDraft(e) }]
+          : [
+              { label: t('Rename…'), run: () => void rename(e) },
+              { label: e.pinned ? t('Unpin') : t('Pin'), run: () => togglePin(e) },
+              { sep: true },
+              { label: t('Delete…'), run: () => void remove(e) },
+            ];
+      openMenu(items, (ev.currentTarget as HTMLElement).getBoundingClientRect());
+    });
+    const actions = h('div', { class: 'hist-actions' }, h('button', { class: 'btn primary', onclick: () => void restore(e) }, t('Restore…')), more);
 
     let note: HTMLTextAreaElement | null = null;
     if (e.kind === 'draft' || e.kind === 'export') {

@@ -30,4 +30,5 @@ contextBridge.exposeInMainWorld('bridge', {
     add: (word: string) => ipcRenderer.invoke('spell', 'add', word),
   },
   setMenu: (model: unknown) => ipcRenderer.invoke('menu', model),
+  update: (op: string, arg?: unknown) => ipcRenderer.invoke('update', op, arg),
 });

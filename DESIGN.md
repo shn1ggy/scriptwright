@@ -192,6 +192,12 @@ Help text sits directly under its field (4 px), and the next row follows after 1
   undo step each.
 - Placing beats, starting, moving and removing acts are undoable like any edit.
 
+## 7c. About and updates
+
+- About is the last section of Settings: icon, name and version first, then plain facts in a two-column grid, then Updates, then Credits.
+- Update checks are quiet at start; a toast appears only when a newer version exists and has not been skipped. Nothing installs without a confirmation, and work is saved before a restart.
+- The app icon lives in `assets/icon.svg` and is the only place the brand mark is drawn.
+
 ## 8. The printed page
 
 Export defaults are taken from a finished screenplay (DRUCK, 2026) and should stay that way

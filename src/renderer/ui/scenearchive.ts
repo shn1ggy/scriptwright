@@ -24,11 +24,12 @@ export function openArchivedScene(app: App, id: string) {
   const details = [a.summary, a.notes].filter(Boolean) as string[];
   openDialog({
     title: a.heading || t("Archived scene"),
-    width: 640,
+    width: 720,
     body: [
       h('p', { class: 'muted' }, t("Archived {0} · was scene {1}", new Date(a.archivedAt).toLocaleString(uiLocale()), a.number)),
       ...details.map((d) => h('p', { class: 'archive-detail' }, d)),
-      h('pre', { class: 'archive-text' }, a.lines.join('\n')),
+      // The text in the editor's own script font and size.
+      h('pre', { class: 'archive-text', style: { fontSize: `${app.settings.editor.fontSize}px`, lineHeight: `${app.settings.editor.lineHeight}px` } }, a.lines.join('\n')),
     ],
     buttons: [
       { label: t("Delete…"), run: () => void app.deleteArchivedScene(id) },

@@ -1,9 +1,9 @@
 {
   "name": "scriptwright",
   "productName": "Scriptwright",
-  "version": "0.1.0",
+  "version": "0.17.0",
   "description": "A fast, dependable screenplay editor built on Fountain.",
-  "author": "Scriptwright",
+  "author": "Nico Sanft",
   "license": "UNLICENSED",
   "private": true,
   "main": "dist/main.js",
@@ -19,7 +19,8 @@
     "dist": "node scripts/build.mjs --prod && electron-builder",
     "dist:mac": "node scripts/build.mjs --prod && electron-builder --mac",
     "dist:win": "node scripts/build.mjs --prod && electron-builder --win",
-    "dist:linux": "node scripts/build.mjs --prod && electron-builder --linux"
+    "dist:linux": "node scripts/build.mjs --prod && electron-builder --linux",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {},
   "devDependencies": {
@@ -78,5 +79,8 @@
         "role": "Editor"
       }
     ]
+  },
+  "scriptwright": {
+    "updateRepo": ""
   }
 }

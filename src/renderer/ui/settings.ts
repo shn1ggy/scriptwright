@@ -8,9 +8,10 @@ import { CommandList } from './palette';
 import { loadFonts } from './export';
 import { DEFAULT_DARK, DEFAULT_LIGHT, ThemeColors } from '../../shared/types';
 import { contrast, hsbToRgb, rgbToHex } from '../theme';
+import { renderAbout } from './about';
 import { t, UI_LANGUAGES, uiLanguage, UiLanguage } from '../../shared/i18n';
 
-type Section = 'editor' | 'appearance' | 'commands' | 'saving';
+export type Section = 'editor' | 'appearance' | 'commands' | 'saving' | 'about';
 
 export function openSettings(app: App, section: Section = 'editor') {
   const content = h('div', { class: 'content' });
@@ -20,6 +21,7 @@ export function openSettings(app: App, section: Section = 'editor') {
     ['appearance', t('Appearance')],
     ['commands', t('Commands & shortcuts')],
     ['saving', t('Saving & history')],
+    ['about', t('About')],
   ];
   let current: Section = section;
   let cmdList: CommandList | null = null;
@@ -52,6 +54,7 @@ export function openSettings(app: App, section: Section = 'editor') {
     if (s === 'editor') editor();
     else if (s === 'appearance') appearance();
     else if (s === 'commands') commands();
+    else if (s === 'about') renderAbout(app, content, row);
     else saving();
   }
 

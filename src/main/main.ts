@@ -1,10 +1,17 @@
 // Electron main process: window, menu, dialogs and IPC to the shared backend.
 
-import { app, BrowserWindow, Menu, MenuItemConstructorOptions, clipboard, dialog, ipcMain, screen, session, shell } from 'electron';
+import { app, BrowserWindow, Menu, MenuItemConstructorOptions, clipboard, dialog, ipcMain, net, screen, session, shell } from 'electron';
+import os from 'os';
+import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { Backend } from './backend';
 import { createApi, ApiMethod } from './api';
+import { applyPackage, compareVersions, detectInstall, normalizeRepo, packageAssets, parseRelease, ReleaseInfo, verifyChecksum } from './updates';
+
+declare const __APP_VERSION__: string;
+declare const __BUILD_DATE__: string;
+declare const __COMMIT__: string;
 
 interface MenuModelItem {
   id?: string;
@@ -179,7 +186,8 @@ function buildMenu() {
     template.push({
       label: app.name,
       submenu: [
-        { label: ML('about', `About ${app.name}`).replace('{app}', app.name), role: 'about' },
+        { label: ML('about', `About ${app.name}`).replace('{app}', app.name), click: () => sendCommand('app.about') },
+        { label: ML('updates', 'Check for Updates…'), click: () => sendCommand('app.updates') },
         { type: 'separator' },
         { label: ML('settings', 'Settings…'), accelerator: 'Cmd+,', registerAccelerator: false, click: () => sendCommand('app.settings') },
         { type: 'separator' },
@@ -271,6 +279,10 @@ function setup() {
       case 'setTitle':
         win.setTitle(String(arg));
         return;
+      case 'reload':
+        // Reloads the page (e.g. after the interface language changed).
+        win.webContents.reloadIgnoringCache();
+        return;
       case 'titleBar': {
         // Colors of the window buttons drawn over the app's top bar (Windows/Linux), and
         // whether the macOS window buttons are shown (hidden in minimal view).
@@ -300,6 +312,69 @@ function setup() {
         shell.showItemInFolder(String(arg));
         return;
     }
+  });
+  // About and updates ---------------------------------------------------------------------
+  const install = () => detectInstall(app.getAppPath(), process.resourcesPath);
+  const getBuffer = async (url: string) => {
+    const r = await net.fetch(url, { headers: { 'User-Agent': 'Scriptwright' } });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    return Buffer.from(await r.arrayBuffer());
+  };
+  ipcMain.handle('update', async (_e, op: string, arg?: any) => {
+    if (op === 'about') {
+      return {
+        version: __APP_VERSION__,
+        buildDate: __BUILD_DATE__,
+        commit: __COMMIT__,
+        electron: process.versions.electron,
+        chrome: process.versions.chrome,
+        node: process.versions.node,
+        platform: `${process.platform} ${process.arch}`,
+        os: `${os.type()} ${os.release()}`,
+        userData: app.getPath('userData'),
+        install: install().kind,
+      };
+    }
+    if (op === 'check') {
+      const repo = normalizeRepo(String(arg ?? ''));
+      if (!repo) throw new Error('No GitHub repository is set.');
+      const r = await net.fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Scriptwright' } });
+      if (r.status === 404) return { available: false, none: true };
+      if (!r.ok) throw new Error(`GitHub answered ${r.status} ${r.statusText}`);
+      const rel: ReleaseInfo = parseRelease(await r.json());
+      const { zip } = packageAssets(rel);
+      return { available: compareVersions(rel.version, __APP_VERSION__) > 0, release: rel, installable: !!zip && install().kind !== 'none' };
+    }
+    if (op === 'install') {
+      const rel = arg as ReleaseInfo;
+      const { zip, sha } = packageAssets(rel);
+      const where = install();
+      if (!zip || where.kind === 'none') throw new Error('This release cannot be installed here; download it from the release page.');
+      const buf = await getBuffer(zip.url);
+      if (sha) {
+        const shaText = (await getBuffer(sha.url)).toString('utf8');
+        if (!verifyChecksum(buf, shaText)) throw new Error('The download does not match its checksum; nothing was changed.');
+      }
+      const n = applyPackage(buf, where.kind, where.root);
+      return { files: n, kind: where.kind };
+    }
+    if (op === 'restart') {
+      // The renderer has saved everything. Start again: the Windows launcher copies the new
+      // app into the runtime; a source checkout runs the new build.
+      const where = install();
+      if (where.kind === 'portable') {
+        spawn('cmd.exe', ['/c', 'start', '""', 'Run Scriptwright.cmd'], { cwd: where.root, detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      } else app.relaunch();
+      quitting = true;
+      allowClose = true;
+      app.quit();
+      return;
+    }
+    if (op === 'openPage') {
+      if (/^https:\/\//.test(String(arg))) await shell.openExternal(String(arg));
+      return;
+    }
+    throw new Error(`Unknown update operation ${op}`);
   });
   ipcMain.handle('clipboard', (_e, op: string, text?: string) => {
     if (op === 'read') return clipboard.readText();
