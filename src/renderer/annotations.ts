@@ -19,12 +19,12 @@ import {
   toStored,
 } from '../shared/anchors';
 import type { HistoryEntry } from './editor/history';
-import { CommentRecord, HighlightColor, HighlightRecord, PassageRecord, TagCategory, TagRecord } from '../shared/types';
+import { CommentRecord, HighlightColor, HighlightRecord, PassageRecord } from '../shared/types';
 import { uid } from './ui/dom';
 import { t } from '../shared/i18n';
 
-export type AnnKind = 'highlight' | 'comment' | 'passage' | 'tag';
-type AnyRecord = HighlightRecord | CommentRecord | PassageRecord | TagRecord;
+export type AnnKind = 'highlight' | 'comment' | 'passage';
+type AnyRecord = HighlightRecord | CommentRecord | PassageRecord;
 
 interface Snapshot {
   anchors: Map<string, LiveAnchor>;
@@ -44,8 +44,6 @@ export class Annotations {
   private after = new WeakMap<HistoryEntry, Snapshot>();
   private current: Snapshot | null = null;
   showResolved = false;
-  /** Breakdown tags are underlined in their category colour. */
-  showTags = false;
 
   constructor(private app: App) {}
 
@@ -60,7 +58,6 @@ export class Annotations {
       ...m.highlights.map((rec) => ({ kind: 'highlight' as const, rec })),
       ...m.comments.map((rec) => ({ kind: 'comment' as const, rec })),
       ...m.passages.map((rec) => ({ kind: 'passage' as const, rec })),
-      ...(m.tags ?? []).map((rec) => ({ kind: 'tag' as const, rec })),
     ];
   }
 
@@ -250,36 +247,6 @@ export class Annotations {
     return true;
   }
 
-  /** Tags text for the production breakdown (several places at once: "every mention"). */
-  addTags(category: TagCategory, name: string, anchors: LiveAnchor[]): TagRecord[] {
-    return this.app.undoable(() => {
-      const m = this.meta;
-      m.tags ??= [];
-      const out: TagRecord[] = [];
-      for (const an of anchors) {
-        // The same element tagged twice at one place counts once.
-        if (this.overlapping(an, 'tag').some((r) => (r.rec as TagRecord).category === category)) continue;
-        const rec: TagRecord = { id: uid(), category, name, anchor: this.storedFor(an), created: new Date().toISOString() };
-        m.tags.push(rec);
-        this.live.set(rec.id, cloneAnchor(an));
-        out.push(rec);
-      }
-      this.current = this.snapshot();
-      this.app.markMetaDirty();
-      this.refresh();
-      return out;
-    }, t('Tag for Breakdown'));
-  }
-
-  /** Renames a breakdown element everywhere it is tagged. */
-  renameTag(category: TagCategory, from: string, to: string) {
-    this.app.undoable(() => {
-      for (const tg of this.meta.tags ?? []) if (tg.category === category && tg.name.toLowerCase() === from.toLowerCase()) tg.name = to;
-      this.app.markMetaDirty();
-      this.refresh();
-    }, t('Rename'));
-  }
-
   addComment(text: string, an: LiveAnchor): CommentRecord {
     return this.app.undoable(() => this.addCommentNow(text, an), t("Comment"));
   }
@@ -338,7 +305,6 @@ export class Annotations {
     m.highlights = m.highlights.filter((x) => x.id !== id);
     m.comments = m.comments.filter((x) => x.id !== id);
     m.passages = m.passages.filter((x) => x.id !== id);
-    if (m.tags) m.tags = m.tags.filter((x) => x.id !== id);
     this.live.delete(id);
     if (refresh) {
       this.current = this.snapshot();
@@ -354,7 +320,7 @@ export class Annotations {
 
   private restoreNow(kind: AnnKind, rec: AnyRecord, an: LiveAnchor | null) {
     if (this.record(rec.id)) return;
-    const list = kind === 'highlight' ? this.meta.highlights : kind === 'comment' ? this.meta.comments : kind === 'tag' ? (this.meta.tags ??= []) : this.meta.passages;
+    const list = kind === 'highlight' ? this.meta.highlights : kind === 'comment' ? this.meta.comments : this.meta.passages;
     (list as AnyRecord[]).push(rec);
     if (an) this.live.set(rec.id, cloneAnchor(an));
     this.current = this.snapshot();
@@ -411,8 +377,6 @@ export class Annotations {
       else if (kind === 'comment') {
         const c = rec as CommentRecord;
         if (!c.resolved || this.showResolved) decos.push({ a: an.a, b: an.b, cls: c.resolved ? 'deco-comment resolved' : 'deco-comment' });
-      } else if (kind === 'tag') {
-        if (this.showTags) decos.push({ a: an.a, b: an.b, cls: `deco-tag tag-${(rec as TagRecord).category}` });
       } else decos.push({ a: an.a, b: an.b, cls: 'deco-passage' });
     }
     this.app.editor.setDecorations(decos);

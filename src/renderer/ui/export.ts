@@ -10,9 +10,8 @@ import { characterLabel, characterList, titleFields } from '../../shared/fountai
 import { capacity } from '../../shared/paginate';
 import { sceneNumberList } from '../../shared/scenenumbers';
 import { t, tn, uiLocale } from '../../shared/i18n';
-import { lockPages, nextRevision, productionInfo, productionSummary, roundName, unlockPages } from './production';
 
-type ScopeKind = 'all' | 'scenes' | 'pages' | 'scenesNewPage' | 'separate' | 'character' | 'dialogue' | 'sides';
+type ScopeKind = 'all' | 'scenes' | 'pages' | 'scenesNewPage' | 'separate' | 'character' | 'dialogue';
 
 export function defaultPaper(): PaperSize {
   return /^en-(US|CA)/.test(navigator.language) ? 'Letter' : 'A4';
@@ -66,8 +65,6 @@ export function loadPdfjs(): Promise<any> {
 export interface ExportPreset {
   /** Start with the dialogue of one character ('' = all characters). */
   dialogue?: { character: string; action: boolean };
-  /** Start with sides (of the scenes selected in the scene list, if any). */
-  sides?: boolean;
 }
 
 export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {}): { close(): void } | null {
@@ -78,20 +75,15 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   let fonts: FontEntry[] = [];
   let dialogueAction = preset.dialogue?.action ?? false;
   let dialogueHeadings = true;
-  let scopeKind: ScopeKind = preset.dialogue ? 'dialogue' : preset.sides ? 'sides' : 'all';
+  let scopeKind: ScopeKind = preset.dialogue ? 'dialogue' : 'all';
   // Version of this export (a copy is saved with every export) and the version to compare with.
   const stamp = new Date().toLocaleString(uiLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   let versionName = '';
   let versionNote = '';
-  // With locked pages, revision marks come from the production rounds unless chosen otherwise.
-  let baseline = meta.lastBaseline ?? (meta.production ? 'production' : '');
-  if (baseline === 'production' && !meta.production) baseline = '';
+  let baseline = meta.lastBaseline ?? '';
   const baselineCache = new Map<string, { text: string; sceneIds?: string[]; label: string }>();
   let revisionInfo = '';
   const selectedScenes = new Set<number>();
-  if (preset.sides) for (const it of app.scenes) if (it.kind === 'scene' && app.sceneSel.has(it.id)) selectedScenes.add(it.line);
-  let sidesCover = true;
-  let sidesDay = '';
   let pages = '';
   let character = preset.dialogue?.character ?? '';
   const prevFocus = document.activeElement as HTMLElement | null;
@@ -327,13 +319,13 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   /** `title` is the English name: it is the key for the remembered state and shown translated. */
   function collapsible(title: string, ...children: Array<Node | null>): HTMLElement {
     const l = app.state.layout;
-    const open = new Set(l.exportOpen ?? ['This version', 'Content', 'Production', 'Mark changes']);
+    const open = new Set(l.exportOpen ?? ['This version', 'Content', 'Mark changes']);
     const isOpen = open.has(title);
     const body = h('div', { class: 'ex-body' }, ...children);
     const head = h('button', { class: 'ex-head', 'aria-expanded': String(isOpen) }, h('span', null, t(title)), h('span', { class: 'collapse-mark' }, icon(isOpen ? 'chevronDown' : 'chevronRight')));
     const sec = h('section', { class: `ex-section${isOpen ? '' : ' folded'}` }, head, body);
     head.addEventListener('click', () => {
-      const now = new Set(app.state.layout.exportOpen ?? ['This version', 'Content', 'Production', 'Mark changes']);
+      const now = new Set(app.state.layout.exportOpen ?? ['This version', 'Content', 'Mark changes']);
       const opening = !now.has(title);
       if (opening) now.add(title);
       else now.delete(title);
@@ -346,41 +338,8 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     return sec;
   }
 
-  /** Locked pages and revision rounds. */
-  function productionSection() {
-    const pr = meta.production;
-    const again = () => {
-      const scroll = side.scrollTop;
-      if (meta.production && !baseline) baseline = 'production';
-      if (!meta.production && baseline === 'production') baseline = '';
-      build();
-      side.scrollTop = scroll;
-      changed();
-    };
-    if (!pr) {
-      return collapsible(
-        'Production',
-        h('div', { class: 'capacity' }, t("Once a script goes into production, lock its pages: page numbers stay as printed, new material goes on A pages, and every round of changes gets the next revision colour.")),
-        h('div', { class: 'settings-actions' }, h('button', { class: 'btn', onclick: async () => { await lockPages(app); again(); } }, t("Lock pages…"))),
-      );
-    }
-    const next = roundName(pr.rounds.length + 1);
-    return collapsible(
-      'Production',
-      h('div', { class: 'capacity' }, productionSummary(app)),
-      h(
-        'div',
-        { class: 'settings-actions' },
-        h('button', { class: 'btn', onclick: async () => { await nextRevision(app); again(); } }, t("Start {0} revision…", next)),
-        h('button', { class: 'btn', onclick: async () => { await unlockPages(app); again(); } }, t("Unlock pages…")),
-      ),
-      h('div', { class: 'capacity' }, t("Keep the layout settings as they were when the pages were locked; otherwise pages move to A pages.")),
-    );
-  }
-
   function revisionSection() {
     const sel = h('select', { class: 'field', 'aria-label': t("Mark changes since") }, h('option', { value: '' }, t("Don’t mark changes")));
-    if (meta.production) sel.append(h('optgroup', { label: t('Production') }, h('option', { value: 'production' }, t("Revisions (current: {0})", roundName(meta.production.rounds.length).toLowerCase()))));
     const groups = new Map<string, HTMLElement>();
     for (const o of baselineOptions()) {
       let g = groups.get(o.group);
@@ -391,8 +350,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       }
       g.append(h('option', { value: o.value }, o.label));
     }
-    if (baseline && baseline !== 'production' && !baselineOptions().some((o) => o.value === baseline)) baseline = '';
-    if (baseline === 'production' && !meta.production) baseline = '';
+    if (baseline && !baselineOptions().some((o) => o.value === baseline)) baseline = '';
     sel.value = baseline;
     sel.addEventListener('change', () => {
       baseline = sel.value;
@@ -419,21 +377,8 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       changed();
     });
     const rows: Array<Node | null> = [row(t("Mark changes since"), sel)];
-    if (!meta.exports.length && !meta.drafts.length && !meta.production) rows.push(h('div', { class: 'capacity' }, t("After your first export (or once you save a named draft) you can mark what changed since then.")));
-    if (baseline === 'production') {
-      rows.push(
-        chk('revAllRounds', t("Asterisks for every round (not only the current one)")),
-        chk('revChangedPagesOnly', t("Only pages changed in this round")),
-        chk('revHeaderNote', t("Revision colour and date in the page header")),
-        chk('revTintPages', t("Revised pages in their colour (for reading on screen)")),
-        row(t("Margin mark"), h('div', { class: 'inline' }, h('label', { class: 'check' }, marginChk, t("in the right margin")), markChar)),
-        chk('revProdColor', t("Changes in colour (productions print black)")),
-        row(t("Color"), h("div", { class: "inline" }, color, colorHex)),
-        chk('revIgnoreOrder', t("Ignore scene order (moved scenes are not marked)")),
-        chk('revMarkDeletions', t("Mark where text was removed")),
-        revSummary,
-      );
-    } else if (baseline) {
+    if (!meta.exports.length && !meta.drafts.length) rows.push(h('div', { class: 'capacity' }, t("After your first export (or once you save a named draft) you can mark what changed since then.")));
+    if (baseline) {
       const base = meta.exports.find((e) => `export:${e.id}` === baseline);
       if (base?.note) rows.push(h('div', { class: 'capacity' }, t("Note: {0}", base.note)));
       rows.push(
@@ -496,14 +441,13 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       ['separate', 'Separate PDF for each scene'],
       ['character', 'Scenes with a character'],
       ['dialogue', 'Dialogue only'],
-      ['sides', 'Sides'],
     ])
       scopeSel.append(h('option', { value: v }, t(l)));
     scopeSel.value = scopeKind;
     const scopeExtra = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
     const drawScopeExtra = () => {
       scopeExtra.textContent = '';
-      if (scopeKind === 'scenes' || scopeKind === 'sides') {
+      if (scopeKind === 'scenes') {
         const box = h('div', { class: 'scene-pick' });
         const nums = sceneNumberList(parsed, !!meta.numbersLocked);
         parsed.scenes.forEach((sc, si) => {
@@ -526,23 +470,6 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
           changed();
         } }, t("None"));
         scopeExtra.append(box, h('div', { style: { display: 'flex', gap: '6px' } }, allBtn, noneBtn));
-        if (scopeKind === 'sides') {
-          const cover = h('input', { type: 'checkbox', checked: sidesCover });
-          cover.addEventListener('change', () => {
-            sidesCover = cover.checked;
-            changed();
-          });
-          const day = h('input', { class: 'field', value: sidesDay, placeholder: t('e.g. Day 3 · Thu 16 Oct'), 'aria-label': t('Shooting day') });
-          day.addEventListener('input', () => {
-            sidesDay = day.value;
-            changed();
-          });
-          scopeExtra.append(
-            h('label', { class: 'check' }, cover, t('Cover sheet with scenes, lengths and cast')),
-            row(t('Shooting day'), day),
-            h('div', { class: 'capacity' }, t('The pages with these scenes as they are in the script (with their page numbers); everything else on them is struck through.')),
-          );
-        }
       } else if (scopeKind === 'pages') {
         const i = h('input', { class: 'field', value: pages, placeholder: 'e.g. 1-3, 7, 10-', 'aria-label': t("Pages") });
         i.addEventListener('input', () => {
@@ -605,7 +532,6 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
         h('div', { class: 'capacity' }, t("A copy of the screenplay is kept with every export, so later exports can show what changed since this one. The note is only shown in the app.")),
       ),
       section('Content', row(t("Export"), scopeSel), scopeExtra),
-      productionSection(),
       revisionSection(),
       section(
         'Paper & font',
@@ -713,10 +639,6 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
         return { kind: 'pages', pages };
       case 'scenesNewPage':
         return { kind: 'scenesNewPage' };
-      case 'sides': {
-        const title = titleFields(app.editor.lineTexts, app.editor.parsed).find((f) => f.key === 'title')?.value.replace(/[*_]/g, '').replace(/\n/g, ' ') || p!.name;
-        return { kind: 'sides', sceneLines: [...selectedScenes], cover: sidesCover, title, day: sidesDay };
-      }
       case 'character':
         return { kind: 'character', name: character };
       case 'dialogue':
@@ -726,17 +648,16 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     }
   }
 
-  async function info() {
+  function info() {
     const lines = app.editor.lineTexts;
     const fields = titleFields(lines, app.editor.parsed);
     const title = fields.find((f) => f.key === 'title')?.value.replace(/[*_]/g, '') || p!.name;
     const author = fields.find((f) => f.key === 'author' || f.key === 'authors')?.value;
-    const base = baseline && baseline !== 'production' ? baselineCache.get(baseline) : undefined;
+    const base = baseline ? baselineCache.get(baseline) : undefined;
     const revision = base
       ? { text: base.text, sceneIds: base.sceneIds, currentIds: app.scenes.filter((x) => x.kind === 'scene').map((x) => x.id), label: (s.revHeaderText || 'Changes since {version}').replace(/\{version\}/g, base.label) }
       : undefined;
-    const production = await productionInfo(app, baseline === 'production');
-    return { title, author, extraPrefixes: app.settings.editor.extraPrefixes, revision, production };
+    return { title, author, extraPrefixes: app.settings.editor.extraPrefixes, revision };
   }
 
   /** Versions to compare with: earlier exports (newest first) and named drafts. */
@@ -749,7 +670,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   }
 
   async function loadBaseline(value: string) {
-    if (!value || value === 'production' || baselineCache.has(value)) return;
+    if (!value || baselineCache.has(value)) return;
     const [kind, id] = value.split(':');
     try {
       if (kind === 'export') {
@@ -776,7 +697,6 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       separate: t('Separate scene PDFs'),
       character: t('Scenes with {0}', character),
       dialogue: character ? t('Dialogue of {0}', character) : t('Dialogue'),
-      sides: sidesDay.trim() ? t('Sides: {0}', sidesDay.trim()) : t('Sides'),
     };
     return map[scopeKind];
   }
@@ -794,7 +714,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       scope: scopeLabel(),
       file,
       sceneIds: app.scenes.filter((x) => x.kind === 'scene').map((x) => x.id),
-      comparedWith: baseline === 'production' && meta.production ? t('{0} revision', roundName(meta.production.rounds.length)) : baseline ? baselineCache.get(baseline)?.label : undefined,
+      comparedWith: baseline ? baselineCache.get(baseline)?.label : undefined,
       settings: withLock(),
     });
     meta.lastBaseline = baseline || undefined;
@@ -821,7 +741,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     renderPresets();
     const token = ++renderToken;
     const sc = scope();
-    if ((scopeKind === 'scenes' || scopeKind === 'sides') && !selectedScenes.size) {
+    if (scopeKind === 'scenes' && !selectedScenes.size) {
       preview.replaceChildren(h('div', { class: 'state' }, t("Choose at least one scene.")));
       pageInfo.textContent = '';
       exportBtn.disabled = true;
@@ -832,7 +752,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     let r;
     try {
       if (baseline) await loadBaseline(baseline);
-      r = await bridge.call('exportPdf', app.editor.getText(), withLock(), sc, await info());
+      r = await bridge.call('exportPdf', app.editor.getText(), withLock(), sc, info());
     } catch (e: any) {
       if (token !== renderToken) return;
       preview.replaceChildren(h('div', { class: 'state' }, t("The PDF could not be created: {0}", e.message)));
@@ -843,7 +763,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     const extra = r.warnings.filter((w: string) => !warnings.textContent!.includes(w));
     if (extra.length) warnings.textContent = [warnings.textContent, ...extra].filter(Boolean).join(' ');
     const n = r.pages;
-    const withTitle = s.titlePage && app.editor.parsed.titleEnd > 0 && scopeKind !== 'pages' && scopeKind !== 'sides' && !(baseline && s.revChangedPagesOnly);
+    const withTitle = s.titlePage && app.editor.parsed.titleEnd > 0 && scopeKind !== 'pages' && !(baseline && s.revChangedPagesOnly);
     pageInfo.textContent = [withTitle ? tn(n, '{0} page plus title page', '{0} pages plus title page') : tn(n, '{0} page', '{0} pages'), t('roughly {0} min of screen time (estimate: one page ≈ one minute)', n)].join(' · ');
     const rv = r.revision;
     revisionInfo = rv
@@ -958,15 +878,14 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
 
   async function doExport() {
     await app.flush();
-    if (baseline) await loadBaseline(baseline);
-    const meta2 = await info();
+    const meta2 = info();
     const safe = (meta2.title || p!.name).replace(/[\\/:*?"<>|]/g, '-');
     if (scopeKind === 'separate') {
       const folder = await bridge.dialog('folder', { title: t("Choose a folder for the scene PDFs") });
       if (!folder) return;
       try {
         if (baseline) await loadBaseline(baseline);
-        const r = await bridge.call('exportScenePdfs', app.editor.getText(), withLock(), folder, meta2);
+        const r = await bridge.call('exportScenePdfs', app.editor.getText(), withLock(), folder, info());
         await recordExport(r.files.length, folder);
         toast(t("{0} scene PDFs written. A copy of this version was saved as “{1}”.", r.files.length, meta.exports[0].name));
       } catch (e: any) {
@@ -974,12 +893,11 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       }
       return;
     }
-    const suffix = scopeKind === 'sides' ? ` - ${t('Sides')}${sidesDay.trim() ? ' ' + sidesDay.trim() : ''}` : baseline === 'production' && meta.production && s.revChangedPagesOnly ? ` - ${roundName(meta.production.rounds.length)}` : '';
-    const dest = await bridge.dialog('save', { title: t("Export PDF"), defaultPath: `${safe}${suffix.replace(/[\\/:*?"<>|]/g, '-')}.pdf`, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+    const dest = await bridge.dialog('save', { title: t("Export PDF"), defaultPath: `${safe}.pdf`, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
     if (!dest) return;
     try {
       if (baseline) await loadBaseline(baseline);
-      const r = await bridge.call('exportPdf', app.editor.getText(), withLock(), scope(), meta2);
+      const r = await bridge.call('exportPdf', app.editor.getText(), withLock(), scope(), info());
       const file = dest.toLowerCase().endsWith('.pdf') ? dest : dest + '.pdf';
       await bridge.call('writeFile', file, r.pdf as unknown as Uint8Array);
       persist();

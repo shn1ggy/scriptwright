@@ -14,7 +14,6 @@ import {
   AppState,
   ExportScope,
   ExportSettings,
-  PaperSize,
   ProjectMeta,
   Settings,
   defaultAppState,
@@ -24,9 +23,6 @@ import {
 import { RenderInfo, renderPdf, scriptFontAdvance } from './pdfexport';
 import { FontFamily, listFontFamilies } from './fonts';
 import { computeChanges } from '../shared/revisions';
-import { lockStarts } from '../shared/production';
-import { renderReportPdf } from './pdfreport';
-import type { ReportDoc } from '../shared/reports';
 
 export interface ExportInfo {
   title?: string;
@@ -34,19 +30,6 @@ export interface ExportInfo {
   extraPrefixes?: string[];
   /** Mark changes against an earlier version. */
   revision?: { text: string; sceneIds?: string[]; currentIds: Array<string | undefined>; label: string };
-  /** Locked pages and revision rounds (production). */
-  production?: ProductionInfo;
-}
-
-export interface ProductionInfo {
-  /** The locked copy and the line on which each of its pages began. */
-  lockText: string;
-  pageStarts: number[];
-  /** Revision rounds, oldest first: the text when each began and its header label. */
-  rounds: Array<{ text: string; sceneIds?: string[]; label: string; tint: string }>;
-  currentIds: Array<string | undefined>;
-  /** Mark revisions (asterisks and colours); off = locked page numbers only. */
-  marks: boolean;
 }
 import { readZip, writeZip } from './zip';
 import { setUiLanguage, t } from '../shared/i18n';
@@ -923,14 +906,9 @@ export class Backend extends EventEmitter {
     const lines = text.replace(/\r\n?/g, '\n').split('\n');
     const p = parse(lines, { extraPrefixes: info.extraPrefixes });
     const ri = this.renderInfo({ title: info.title, author: info.author });
-    const prod = this.productionMarks(lines, p, settings, info);
-    const rev = prod?.marks ? prod : this.revisionMarks(lines, p, settings, info);
-    if (prod?.marks) ri.revisionRounds = prod.rounds;
-    else if (rev) ri.revisionLabel = info.revision!.label;
-    // Locked page numbers belong to the whole script: scopes that print parts of it with their
-    // own pages (selected scenes, one character, dialogue) keep counting from 1.
-    const lockable = scope.kind === 'all' || scope.kind === 'pages' || scope.kind === 'sides';
-    const result = paginate(lines, p, settings, scope, scriptFontAdvance(settings, ri), rev?.marks, lockable ? prod?.lock : undefined);
+    const rev = this.revisionMarks(lines, p, settings, info);
+    if (rev) ri.revisionLabel = info.revision!.label;
+    const result = paginate(lines, p, settings, scope, scriptFontAdvance(settings, ri), rev?.marks);
     const out = renderPdf(result, settings, ri);
     return {
       pdf: out.pdf,
@@ -940,26 +918,6 @@ export class Backend extends EventEmitter {
       capacity: result.capacity,
       revision: rev ? { ...rev.stats, changedPages: result.pages.filter((pg) => pg.changed).length } : null,
     };
-  }
-
-  /**
-   * Locked pages and coloured revisions: where each locked page begins today, and for every
-   * line the last round that changed it. Asterisks mark the current round (or every round).
-   */
-  private productionMarks(lines: string[], p: ReturnType<typeof parse>, s: ExportSettings, info: ExportInfo) {
-    const pr = info.production;
-    if (!pr) return null;
-    const lock = { starts: lockStarts(pr.lockText.replace(/\r\n?/g, '\n').split('\n'), pr.pageStarts, lines, p.bodyStart) };
-    const rounds = [{ label: '', tint: '#FFFFFF' }, ...pr.rounds.map((r) => ({ label: r.label, tint: r.tint }))];
-    if (!pr.marks || !pr.rounds.length) return { lock, rounds, marks: null, stats: null };
-    const opts = { ignoreOrder: s.revIgnoreOrder, ignoreSceneNumbers: s.revIgnoreSceneNumbers, markDeletions: s.revMarkDeletions, markMoved: s.revMarkMoved };
-    const levels = new Map<number, number>();
-    const maps = pr.rounds.map((r) => computeChanges(lines, p, pr.currentIds, r.text, r.sceneIds, opts, info.extraPrefixes));
-    maps.forEach((ch, k) => {
-      for (const l of ch.marked) levels.set(l, Math.max(levels.get(l) ?? 0, k + 1));
-    });
-    const use = s.revAllRounds ? maps[0] : maps[maps.length - 1];
-    return { lock, rounds, marks: { chars: use.chars, marked: use.marked, changedPagesOnly: s.revChangedPagesOnly, levels }, stats: use.stats };
   }
 
   private revisionMarks(lines: string[], p: ReturnType<typeof parse>, s: ExportSettings, info: ExportInfo) {
@@ -996,27 +954,6 @@ export class Backend extends EventEmitter {
     if (fs.existsSync(f)) fs.unlinkSync(f);
   }
 
-  /** A production report (scenes, cast, breakdown …) as PDF. */
-  exportReportPdf(rep: ReportDoc, paper: PaperSize) {
-    return renderReportPdf(rep, paper, this.renderInfo({ title: rep.title }));
-  }
-
-  // Copies of the screenplay for locked pages and revision rounds -------------------------
-
-  private productionFile(rel: string, id: string) {
-    return path.join(this.resolve(rel), META_DIR, 'production', `${id.replace(/[^\w-]/g, '')}.fountain`);
-  }
-
-  saveProductionCopy(rel: string, id: string, text: string) {
-    const f = this.productionFile(rel, id);
-    fs.mkdirSync(path.dirname(f), { recursive: true });
-    atomicWrite(f, text);
-  }
-
-  readProductionCopy(rel: string, id: string): string {
-    return fs.readFileSync(this.productionFile(rel, id), 'utf8');
-  }
-
   /** Separate PDFs for each scene into a folder. */
   exportScenePdfs(text: string, settings: ExportSettings, folder: string, info: ExportInfo) {
     const lines = text.replace(/\r\n?/g, '\n').split('\n');
@@ -1024,10 +961,8 @@ export class Backend extends EventEmitter {
     fs.mkdirSync(folder, { recursive: true });
     const ri = this.renderInfo({ title: info.title });
     const adv = scriptFontAdvance(settings, ri);
-    const prod = this.productionMarks(lines, p, settings, info);
-    const rev = prod?.marks ? prod : this.revisionMarks(lines, p, settings, info);
-    if (prod?.marks) ri.revisionRounds = prod.rounds;
-    else if (rev) ri.revisionLabel = info.revision!.label;
+    const rev = this.revisionMarks(lines, p, settings, info);
+    if (rev) ri.revisionLabel = info.revision!.label;
     const written: string[] = [];
     p.scenes.forEach((sc, idx) => {
       const r = paginate(lines, p, { ...settings, titlePage: false }, { kind: 'scenes', sceneLines: [sc.line] }, adv, rev ? { ...rev.marks, changedPagesOnly: false } : undefined);
@@ -1050,7 +985,6 @@ export class Backend extends EventEmitter {
     return fs.readFileSync(file, 'utf8');
   }
 
-  /** Reads a file the user chose as bytes (a PDF to import). */
   readBinaryFile(file: string): Buffer {
     const st = fs.statSync(file);
     if (st.size > 80 * 1024 * 1024) throw new Error(t('The file is too large.'));

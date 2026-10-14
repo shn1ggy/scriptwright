@@ -21,9 +21,6 @@ import { checkForUpdates, checkForUpdatesSoon } from './ui/about';
 import { ExportPreset, FontEntry, loadFonts, loadPdfjs, openExport, projectExportSettings, scriptLanguage } from './ui/export';
 import { pdfToFountain, readPdfText } from '../shared/pdfimport';
 import { paginate } from '../shared/paginate';
-import { currentLock, lockPages, nextRevision, unlockPages } from './ui/production';
-import { categoryLabel, setTagsShown, tagMenu, tagsAt } from './ui/breakdown';
-import { openReports } from './ui/reports';
 import { openRename } from './ui/rename';
 import { compareDialog } from './ui/compare';
 import { SceneCards } from './ui/cards';
@@ -89,9 +86,7 @@ function toHex(c: string): string {
 }
 const MIN_RIGHT = 310;
 
-export type PanelName = 'cards' | 'characters' | 'history' | 'export' | 'reports';
-/** Tabs that cover both side panes. */
-const COVERING = new Set<PanelName>(['export', 'history', 'reports']);
+export type PanelName = 'cards' | 'characters' | 'history' | 'export';
 
 export class App {
   settings: Settings = defaultSettings();
@@ -268,7 +263,7 @@ export class App {
     const mkTab = (v: ViewName, label: string) => focusOpen(h('button', { class: 'tab', tabindex: '-1', onclick: () => this.setView(v) }, label));
     const mkPanelTab = (p: PanelName, label: string) => {
       const b = h('button', { class: 'tab', tabindex: '-1', onclick: () => this.openPanel(p) }, label);
-      return COVERING.has(p) ? b : focusOpen(b);
+      return p === 'export' || p === 'history' ? b : focusOpen(b);
     };
     this.tabs = {
       script: mkTab('script', t("Script")),
@@ -278,13 +273,12 @@ export class App {
       characters: mkPanelTab('characters', t("Characters")),
       source: mkTab('source', t("Source")),
       history: mkPanelTab('history', t("History")),
-      reports: mkPanelTab('reports', t("Reports")),
       export: mkPanelTab('export', t("Export")),
     };
     // Options of the Scene and Dialogue views live in the view itself, never in the tab bar.
     this.viewControls = h('div', { class: 'view-head hidden' });
     const tb = this.tabs;
-    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, tb.script, tb.scene, tb.cards, tb.dialogue, tb.characters), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, tb.source, tb.history, tb.reports, tb.export));
+    const viewbar = h('div', { class: 'viewbar' }, h('div', { class: 'tabs' }, tb.script, tb.scene, tb.cards, tb.dialogue, tb.characters), h('span', { class: 'spacer' }), h('div', { class: 'tabs' }, tb.source, tb.history, tb.export));
 
     this.leftPane = h('div', { class: 'pane pane-left' });
     this.rightPaneEl = h('div', { class: 'pane pane-right' });
@@ -747,7 +741,6 @@ export class App {
     this.editor.setText(r.text);
     p.savedVersion = this.editor.version;
     this.assignSceneIdsFromRecords();
-    this.annotations.showTags = !!this.state.layout.showTags;
     this.annotations.load();
     this.dialogueCharacter = session?.dialogueCharacter ?? '';
     this.dialogueScope = session?.dialogueScope ?? 'all';
@@ -1029,7 +1022,7 @@ export class App {
 
   private metaSnapshot() {
     const m = this.project!.meta;
-    const json = JSON.stringify({ highlights: m.highlights, comments: m.comments, passages: m.passages, tags: m.tags ?? [], shelf: m.shelf, sceneArchive: m.sceneArchive, scenes: m.scenes, detached: m.detached, structure: m.structure ?? null });
+    const json = JSON.stringify({ highlights: m.highlights, comments: m.comments, passages: m.passages, shelf: m.shelf, sceneArchive: m.sceneArchive, scenes: m.scenes, detached: m.detached, structure: m.structure ?? null });
     const anchors = new Map<string, any>();
     for (const [id, an] of this.annotations.live) anchors.set(id, { a: { ...an.a }, b: { ...an.b } });
     return { json, anchors, live: JSON.stringify([...anchors]) };
@@ -1402,26 +1395,9 @@ export class App {
       }
       adv = this.fonts.find((f) => f.family === s.font)?.advance ?? 0.6;
     }
-    const pr = this.project?.meta.production;
-    const key = `${this.editor.version}|${adv}|${JSON.stringify(s)}|${pr ? pr.lockId + (this.lockTexts.has(pr.lockId) ? '' : '?') : ''}`;
-    if (this.paginationCache?.key !== key) {
-      const lock = currentLock(this) ?? undefined;
-      this.paginationCache = { key, value: paginate(this.editor.lineTexts, this.editor.parsed, s, { kind: 'all' }, adv, undefined, lock) };
-    }
+    const key = `${this.editor.version}|${adv}|${JSON.stringify(s)}`;
+    if (this.paginationCache?.key !== key) this.paginationCache = { key, value: paginate(this.editor.lineTexts, this.editor.parsed, s, { kind: 'all' }, adv) };
     return this.paginationCache.value;
-  }
-
-  private reportsHandle: { close(): void } | null = null;
-
-  /** Copies of the screenplay for locked pages and revision rounds, by id (loaded on demand). */
-  lockTexts = new Map<string, string>();
-
-  /** Pages were locked or unlocked, or a revision round began. */
-  productionChanged() {
-    this.paginationCache = null;
-    this.updatePageMarkers();
-    this.cards.structureChanged();
-    this.updateMenu();
   }
 
   /** Page break markers in Script/Source view, from the project's export settings. */
@@ -1445,7 +1421,7 @@ export class App {
       const src = first.sourceLine;
       const before = new Set(prev.filter((l) => l.sourceLine === src).map((l) => l.row)).size;
       const after = new Set(rows.filter((l) => l.sourceLine === src).map((l) => l.row)).size;
-      markers.push({ key: L[src].key, frac: before ? before / (before + after) : 0, label: pages[i].label || String(pages[i].number) });
+      markers.push({ key: L[src].key, frac: before ? before / (before + after) : 0, label: String(pages[i].number) });
     }
     this.editor.setPageMarkers(markers);
   }, 350);
@@ -2086,12 +2062,6 @@ export class App {
   // ---------------------------------------------------------------------------------
   // Panels (Cards, Characters)
 
-  /** Opens the Export tab with a preset (closing it first if it is open with other choices). */
-  openExportWith(preset: ExportPreset) {
-    if (this.panel === 'export') this.closePanel(false);
-    this.openPanel('export', preset);
-  }
-
   openPanel(p: PanelName, preset: ExportPreset = {}) {
     if (!this.project) return;
     if (this.panel === p) return;
@@ -2109,16 +2079,12 @@ export class App {
       this.historyHandle = openHistory(this, this.mainEl, this.historyKey ?? undefined);
       this.historyKey = null;
       if (!this.historyHandle) return;
-    } else if (p === 'reports') {
-      this.flush();
-      this.reportsHandle = openReports(this, this.mainEl);
-      if (!this.reportsHandle) return;
     }
     this.panel = p;
     if (p === 'cards') this.cards.open();
     else if (p === 'characters') this.characters.open();
     // Export and History cover both panes.
-    document.body.classList.toggle('in-export', COVERING.has(p));
+    document.body.classList.toggle('in-export', p === 'export' || p === 'history');
     this.alignStatus();
     this.updateChrome();
     this.saveStateSoon();
@@ -2134,9 +2100,6 @@ export class App {
     else if (p === 'history') {
       this.historyHandle?.close();
       this.historyHandle = null;
-    } else if (p === 'reports') {
-      this.reportsHandle?.close();
-      this.reportsHandle = null;
     } else {
       this.exportHandle?.close();
       this.exportHandle = null;
@@ -2626,8 +2589,8 @@ export class App {
       b.disabled = !p;
     }
     // The panes are hidden under Export, so their toggles rest.
-    this.leftToggle.disabled = !!this.panel && COVERING.has(this.panel);
-    this.rightToggle.disabled = !!this.panel && COVERING.has(this.panel);
+    this.leftToggle.disabled = this.panel === 'export' || this.panel === 'history';
+    this.rightToggle.disabled = this.panel === 'export' || this.panel === 'history';
     this.updateViewControls();
     this.updateStatusScene();
     this.updateCounts();
@@ -2869,8 +2832,6 @@ export class App {
     items.push({ head: t("Highlight") });
     for (const c of ['yellow', 'green', 'blue', 'pink'] as const) items.push({ label: this.settings.highlights[c].label, dot: this.settings.highlights[c].color, disabled: !hasSel, run: () => this.highlight(c) });
     items.push({ label: t("Remove highlight"), disabled: !hasSel && !(pos && this.annotations.at(pos).some((r) => r.kind === 'highlight')), run: () => this.highlight(null, pos) });
-    items.push({ label: t("Tag for breakdown…"), kbd: this.commands.label('production.tag'), disabled: !hasSel, run: () => tagMenu(this, { x: e.clientX, y: e.clientY }) });
-    if (pos) for (const tg of tagsAt(this, pos)) items.push({ label: t("Remove tag “{0}” ({1})", tg.name, categoryLabel(tg.category).toLowerCase()), run: () => this.annotations.removeRecord(tg.id) });
     items.push({ sep: true });
     items.push({ label: t("Cut to shelf"), kbd: this.commands.label('shelf.cut'), disabled: !hasSel, run: () => toShelf(this, true) });
     items.push({ label: t("Copy to shelf"), kbd: this.commands.label('shelf.copy'), disabled: !hasSel, run: () => toShelf(this, false) });
@@ -3005,14 +2966,6 @@ export class App {
     reg('project.exportFdx', t("Export Final Draft File…"), t("File"), ['Mod+Alt+E'], () => void exportFinalDraft(this), { inFields: true, enabled: hasProject, menu: 'File' });
     reg('scene.lockNumbers', t("Lock Scene Numbers"), t("Scenes"), [], () => this.lockSceneNumbers(), { enabled: () => !!this.project && !this.numbersLocked && this.editor.parsed.scenes.length > 0, menu: 'Scene' });
     reg('scene.unlockNumbers', t("Unlock Scene Numbers…"), t("Scenes"), [], () => void this.unlockSceneNumbers(), { enabled: () => !!this.project && this.numbersLocked, menu: 'Scene' });
-    const locked = () => !!this.project?.meta.production;
-    reg('production.lockPages', t("Lock Pages…"), t("Production"), [], () => void lockPages(this), { enabled: () => hasProject() && !locked() && this.editor.parsed.scenes.length > 0, menu: 'Production' });
-    reg('production.nextRevision', t("Start Next Revision…"), t("Production"), [], () => void nextRevision(this), { enabled: locked, menu: 'Production' });
-    reg('production.unlockPages', t("Unlock Pages…"), t("Production"), [], () => void unlockPages(this), { enabled: locked, menu: 'Production' });
-    reg('production.sides', t("Sides…"), t("Production"), [], () => this.openExportWith({ sides: true }), { enabled: hasProject, menu: 'Production' });
-    reg('production.reports', t("Reports"), t("Production"), [], () => (this.panel === 'reports' ? this.closePanel() : this.openPanel('reports')), { inFields: true, enabled: hasProject, menu: 'Production' });
-    reg('production.tag', t("Tag for Breakdown…"), t("Production"), ['Mod+Shift+B'], () => tagMenu(this), { enabled: hasProject, menu: 'Production' });
-    reg('view.breakdownTags', t("Show or Hide Breakdown Tags"), t("Production"), [], () => setTagsShown(this, !this.annotations.showTags), { enabled: hasProject, menu: 'Production' });
     reg('scene.writtenNumbers', t("Scene Numbers in Fountain Text…"), t("Scenes"), [], () => openSceneNumbers(this), { enabled: hasProject, menu: 'Scene' });
     reg('project.review', t("Review: Comments & Alternatives"), t("Scenes"), [], () => this.showRightTab('comments'), { enabled: hasProject, menu: 'Scene' });
     reg('project.shelf', t("Shelf"), t("Scenes"), [], () => this.showRightTab('shelf'), { enabled: hasProject, menu: 'Scene' });
@@ -3400,11 +3353,6 @@ export class App {
         ['scene.new', 'scene.duplicate', 'scene.moveUp', 'scene.moveDown'],
         ['scene.archive', 'scene.delete'],
         ['scene.lockNumbers', 'scene.unlockNumbers', 'scene.writtenNumbers'],
-      ]],
-      ['Production', [
-        ['production.lockPages', 'production.nextRevision', 'production.unlockPages'],
-        ['production.reports', 'production.sides'],
-        ['production.tag', 'view.breakdownTags'],
       ]],
       ['Help', [['app.commands'], ['app.updates', 'app.about']]],
     ];

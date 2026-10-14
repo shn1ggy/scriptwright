@@ -200,13 +200,6 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 - Changed text in an exported PDF is marked as passages: words separated only by spaces share one highlight or underline.
 - History: every action for a version sits in one row of buttons, Restore last and primary; no overflow menu.
 
-## 7d. Production
-
-- Production tools follow industry conventions over our own taste: black text and asterisks for revisions, the colour order white → blue → pink → yellow → green → goldenrod → buff → salmon → cherry, A pages and joined pages ("12-13"), lengths in eighths of a page measured by the space a scene takes on the page.
-- The revision line in the page header only appears on pages that changed in that round.
-- Breakdown tags use the usual breakdown-sheet colours per category, as an underline (never a fill, so they don't compete with highlights). They are hidden unless switched on.
-- Reports are plain tables: numbers right-aligned, one row per scene, character or location; every report exports as PDF and CSV.
-
 ## 8. The printed page
 
 Export defaults are taken from a finished screenplay (DRUCK, 2026) and should stay that way

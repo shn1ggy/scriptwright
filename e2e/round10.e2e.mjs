@@ -64,7 +64,7 @@ await check('deleting a comment removes it from the Review pane at once', async 
 
 await check('preview brightness is applied and remembered; Source sits next to Export', async () => {
   const tabs = await page.locator('.viewbar > .tabs:last-child .tab').allTextContents();
-  assert(JSON.stringify(tabs) === '["Source","History","Reports","Export"]', JSON.stringify(tabs));
+  assert(JSON.stringify(tabs) === '["Source","History","Export"]', JSON.stringify(tabs));
   await page.keyboard.press('Control+E');
   await page.waitForSelector('.export-preview canvas', { timeout: 15000 });
   await page.locator('.preview-dim input').fill('70');
