@@ -58,6 +58,28 @@ export interface ResolvedFamily {
  * the bundled Courier Prime, PDF's built-in Courier, or a system family.
  * Falls back to Courier when the family is not available.
  */
+/**
+ * Column ranges [start, end) of changed text on one line, without leading or trailing spaces.
+ * Neighbouring changes that only have whitespace between them become one range.
+ */
+export function changedSpans(runs: Array<{ text: string; style: number }>): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  let col = 0;
+  let text = '';
+  for (const run of runs) {
+    if (run.style & S_CHANGED && run.text.trim()) {
+      const a = col + (run.text.length - run.text.trimStart().length);
+      const b = col + run.text.trimEnd().length;
+      const last = out[out.length - 1];
+      if (last && !text.slice(last[1], a).trim()) last[1] = b;
+      else out.push([a, b]);
+    }
+    text += run.text;
+    col += run.text.length;
+  }
+  return out;
+}
+
 export function registerFamily(doc: PdfDocument, prefix: string, family: string, info: RenderInfo): ResolvedFamily {
   if (family === 'Courier Prime' && info.fontsDir) {
     const faces = COURIER_PRIME_FILES.map((f) => {
@@ -202,19 +224,22 @@ export function renderPdf(result: PaginationResult, s: ExportSettings, info: Ren
 
     for (const line of page.lines) {
       const y = top + line.row * lineH + baseline;
-      let x = left + line.col * charW;
+      const x0 = left + line.col * charW;
+      // Changed passages are marked as one span: words separated only by spaces join up.
+      const spans = changedSpans(line.runs);
+      if (s.revHighlight) for (const [a, b] of spans) doc.rect(x0 + a * charW - 0.5, y - s.fontSize * 0.72, (b - a) * charW + 1, lineH * 0.98, revTint);
+      let x = x0;
       for (const run of line.runs) {
         if (!run.text) continue;
         const changed = !!(run.style & S_CHANGED);
         const style = changed && s.revBold ? run.style | S_BOLD : run.style;
         const font = `F${styleIndex(style)}`;
         const w = run.text.length * charW;
-        if (changed && s.revHighlight && run.text.trim()) doc.rect(x - 0.5, y - s.fontSize * 0.72, w + 1, lineH * 0.98, revTint);
         doc.text(x, y, run.text, font, s.fontSize, 0, changed && s.revColorText ? revRgb : undefined);
         if (run.style & S_UNDERLINE) doc.line(x, y + s.fontSize * 0.14, x + w, y + s.fontSize * 0.14, Math.max(0.5, s.fontSize / 20), changed && s.revColorText ? revRgb : undefined);
-        if (changed && s.revUnderline && run.text.trim()) doc.line(x, y + s.fontSize * 0.2, x + w, y + s.fontSize * 0.2, Math.max(0.6, s.fontSize / 16), revRgb);
         x += w;
       }
+      if (s.revUnderline) for (const [a, b] of spans) doc.line(x0 + a * charW, y + s.fontSize * 0.2, x0 + b * charW, y + s.fontSize * 0.2, Math.max(0.6, s.fontSize / 16), revRgb);
       if (line.mark && s.revMargin && s.revMarkChar.trim()) doc.text(markX, y, s.revMarkChar.trim().slice(0, 3), 'F1', s.fontSize, 0, s.revColorText || s.revHighlight || s.revUnderline ? revRgb : undefined);
       if (line.sceneNumber && s.sceneNumbers !== 'off') {
         const num = line.sceneNumber;

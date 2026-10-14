@@ -31,6 +31,24 @@ if (-not (Test-Path $exe)) {
   Remove-Item $zip
 }
 
+# Courier Prime (SIL Open Font License) from Google Fonts, once. The marker tells a real download
+# apart from older packages that carried a stand-in font under the same names.
+$fonts = Join-Path $root 'fonts'
+if (-not (Test-Path (Join-Path $fonts 'courier-prime.ok'))) {
+  Write-Host "== Downloading the Courier Prime font ..."
+  New-Item -ItemType Directory -Path $fonts -Force | Out-Null
+  $base = 'https://raw.githubusercontent.com/google/fonts/main/ofl/courierprime/'
+  try {
+    foreach ($f in 'CourierPrime-Regular.ttf', 'CourierPrime-Bold.ttf', 'CourierPrime-Italic.ttf', 'CourierPrime-BoldItalic.ttf', 'OFL.txt') {
+      Invoke-WebRequest -Uri ($base + $f) -OutFile (Join-Path $fonts $f) -UseBasicParsing
+    }
+    Set-Content (Join-Path $fonts 'courier-prime.ok') 'Courier Prime from github.com/google/fonts'
+  } catch {
+    Write-Host "   Could not download it now; Scriptwright uses Courier until the next start."
+    Get-ChildItem $fonts -Filter 'CourierPrime-*.ttf' | Remove-Item
+  }
+}
+
 Write-Host "== Installing the current version of Scriptwright ..."
 $res = Join-Path $runtime 'resources'
 foreach ($d in 'app', 'fonts') {

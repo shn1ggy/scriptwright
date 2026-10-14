@@ -65,3 +65,17 @@ test('renamed heading with scene ids still matches', () => {
   assert.equal(r.changedWords(r.lines.indexOf('EXT. B - NIGHT')), 'EXT.NIGHT');
   assert.equal(r.ch.stats.addedScenes, 0);
 });
+
+test('changed words separated only by spaces are marked as one span', async () => {
+  const { changedSpans } = await import('../src/main/pdfexport');
+  const { S_CHANGED } = await import('../src/shared/paginate');
+  const runs = [
+    { text: 'She ', style: 0 },
+    { text: 'opens', style: S_CHANGED },
+    { text: ' ', style: 0 },
+    { text: 'the old door ', style: S_CHANGED },
+    { text: 'and ', style: 0 },
+    { text: 'waits', style: S_CHANGED },
+  ];
+  assert.deepEqual(changedSpans(runs), [[4, 22], [27, 32]]);
+});

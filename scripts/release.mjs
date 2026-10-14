@@ -15,6 +15,14 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const version = pkg.version;
 
+// The package carries the fonts the PDFs are set in, so they must be the real Courier Prime.
+const font = path.join(root, 'resources', 'fonts', 'CourierPrime-Regular.ttf');
+const isCourierPrime = (() => { try { const b = readFileSync(font); return b.includes(Buffer.from('Courier Prime', 'latin1')) || b.includes(Buffer.from('Courier Prime', 'utf16le').swap16()); } catch { return false; } })();
+if (!isCourierPrime) {
+  console.error('resources/fonts does not hold Courier Prime. Run `node scripts/fetch-fonts.mjs` first.');
+  process.exit(1);
+}
+
 const b = spawnSync(process.execPath, [path.join(root, 'scripts', 'build.mjs'), '--prod'], { stdio: 'inherit', cwd: root });
 if (b.status) process.exit(b.status);
 

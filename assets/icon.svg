@@ -1,19 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A3038"/><stop offset="1" stop-color="#1B1F25"/></linearGradient>
-    <radialGradient id="brass" cx="0.38" cy="0.35" r="0.7"><stop offset="0" stop-color="#F6DE9A"/><stop offset="0.55" stop-color="#C99A3E"/><stop offset="1" stop-color="#8A6420"/></radialGradient>
-  </defs>
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2B3139"/><stop offset="1" stop-color="#171A1F"/></linearGradient></defs>
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <rect x="136" y="92" width="256" height="328" rx="14" fill="#F4F1EA"/>
-  <rect x="136" y="92" width="256" height="328" rx="14" fill="none" stroke="#000" stroke-opacity=".08" stroke-width="2"/>
-  <rect x="196" y="150" width="148" height="14" rx="4" fill="#9B3AAE"/>
-  <rect x="196" y="188" width="164" height="10" rx="4" fill="#3A3F47"/>
-  <rect x="196" y="208" width="132" height="10" rx="4" fill="#3A3F47"/>
-  <rect x="246" y="246" width="60" height="10" rx="4" fill="#3A3F47"/>
-  <rect x="222" y="266" width="108" height="10" rx="4" fill="#3A3F47"/>
-  <rect x="222" y="286" width="90" height="10" rx="4" fill="#3A3F47"/>
-  <rect x="196" y="324" width="152" height="10" rx="4" fill="#3A3F47"/>
-  <rect x="196" y="344" width="110" height="10" rx="4" fill="#3A3F47"/>
-  <circle cx="164" cy="154" r="14" fill="url(#brass)"/>
-  <circle cx="164" cy="358" r="14" fill="url(#brass)"/>
+  <path transform="translate(108.0 380) scale(0.42 -0.42)" d="M161 9C212 -10 258 -15 308 -15C460 -15 544 52 544 172C544 271 487 325 366 350C265 371 209 376 209 427C209 467 246 499 307 499C354 499 389 477 409 438C421 414 425 392 465 392C503 392 515 407 515 444C515 446 515 447 515 449L513 543C512 585 504 595 472 595C445 595 433 592 422 568C380 586 339 595 294 595C161 595 69 517 69 406C69 307 127 270 237 241C347 212 403 212 403 149C403 103 367 78 308 78C242 78 198 102 172 153C154 188 149 216 111 216C70 216 56 200 56 158C56 156 56 155 56 153L59 38C60 -3 75 -15 115 -15C137 -15 150 -10 161 9Z" fill="#ECEFF3"/>
+  <rect x="358.5" y="112.1" width="22" height="285.9" rx="6" fill="#47C1F5"/>
 </svg>

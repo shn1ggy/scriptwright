@@ -57,6 +57,11 @@ function saveWindowState() {
   } catch {}
 }
 
+/** The app icon (Dock, task bar), copied into dist/ by the build. */
+function appIconPath(): string {
+  return path.join(__dirname, 'icon.png');
+}
+
 function fontsDir(): string {
   const packaged = path.join(process.resourcesPath ?? '', 'fonts');
   if (app.isPackaged && fs.existsSync(packaged)) return packaged;
@@ -80,6 +85,7 @@ function createWindow() {
     backgroundColor: '#272B33',
     show: false,
     title: 'Scriptwright',
+    ...(fs.existsSync(appIconPath()) ? { icon: appIconPath() } : {}),
     // The app's own top bar takes the place of the system title bar.
     titleBarStyle: 'hidden',
     ...(isMac ? { trafficLightPosition: { x: 14, y: 13 } } : { titleBarOverlay: { color: '#272B33', symbolColor: '#C9CED6', height: 38 } }),
@@ -421,6 +427,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
   app.whenReady().then(() => {
+    if (isMac && app.dock && fs.existsSync(appIconPath())) app.dock.setIcon(appIconPath());
     setup();
     createWindow();
     app.on('activate', () => {

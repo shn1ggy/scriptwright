@@ -79,8 +79,7 @@ await check('History view: timeline, filter, scenes / all changes / pages', asyn
   await sleep(600);
   await page.screenshot({ path: path.join(os.tmpdir(), 'sw-r13-history-pages.png') });
   // Pin keeps it on top
-  await page.click('.hist-actions .icon-btn');
-  await page.locator('.menu [role="menuitem"]:has-text("Pin")').click();
+  await page.locator('.hist-actions .btn:text-is("Pin")').click();
   await sleep(300);
   assert((await page.locator('.hist-group').first().textContent()).startsWith('Pinned'), 'not pinned');
   await page.keyboard.press('Escape');

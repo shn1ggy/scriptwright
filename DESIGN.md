@@ -196,7 +196,9 @@ Help text sits directly under its field (4 px), and the next row follows after 1
 
 - About is the last section of Settings: icon, name and version first, then plain facts in a two-column grid, then Updates, then Credits.
 - Update checks are quiet at start; a toast appears only when a newer version exists and has not been skipped. Nothing installs without a confirmation, and work is saved before a restart.
-- The app icon lives in `assets/icon.svg` and is the only place the brand mark is drawn.
+- The app icon is a typewriter "S" with a text cursor in the accent blue: `assets/icon.svg` (the mark), `assets/icon.png` (Dock and task bar, drawn on the macOS icon grid).
+- Changed text in an exported PDF is marked as passages: words separated only by spaces share one highlight or underline.
+- History: every action for a version sits in one row of buttons, Restore last and primary; no overflow menu.
 
 ## 8. The printed page
 

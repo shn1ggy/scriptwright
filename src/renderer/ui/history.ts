@@ -4,8 +4,8 @@
 
 import type { App } from '../app';
 import { bridge } from '../bridge';
-import { h, icon, iconButton, withClear } from './dom';
-import { MenuItem, confirmDialog, openMenu, promptDialog, pushEscape, toast } from './overlay';
+import { h, icon, withClear } from './dom';
+import { confirmDialog, promptDialog, pushEscape, toast } from './overlay';
 import { diffLines } from './compare';
 import { restoreVersion, saveDraft, saveTextAsDraft } from './drafts';
 import { loadPdfjs, projectExportSettings } from './export';
@@ -330,20 +330,16 @@ export function openHistory(app: App, host: HTMLElement, initialKey?: string): H
       return;
     }
     const meta = e.kind === 'snapshot' ? t('Saved automatically while writing') : e.facts;
-    // One clear action (Restore); the rest of what can be done with a version is in its menu.
-    const more = iconButton('more', t('More actions'), (ev) => {
-      const items: MenuItem[] =
-        e.kind === 'snapshot'
-          ? [{ label: t('Keep as Draft…'), run: () => void keepAsDraft(e) }]
-          : [
-              { label: t('Rename…'), run: () => void rename(e) },
-              { label: e.pinned ? t('Unpin') : t('Pin'), run: () => togglePin(e) },
-              { sep: true },
-              { label: t('Delete…'), run: () => void remove(e) },
-            ];
-      openMenu(items, (ev.currentTarget as HTMLElement).getBoundingClientRect());
-    });
-    const actions = h('div', { class: 'hist-actions' }, h('button', { class: 'btn primary', onclick: () => void restore(e) }, t('Restore…')), more);
+    // Everything that can be done with a version sits in one row; Restore is the main action.
+    const btn = (label: string, run: () => void, cls = 'btn') => h('button', { class: cls, onclick: run }, label);
+    const actions = h(
+      'div',
+      { class: 'hist-actions' },
+      ...(e.kind === 'snapshot'
+        ? [btn(t('Keep as Draft…'), () => void keepAsDraft(e))]
+        : [btn(t('Rename…'), () => void rename(e)), btn(e.pinned ? t('Unpin') : t('Pin'), () => togglePin(e)), btn(t('Delete…'), () => void remove(e))]),
+      btn(t('Restore…'), () => void restore(e), 'btn primary'),
+    );
 
     let note: HTMLTextAreaElement | null = null;
     if (e.kind === 'draft' || e.kind === 'export') {

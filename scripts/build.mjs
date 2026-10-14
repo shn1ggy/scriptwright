@@ -53,6 +53,7 @@ const configs = [
 cpSync(path.join(root, 'src/renderer/index.html'), path.join(out, 'renderer', 'index.html'));
 cpSync(path.join(root, 'src/renderer/styles.css'), path.join(out, 'renderer', 'styles.css'));
 cpSync(path.join(root, 'assets/icon.svg'), path.join(out, 'renderer', 'icon.svg'));
+cpSync(path.join(root, 'assets/icon.png'), path.join(out, 'icon.png'));
 const fontsDir = path.join(root, 'resources', 'fonts');
 if (existsSync(fontsDir)) {
   for (const f of readdirSync(fontsDir)) if (/\.(ttf|txt)$/i.test(f)) copyFileSync(path.join(fontsDir, f), path.join(out, 'renderer', 'fonts', f));
