@@ -62,6 +62,15 @@ test('a document exports as a PDF', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('a document exports in sans and in the screenplay’s monospace face too', () => {
+  const { root, b } = setup();
+  for (const font of ['sans', 'mono'] as const) {
+    const pdf = b.exportDocumentPdf('# Logline\n\nLisa sends out *one more* application.\n', { paper: 'Letter', title: 'DRUCK', author: '', docTitle: 'Exposé', font, mono: 'Courier Prime' });
+    assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  }
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('a document from version 0.20 (.md) is renamed to .txt with its text', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sw-docs-md-'));
   const b = new Backend({ userDataDir: path.join(root, 'ud'), fontsDir: path.join(root, 'fonts') });

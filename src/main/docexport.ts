@@ -1,5 +1,6 @@
 // PDF of a document (exposé, treatment …): a simple book page with headings, paragraphs and
-// lists, set in a serif face from the system (Courier Prime when none is found).
+// lists, set in a serif or sans face from the system (Courier Prime when none is found), or
+// in the screenplay's own monospace face.
 
 import { PdfDocument } from './pdfwriter';
 import { RenderInfo, registerFamily } from './pdfexport';
@@ -16,9 +17,14 @@ export interface DocumentPdfOptions {
   docTitle: string;
   /** Paragraphs set justified (flush on both sides). */
   justify?: boolean;
+  /** Serif (default), sans or the screenplay's monospace face (`mono` names that family). */
+  font?: 'serif' | 'sans' | 'mono';
+  mono?: string;
 }
 
 const SERIFS = ['Charter', 'Iowan Old Style', 'Georgia', 'Cambria', 'Palatino', 'Book Antiqua', 'Times New Roman', 'Liberation Serif', 'DejaVu Serif'];
+// The same order as on screen: Segoe UI on Windows, Avenir Next on the Mac.
+const SANS = ['Segoe UI', 'Avenir Next', 'Helvetica Neue', 'Arial', 'Liberation Sans', 'DejaVu Sans'];
 const GREY: [number, number, number] = [0.42, 0.42, 0.42];
 
 interface Seg {
@@ -40,11 +46,15 @@ function segments(text: string, styles: number[]): Seg[] {
 export function renderDocumentPdf(text: string, o: DocumentPdfOptions, info: RenderInfo): Buffer {
   const doc = new PdfDocument();
   let family = 'Courier Prime';
-  const available = new Set((info.families?.() ?? []).map((f) => f.family));
-  for (const f of SERIFS) {
-    if (available.has(f)) {
-      family = f;
-      break;
+  const mono = o.font === 'mono';
+  if (mono) family = o.mono || 'Courier Prime';
+  else {
+    const available = new Set((info.families?.() ?? []).map((f) => f.family));
+    for (const f of o.font === 'sans' ? SANS : SERIFS) {
+      if (available.has(f)) {
+        family = f;
+        break;
+      }
     }
   }
   registerFamily(doc, 'F', family, info);
@@ -138,8 +148,9 @@ export function renderDocumentPdf(text: string, o: DocumentPdfOptions, info: Ren
 
   const lines = text.split('\n');
   const parsed = parse(lines, { prose: true });
-  const body = 11.5;
-  const lead = body * 1.5;
+  // The typewriter face is set like a screenplay page: 12 pt.
+  const body = mono ? 12 : 11.5;
+  const lead = body * (mono ? 1.4 : 1.5);
   let prevBlank = true;
   for (let i = 0; i < lines.length; i++) {
     const pl = parsed.lines[i];

@@ -205,6 +205,8 @@ export interface ProjectMeta {
   documents?: DocumentRecord[];
   /** Documents print with justified paragraphs. */
   docJustify?: boolean;
+  /** Typeface of documents, on screen and in their PDFs (serif when unset). */
+  docFont?: 'serif' | 'sans' | 'mono';
   /** Story structure: the chosen model, which scene carries each beat, and an own model's beats. */
   structure?: StructureState;
 }
@@ -218,6 +220,10 @@ export interface DocumentRecord {
   color?: string;
   archived?: boolean;
   created: string;
+  /** Highlights, comments and alternative passages in the document (like the screenplay's). */
+  highlights?: HighlightRecord[];
+  comments?: CommentRecord[];
+  passages?: PassageRecord[];
 }
 
 /** A copy of the screenplay saved with every PDF export, to compare later versions against. */

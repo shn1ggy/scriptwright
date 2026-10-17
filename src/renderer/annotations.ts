@@ -4,7 +4,7 @@
 // open each attached record has a live anchor that follows edits; undo and redo restore
 // anchors (and passage versions) exactly as they were.
 
-import type { App } from './app';
+import type { Editor } from './editor/editor';
 import { Step, Pos } from '../shared/doc';
 import {
   LiveAnchor,
@@ -32,6 +32,30 @@ interface Snapshot {
   passages: string;
 }
 
+/** Where the records live and how changes are recorded: the screenplay, or one document. */
+export interface AnnHost {
+  readonly editor: Editor;
+  /** The lists of records, or null when nothing is open. */
+  store(): AnnStore | null;
+  /** Runs a change to the records as one step of the editor's undo history. */
+  undoable<T>(fn: () => T, label: string): T;
+  markDirty(): void;
+  /** The scene heading (or document heading) above a line, kept with comments and passages. */
+  headingAt(line: number): string | undefined;
+  /** The records or their places changed (the Review pane redraws). */
+  changed(): void;
+  /** Selects a range and shows it. */
+  reveal(a: Pos, b: Pos): void;
+  /** 'script' or 'document', for the wording of dialogs. */
+  readonly scope: 'script' | 'document';
+}
+
+export interface AnnStore {
+  highlights: HighlightRecord[];
+  comments: CommentRecord[];
+  passages: PassageRecord[];
+}
+
 export interface Deco {
   a: { key: number; ch: number };
   b: { key: number; ch: number };
@@ -45,14 +69,45 @@ export class Annotations {
   private current: Snapshot | null = null;
   showResolved = false;
 
-  constructor(private app: App) {}
+  constructor(readonly host: AnnHost) {}
 
-  private get meta() {
-    return this.app.project!.meta;
+  get scope() {
+    return this.host.scope;
+  }
+
+  get editor() {
+    return this.host.editor;
+  }
+
+  /** The record lists (only valid while store() is not null). */
+  get meta(): AnnStore {
+    return this.host.store()!;
+  }
+
+  private get open() {
+    return !!this.host.store();
+  }
+
+  /** Runs a change to the records as one undoable step. */
+  undoable<T>(fn: () => T, label: string): T {
+    return this.host.undoable(fn, label);
+  }
+
+  markDirty() {
+    this.host.markDirty();
+  }
+
+  /** Shows a record's text in its editor. */
+  reveal(id: string): boolean {
+    const an = this.live.get(id);
+    if (!an) return false;
+    const idx = keyIndex(this.editor.lines);
+    this.host.reveal({ line: idx.get(an.a.key)!, ch: an.a.ch }, { line: idx.get(an.b.key)!, ch: an.b.ch });
+    return true;
   }
 
   records(): Array<{ kind: AnnKind; rec: AnyRecord }> {
-    if (!this.app.project) return [];
+    if (!this.open) return [];
     const m = this.meta;
     return [
       ...m.highlights.map((rec) => ({ kind: 'highlight' as const, rec })),
@@ -68,8 +123,8 @@ export class Annotations {
   /** Finds stored anchors in the text after opening or reloading. */
   load() {
     this.live.clear();
-    if (!this.app.project) return;
-    const lines = this.app.editor.lines;
+    if (!this.open) return;
+    const lines = this.host.editor.lines;
     const full = fullText(lines);
     let changed = false;
     for (const { rec } of this.records()) {
@@ -82,7 +137,7 @@ export class Annotations {
       }
     }
     this.current = this.snapshot();
-    if (changed) this.app.markMetaDirty();
+    if (changed) this.host.markDirty();
     this.refresh();
   }
 
@@ -91,7 +146,7 @@ export class Annotations {
     for (const [id, an] of this.live) anchors.set(id, cloneAnchor(an));
     const detached = new Map<string, string | undefined>();
     for (const { rec } of this.records()) detached.set(rec.id, rec.detached);
-    return { anchors, detached, passages: JSON.stringify(this.app.project?.meta.passages ?? []) };
+    return { anchors, detached, passages: JSON.stringify(this.host.store()?.passages ?? []) };
   }
 
   private restore(s: Snapshot) {
@@ -111,8 +166,8 @@ export class Annotations {
 
   /** Called for every editor change. */
   onChange(origin: string, steps: Step[]) {
-    if (!this.app.project) return;
-    const hist = this.app.editor.history;
+    if (!this.open) return;
+    const hist = this.host.editor.history;
     if (origin === 'undo') {
       const entry = hist.undone[hist.undone.length - 1];
       const snap = entry && this.before.get(entry);
@@ -144,7 +199,7 @@ export class Annotations {
   }
 
   private finish() {
-    const idx = keyIndex(this.app.editor.lines);
+    const idx = keyIndex(this.host.editor.lines);
     for (const [id, an] of [...this.live]) {
       const problem = anchorProblem(an, idx);
       if (!problem) continue;
@@ -156,14 +211,14 @@ export class Annotations {
       this.live.delete(id);
     }
     this.current = this.snapshot();
-    this.app.markMetaDirty();
+    this.host.markDirty();
     this.refresh();
   }
 
   /** Writes live anchors into the records (before saving project information). */
   syncToMeta() {
-    if (!this.app.project || !this.live.size) return;
-    const lines = this.app.editor.lines;
+    if (!this.open || !this.live.size) return;
+    const lines = this.host.editor.lines;
     const idx = keyIndex(lines);
     const full = fullText(lines);
     for (const { rec } of this.records()) {
@@ -176,13 +231,13 @@ export class Annotations {
 
   textOf(id: string): string {
     const an = this.live.get(id);
-    if (an) return anchorText(an, this.app.editor.lines, keyIndex(this.app.editor.lines));
+    if (an) return anchorText(an, this.host.editor.lines, keyIndex(this.host.editor.lines));
     return this.record(id)?.rec.anchor.quote ?? '';
   }
 
   /** Editor selection as a live anchor (null when empty). */
   selectionAnchor(): LiveAnchor | null {
-    const ed = this.app.editor;
+    const ed = this.host.editor;
     const s = ed.sel;
     const a = s.anchor.line < s.head.line || (s.anchor.line === s.head.line && s.anchor.ch <= s.head.ch) ? s.anchor : s.head;
     const b = a === s.anchor ? s.head : s.anchor;
@@ -192,7 +247,7 @@ export class Annotations {
 
   /** Records whose anchor contains the position. */
   at(pos: Pos): Array<{ kind: AnnKind; rec: AnyRecord }> {
-    const ed = this.app.editor;
+    const ed = this.host.editor;
     const idx = keyIndex(ed.lines);
     const out: Array<{ kind: AnnKind; rec: AnyRecord }> = [];
     for (const r of this.records()) {
@@ -208,7 +263,7 @@ export class Annotations {
   }
 
   overlapping(an: LiveAnchor, kind?: AnnKind) {
-    const idx = keyIndex(this.app.editor.lines);
+    const idx = keyIndex(this.host.editor.lines);
     return this.records().filter((r) => (!kind || r.kind === kind) && this.live.has(r.rec.id) && overlaps(this.live.get(r.rec.id)!, an, idx));
   }
 
@@ -216,20 +271,20 @@ export class Annotations {
   // Mutations
 
   private storedFor(an: LiveAnchor) {
-    const lines = this.app.editor.lines;
+    const lines = this.host.editor.lines;
     return toStored(an, lines, keyIndex(lines))!;
   }
 
   private sceneHeadingAt(an: LiveAnchor): string | undefined {
-    const i = keyIndex(this.app.editor.lines).get(an.a.key);
-    return i === undefined ? undefined : this.app.sceneAt(i)?.heading;
+    const i = keyIndex(this.host.editor.lines).get(an.a.key);
+    return i === undefined ? undefined : this.host.headingAt(i);
   }
 
   /** Highlights the selection; overlapping highlights are trimmed or replaced. */
   highlight(color: HighlightColor | null): boolean {
     const an = this.selectionAnchor();
     if (!an) return false;
-    return this.app.undoable(() => this.highlightAt(an, color), color ? t("Highlight") : t("Remove Highlight"));
+    return this.host.undoable(() => this.highlightAt(an, color), color ? t("Highlight") : t("Remove Highlight"));
   }
 
   private highlightAt(an: LiveAnchor, color: HighlightColor | null): boolean {
@@ -242,13 +297,13 @@ export class Annotations {
       this.live.set(rec.id, cloneAnchor(an));
     }
     this.current = this.snapshot();
-    this.app.markMetaDirty();
+    this.host.markDirty();
     this.refresh();
     return true;
   }
 
   addComment(text: string, an: LiveAnchor): CommentRecord {
-    return this.app.undoable(() => this.addCommentNow(text, an), t("Comment"));
+    return this.host.undoable(() => this.addCommentNow(text, an), t("Comment"));
   }
 
   private addCommentNow(text: string, an: LiveAnchor): CommentRecord {
@@ -256,23 +311,23 @@ export class Annotations {
     this.meta.comments.push(rec);
     this.live.set(rec.id, cloneAnchor(an));
     this.current = this.snapshot();
-    this.app.markMetaDirty();
+    this.host.markDirty();
     this.refresh();
     return rec;
   }
 
   addPassage(an: LiveAnchor, name: string): PassageRecord {
-    return this.app.undoable(() => this.addPassageNow(an, name), t("Alternative Passage"));
+    return this.host.undoable(() => this.addPassageNow(an, name), t("Alternative Passage"));
   }
 
   private addPassageNow(an: LiveAnchor, name: string): PassageRecord {
-    const text = anchorText(an, this.app.editor.lines, keyIndex(this.app.editor.lines));
+    const text = anchorText(an, this.host.editor.lines, keyIndex(this.host.editor.lines));
     const first = { id: uid(), name: t('Original'), text, created: new Date().toISOString() };
     const rec: PassageRecord = { id: uid(), name, anchor: this.storedFor(an), activeId: first.id, alternatives: [first], sceneHeading: this.sceneHeadingAt(an) };
     this.meta.passages.push(rec);
     this.live.set(rec.id, cloneAnchor(an));
     this.current = this.snapshot();
-    this.app.markMetaDirty();
+    this.host.markDirty();
     this.refresh();
     return rec;
   }
@@ -282,7 +337,7 @@ export class Annotations {
     const an = this.selectionAnchor();
     const r = this.record(id);
     if (!an || !r) return false;
-    return this.app.undoable(() => this.reattachNow(id, an, r), t("Attach"));
+    return this.host.undoable(() => this.reattachNow(id, an, r), t("Attach"));
   }
 
   private reattachNow(id: string, an: LiveAnchor, r: { rec: AnyRecord }): boolean {
@@ -290,13 +345,13 @@ export class Annotations {
     r.rec.anchor = this.storedFor(an);
     this.live.set(id, cloneAnchor(an));
     this.current = this.snapshot();
-    this.app.markMetaDirty();
+    this.host.markDirty();
     this.refresh();
     return true;
   }
 
   removeRecord(id: string, refresh = true) {
-    if (refresh) this.app.undoable(() => this.removeNow(id, true), t("Delete"));
+    if (refresh) this.host.undoable(() => this.removeNow(id, true), t("Delete"));
     else this.removeNow(id, false);
   }
 
@@ -308,14 +363,14 @@ export class Annotations {
     this.live.delete(id);
     if (refresh) {
       this.current = this.snapshot();
-      this.app.markMetaDirty();
+      this.host.markDirty();
       this.refresh();
     }
   }
 
   /** Restores a removed record (used by "Undo" in toasts). */
   restoreRecord(kind: AnnKind, rec: AnyRecord, an: LiveAnchor | null) {
-    this.app.undoable(() => this.restoreNow(kind, rec, an), t("Restore"));
+    this.host.undoable(() => this.restoreNow(kind, rec, an), t("Restore"));
   }
 
   private restoreNow(kind: AnnKind, rec: AnyRecord, an: LiveAnchor | null) {
@@ -324,7 +379,7 @@ export class Annotations {
     (list as AnyRecord[]).push(rec);
     if (an) this.live.set(rec.id, cloneAnchor(an));
     this.current = this.snapshot();
-    this.app.markMetaDirty();
+    this.host.markDirty();
     this.refresh();
   }
 
@@ -338,7 +393,7 @@ export class Annotations {
     if (!p || !an || p.detached) return false;
     const alt = p.alternatives.find((a) => a.id === altId);
     if (!alt || alt.id === p.activeId || !alt.text) return false;
-    const ed = this.app.editor;
+    const ed = this.host.editor;
     const idx = keyIndex(ed.lines);
     const outgoing = p.alternatives.find((a) => a.id === p.activeId);
     if (outgoing) outgoing.text = anchorText(an, ed.lines, idx);
@@ -361,7 +416,7 @@ export class Annotations {
     // Record the state after the switch for redo.
     const entry = ed.history.done[ed.history.done.length - 1];
     if (entry) this.after.set(entry, this.current);
-    this.app.markMetaDirty();
+    this.host.markDirty();
     this.refresh();
     return true;
   }
@@ -379,7 +434,7 @@ export class Annotations {
         if (!c.resolved || this.showResolved) decos.push({ a: an.a, b: an.b, cls: c.resolved ? 'deco-comment resolved' : 'deco-comment' });
       } else decos.push({ a: an.a, b: an.b, cls: 'deco-passage' });
     }
-    this.app.editor.setDecorations(decos);
-    this.app.rightPane?.annotationsChanged();
+    this.host.editor.setDecorations(decos);
+    this.host.changed();
   }
 }

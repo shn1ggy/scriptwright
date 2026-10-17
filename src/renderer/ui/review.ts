@@ -7,6 +7,7 @@ import { CommentRecord, HighlightRecord, PassageRecord } from '../../shared/type
 import { uid } from './dom';
 import { namePassage, openRewriteFor, passageLabel, passageName, passageText } from './rewrite';
 import { t, tn, uiLocale } from '../../shared/i18n';
+import type { Annotations } from '../annotations';
 
 
 function quote(text: string, max = 90): string {
@@ -20,8 +21,12 @@ function when(iso: string): string {
 }
 
 export function renderReview(app: App, body: HTMLElement, rerender: () => void) {
-  const ann = app.annotations;
-  const m = app.project!.meta;
+  const ann = app.ann;
+  const m = ann.host.store();
+  if (!m) return;
+  const inDoc = ann.scope === 'document';
+  // In a document the pane shows that document's comments, passages and highlights.
+  if (inDoc) body.append(h('div', { class: 'rv-scope' }, t('In “{0}”', app.docs.title)));
 
   // Each group folds open and closed; the choice is remembered.
   type RK = 'comments' | 'passages' | 'highlights';
@@ -79,7 +84,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
           : t("Select text and choose Comment ({0}) to add one.", app.commands.label('edit.comment') || t('context menu')),
       ),
     );
-  for (const c of comments) secComments.append(commentCard(app, c, rerender));
+  for (const c of comments) secComments.append(commentCard(app, ann, c, rerender));
 
   // Alternatives -----------------------------------------------------------------------
   const passages = m.passages.filter((p) => !p.detached);
@@ -95,13 +100,13 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
         { class: 'rv-item rv-passage' },
         // The label is the text in the screenplay now; a name, when given, stands above it.
         passageName(p) ? h('div', { class: 'rv-label' }, passageName(p)) : null,
-        h('button', { class: 'rv-quote', title: t("Go to the passage"), onclick: () => app.revealAnnotation(p.id) }, `“${passageText(app, p)}”`),
+        h('button', { class: 'rv-quote', title: t("Go to the passage"), onclick: () => app.revealAnnotation(p.id, ann) }, `“${passageText(ann, p)}”`),
         h('div', { class: 'rv-meta' }, [tn(p.alternatives.length, '{0} version', '{0} versions'), t('using “{0}”', active?.name ?? '?'), p.sceneHeading].filter(Boolean).join(' · ')),
         h(
           'div',
           { class: 'rv-actions' },
-          h('button', { class: 'btn sm', onclick: () => openRewriteFor(app, p.id) }, t("Open…")),
-          h('button', { class: 'btn sm', onclick: () => void namePassage(app, p.id) }, passageName(p) ? t("Rename…") : t("Name…")),
+          h('button', { class: 'btn sm', onclick: () => openRewriteFor(app, ann, p.id) }, t("Open…")),
+          h('button', { class: 'btn sm', onclick: () => void namePassage(ann, p.id) }, passageName(p) ? t("Rename…") : t("Name…")),
         ),
       ),
     );
@@ -118,7 +123,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
         'div',
         { class: 'rv-item rv-row' },
         h('span', { class: `rv-dot dot-${hl.color}`, title: app.settings.highlights[hl.color]?.label }),
-        h('button', { class: 'rv-quote', onclick: () => app.revealAnnotation(hl.id) }, quote(ann.textOf(hl.id), 60)),
+        h('button', { class: 'rv-quote', onclick: () => app.revealAnnotation(hl.id, ann) }, quote(ann.textOf(hl.id), 60)),
         h('button', {
           class: 'icon-btn',
           title: t("Remove highlight"),
@@ -140,7 +145,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
     secDet.append(h('div', { class: 'rv-head warn' }, h('span', null, t("Detached ({0})", detached.length))));
     secDet.append(h('div', { class: 'notice' }, t("The text these belonged to was deleted or changed. Select the right text and attach them again, or delete them.")));
     for (const { kind, rec } of detached) {
-      const label = kind === 'comment' ? `Comment: ${quote((rec as CommentRecord).text, 50)}` : kind === 'passage' ? `Passage: ${passageLabel(app, rec as PassageRecord)}` : `Highlight: ${app.settings.highlights[(rec as HighlightRecord).color]?.label ?? ''}`;
+      const label = kind === 'comment' ? `Comment: ${quote((rec as CommentRecord).text, 50)}` : kind === 'passage' ? `Passage: ${passageLabel(ann, rec as PassageRecord)}` : `Highlight: ${app.settings.highlights[(rec as HighlightRecord).color]?.label ?? ''}`;
       secDet.append(
         h(
           'div',
@@ -157,7 +162,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
                 else rerender();
               },
             }, t("Attach to selection")),
-            kind === 'passage' ? h('button', { class: 'btn sm', onclick: () => openRewriteFor(app, rec.id) }, t("Versions…")) : null,
+            kind === 'passage' ? h('button', { class: 'btn sm', onclick: () => openRewriteFor(app, ann, rec.id) }, t("Versions…")) : null,
             h('button', {
               class: 'btn sm',
               onclick: async () => {
@@ -172,8 +177,7 @@ export function renderReview(app: App, body: HTMLElement, rerender: () => void) 
   }
 }
 
-function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElement {
-  const ann = app.annotations;
+function commentCard(app: App, ann: Annotations, c: CommentRecord, rerender: () => void): HTMLElement {
   const text = h('div', { class: 'rv-text', title: t("Click to edit") }, c.text);
   text.addEventListener('click', () => {
     const ta = h('textarea', { class: 'field', rows: 3 });
@@ -183,9 +187,9 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
     const done = () => {
       const v = ta.value.trim();
       if (v && v !== c.text)
-        app.undoable(() => {
+        ann.undoable(() => {
           c.text = v;
-          app.markMetaDirty();
+          ann.markDirty();
         }, t("Edit Comment"));
       rerender();
     };
@@ -206,9 +210,9 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
   reply.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && reply.value.trim()) {
       const text = reply.value.trim();
-      app.undoable(() => {
+      ann.undoable(() => {
         c.replies.push({ id: uid(), text, created: new Date().toISOString() });
-        app.markMetaDirty();
+        ann.markDirty();
       }, t("Reply"));
       rerender();
     }
@@ -216,7 +220,7 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
   return h(
     'div',
     { class: `rv-item rv-comment${c.resolved ? ' resolved' : ''}` },
-    h('button', { class: 'rv-quote', title: t("Go to the commented text"), onclick: () => app.revealAnnotation(c.id) }, `“${quote(ann.textOf(c.id))}”`),
+    h('button', { class: 'rv-quote', title: t("Go to the commented text"), onclick: () => app.revealAnnotation(c.id, ann) }, `“${quote(ann.textOf(c.id))}”`),
     text,
     ...c.replies.map((r) => h('div', { class: 'rv-reply' }, h('span', { class: 'rv-meta' }, when(r.created)), ' ', r.text)),
     h('div', { class: 'rv-meta' }, when(c.created), c.sceneHeading ? ` · ${c.sceneHeading}` : ''),
@@ -227,9 +231,9 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
       h('button', {
         class: 'btn sm',
         onclick: () => {
-          app.undoable(() => {
+          ann.undoable(() => {
             c.resolved = !c.resolved;
-            app.markMetaDirty();
+            ann.markDirty();
           }, c.resolved ? t("Reopen Comment") : t("Resolve Comment"));
           ann.refresh();
           rerender();
@@ -246,7 +250,7 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
       h('button', {
         class: 'btn sm',
         onclick: () => {
-          deleteComment(app, c.id);
+          deleteComment(ann, c.id);
           rerender();
         },
       }, t("Delete")),
@@ -255,9 +259,8 @@ function commentCard(app: App, c: CommentRecord, rerender: () => void): HTMLElem
 }
 
 /** Deletes a comment, with Undo in the notice. */
-export function deleteComment(app: App, id: string) {
-  const ann = app.annotations;
-  const c = app.project?.meta.comments.find((x) => x.id === id);
+export function deleteComment(ann: Annotations, id: string) {
+  const c = ann.host.store()?.comments.find((x) => x.id === id);
   if (!c) return;
   const an = ann.live.get(c.id) ?? null;
   ann.removeRecord(c.id);
@@ -265,9 +268,8 @@ export function deleteComment(app: App, id: string) {
 }
 
 /** A comment on its own: edit the text, read and add replies, resolve or delete. */
-export function openCommentDialog(app: App, id: string) {
-  const ann = app.annotations;
-  const c = app.project?.meta.comments.find((x) => x.id === id);
+export function openCommentDialog(app: App, ann: Annotations, id: string) {
+  const c = ann.host.store()?.comments.find((x) => x.id === id);
   if (!c) return;
   const ta = h('textarea', { class: 'field', rows: 4, 'aria-label': t("Comment") });
   ta.value = c.text;
@@ -290,11 +292,11 @@ export function openCommentDialog(app: App, id: string) {
       changed = true;
     }
     if (changed) {
-      app.markMetaDirty();
-      app.rightPane.annotationsChanged();
+      ann.markDirty();
+      ann.host.changed();
     }
   };
-  const saveUndoable = () => app.undoable(save, t("Edit Comment"));
+  const saveUndoable = () => ann.undoable(save, t("Edit Comment"));
   const d = openDialog({
     title: c.resolved ? t("Comment (resolved)") : t("Comment"),
     cls: 'comment-dialog',
@@ -306,23 +308,23 @@ export function openCommentDialog(app: App, id: string) {
       reply,
     ],
     buttons: [
-      { label: t("Delete"), danger: true, run: () => deleteComment(app, c.id) },
+      { label: t("Delete"), danger: true, run: () => deleteComment(ann, c.id) },
       {
         label: c.resolved ? t("Reopen") : t("Resolve"),
         run: () => {
-          app.undoable(() => {
+          ann.undoable(() => {
             save();
             c.resolved = !c.resolved;
-            app.markMetaDirty();
+            ann.markDirty();
           }, t("Resolve Comment"));
           ann.refresh();
-          app.rightPane.annotationsChanged();
+          ann.host.changed();
         },
       },
       { label: t("Save"), primary: true, run: () => saveUndoable() },
     ],
     initialFocus: ta,
-    onClose: () => app.editor.focus(),
+    onClose: () => ann.editor.focus(),
   });
   const submitOnModEnter = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {

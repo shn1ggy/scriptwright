@@ -150,7 +150,24 @@ export class App {
   rightPane!: RightPane;
   findbar!: FindBar;
   cards!: SceneCards;
-  annotations = new Annotations(this);
+  // eslint-disable-next-line @typescript-eslint/no-this-alias
+  annotations = new Annotations(((app: App) => ({
+    get editor() {
+      return app.editor;
+    },
+    store: () => app.project?.meta ?? null,
+    undoable: <T>(fn: () => T, label: string) => app.undoable(fn, label),
+    markDirty: () => app.markMetaDirty(),
+    headingAt: (i: number) => app.sceneAt(i)?.heading,
+    changed: () => app.rightPane?.annotationsChanged(),
+    reveal: (a: Pos, b: Pos) => app.revealRange(a, b),
+    scope: 'script' as const,
+  }))(this));
+
+  /** The comments, highlights and passages being worked on: the open document's, else the screenplay's. */
+  get ann(): Annotations {
+    return this.docs?.isOpen ? this.docs.annotations : this.annotations;
+  }
   private leftToggle!: HTMLButtonElement;
   private tooltipButtons: Array<[HTMLButtonElement, string, string]> = [];
 
@@ -1097,6 +1114,7 @@ export class App {
 
   async saveMetaNow() {
     this.annotations.syncToMeta();
+    this.docs?.annotations.syncToMeta();
     const p = this.project;
     if (!p || !p.metaDirty) return;
     this.syncSceneRecords();
@@ -2897,7 +2915,7 @@ export class App {
     items.push({ label: t("Paste"), kbd: formatCombo('Mod+V'), run: () => this.clipboardPaste() });
     items.push({ label: t("Select All"), kbd: formatCombo('Mod+A'), run: () => ed.selectAll() });
     items.push({ sep: true });
-    items.push({ label: t("Rewrite…"), kbd: this.commands.label('edit.rewrite'), run: () => openRewrite(this) });
+    items.push({ label: t("Rewrite…"), kbd: this.commands.label('edit.rewrite'), run: () => openRewrite(this, this.annotations) });
     items.push({ label: t("Comment…"), kbd: this.commands.label('edit.comment'), disabled: !hasSel, run: () => this.addComment() });
     items.push({ head: t("Highlight") });
     for (const c of ['yellow', 'green', 'blue', 'pink'] as const) items.push({ label: this.settings.highlights[c].label, dot: this.settings.highlights[c].color, disabled: !hasSel, run: () => this.highlight(c) });
@@ -2906,14 +2924,15 @@ export class App {
     items.push({ label: t("Cut to shelf"), kbd: this.commands.label('shelf.cut'), disabled: !hasSel, run: () => toShelf(this, true) });
     items.push({ label: t("Copy to shelf"), kbd: this.commands.label('shelf.copy'), disabled: !hasSel, run: () => toShelf(this, false) });
     if (pos) {
-      const { comments, passages } = this.annotationsAt(pos);
+      const ann = this.annotations;
+      const { comments, passages } = this.annotationsAt(pos, ann);
       if (comments.length || passages.length) items.push({ sep: true });
       for (const c of comments) {
         const label = comments.length > 1 ? ` “${c.text.slice(0, 24)}${c.text.length > 24 ? '…' : ''}”` : '';
-        items.push({ label: t("Open comment{0}…", label), kbd: formatCombo('Mod+Click'), run: () => openCommentDialog(this, c.id) });
-        items.push({ label: t("Delete comment{0}", label), run: () => deleteComment(this, c.id) });
+        items.push({ label: t("Open comment{0}…", label), kbd: formatCombo('Mod+Click'), run: () => openCommentDialog(this, ann, c.id) });
+        items.push({ label: t("Delete comment{0}", label), run: () => deleteComment(ann, c.id) });
       }
-      for (const p of passages) items.push({ label: passages.length > 1 ? t("Versions of {0}…", passageLabel(this, p as PassageRecord, 30)) : t("Passage versions…"), kbd: comments.length ? undefined : formatCombo('Mod+Click'), run: () => openRewriteFor(this, p.id) });
+      for (const p of passages) items.push({ label: passages.length > 1 ? t("Versions of {0}…", passageLabel(ann, p as PassageRecord, 30)) : t("Passage versions…"), kbd: comments.length ? undefined : formatCombo('Mod+Click'), run: () => openRewriteFor(this, ann, p.id) });
     }
     const pl = pos ? ed.parsed.lines[pos.line] : null;
     if (pl?.type === 'character' && pl.cue) {
@@ -3027,7 +3046,7 @@ export class App {
       if (a) this.moveSceneBy(a, 1);
     }, { enabled: () => this.activeScene()?.kind === 'scene', menu: 'Scene' });
     reg('dialogue.goToPassage', t("Go to Passage in Script"), t("Scenes"), ['Mod+Enter'], () => this.goToPassage(), { enabled: () => !this.isFullView(), menu: 'Scene' });
-    reg('edit.rewrite', t("Rewrite…"), t("Edit"), ['Alt+A'], () => openRewrite(this), { enabled: hasProject, menu: 'Edit' });
+    reg('edit.rewrite', t("Rewrite…"), t("Edit"), ['Alt+A'], () => openRewrite(this, this.ann), { enabled: hasProject, menu: 'Edit' });
     reg('edit.highlight', t("Highlight…"), t("Edit"), ['Mod+H'], () => this.highlightMenu(), { enabled: hasProject, menu: 'Edit' });
     reg('edit.comment', t("Comment…"), t("Edit"), ['Mod+Shift+M'], () => this.addComment(), { enabled: hasProject, menu: 'Edit' });
     reg('shelf.cut', t("Cut to Shelf"), t("Edit"), ['Mod+Shift+X'], () => toShelf(this, true), { enabled: hasProject, menu: 'Edit' });
@@ -3081,11 +3100,11 @@ export class App {
     else this.editor.selectAll();
   }
 
-  private highlight(color: HighlightColor | null, pos?: Pos | null) {
-    const ann = this.annotations;
+  highlight(color: HighlightColor | null, pos?: Pos | null) {
+    const ann = this.ann;
     if (!ann.selectionAnchor()) {
       // Remove the highlight under the caret / pointer.
-      const at = pos ?? this.editor.sel.head;
+      const at = pos ?? ann.editor.sel.head;
       const hl = ann.at(at).find((r) => r.kind === 'highlight');
       if (color === null && hl) {
         const an = ann.live.get(hl.rec.id) ?? null;
@@ -3099,27 +3118,28 @@ export class App {
 
   /** Highlight colors at the caret (Mod+H). */
   /** Comments (visible ones) and alternative passages covering a position. */
-  annotationsAt(pos: Pos) {
-    const here = this.annotations.at(pos);
-    const comments = here.filter((r) => r.kind === 'comment' && (!(r.rec as CommentRecord).resolved || this.annotations.showResolved)).map((r) => r.rec as CommentRecord);
+  annotationsAt(pos: Pos, ann = this.ann) {
+    const here = ann.at(pos);
+    const comments = here.filter((r) => r.kind === 'comment' && (!(r.rec as CommentRecord).resolved || ann.showResolved)).map((r) => r.rec as CommentRecord);
     const passages = here.filter((r) => r.kind === 'passage').map((r) => r.rec as PassageRecord);
     return { comments, passages };
   }
 
   /** Cmd/Ctrl-click: opens the comment or the versions of the passage under the pointer. */
-  private openAnnotationAt(e: MouseEvent, pos: Pos): boolean {
-    const { comments, passages } = this.annotationsAt(pos);
+  openAnnotationAt(e: MouseEvent, pos: Pos): boolean {
+    const ann = this.ann;
+    const { comments, passages } = this.annotationsAt(pos, ann);
     const n = comments.length + passages.length;
     if (!n) return false;
     if (n === 1) {
-      if (comments.length) openCommentDialog(this, comments[0].id);
-      else openRewriteFor(this, passages[0].id);
+      if (comments.length) openCommentDialog(this, ann, comments[0].id);
+      else openRewriteFor(this, ann, passages[0].id);
       return true;
     }
     openMenu(
       [
-        ...comments.map((c) => ({ label: t("Comment: “{0}{1}”", c.text.slice(0, 40), c.text.length > 40 ? '…' : ''), dot: 'var(--comment)', run: () => openCommentDialog(this, c.id) })),
-        ...passages.map((p) => ({ label: t("Versions: {0}", passageLabel(this, p as PassageRecord, 30)), dot: 'var(--passage)', run: () => openRewriteFor(this, p.id) })),
+        ...comments.map((c) => ({ label: t("Comment: “{0}{1}”", c.text.slice(0, 40), c.text.length > 40 ? '…' : ''), dot: 'var(--comment)', run: () => openCommentDialog(this, ann, c.id) })),
+        ...passages.map((p) => ({ label: t("Versions: {0}", passageLabel(ann, p as PassageRecord, 30)), dot: 'var(--passage)', run: () => openRewriteFor(this, ann, p.id) })),
       ],
       { x: e.clientX, y: e.clientY },
     );
@@ -3127,7 +3147,8 @@ export class App {
   }
 
   private highlightMenu() {
-    const c = this.editor.coordsAtPos(this.editor.sel.head);
+    const ed = this.ann.editor;
+    const c = ed.coordsAtPos(ed.sel.head);
     const at = c ? { x: c.left, y: c.bottom + 4 } : { x: 200, y: 200 };
     openMenu(
       [
@@ -3140,7 +3161,9 @@ export class App {
   }
 
   async addComment() {
-    const an = this.annotations.selectionAnchor();
+    const ann = this.ann;
+    const ed = ann.editor;
+    const an = ann.selectionAnchor();
     if (!an) {
       toast(t("Select the text to comment on."));
       return;
@@ -3148,7 +3171,7 @@ export class App {
     const ta = h('textarea', { class: 'field', rows: 4, placeholder: t("Comment"), 'aria-label': t("Comment") });
     openDialog({
       title: t("Comment"),
-      body: [h('div', { class: 'notice' }, `“${this.editor.selectedText().slice(0, 120)}”`), ta],
+      body: [h('div', { class: 'notice' }, `“${ed.selectedText().slice(0, 120)}”`), ta],
       buttons: [
         { label: t("Cancel") },
         {
@@ -3156,9 +3179,9 @@ export class App {
           primary: true,
           run: () => {
             if (!ta.value.trim()) return false;
-            this.annotations.addComment(ta.value.trim(), an);
+            ann.addComment(ta.value.trim(), an);
             this.showRightTab('comments');
-            this.editor.focus();
+            ed.focus();
           },
         },
       ],
@@ -3175,14 +3198,8 @@ export class App {
   }
 
   /** Shows an annotation's text in the editor (switching to Script view if it is hidden). */
-  revealAnnotation(id: string) {
-    const an = this.annotations.live.get(id);
-    if (!an) {
-      toast(t("This item is detached from the text."));
-      return;
-    }
-    const idx = keyIndex(this.editor.lines);
-    this.revealRange({ line: idx.get(an.a.key)!, ch: an.a.ch }, { line: idx.get(an.b.key)!, ch: an.b.ch });
+  revealAnnotation(id: string, ann = this.ann) {
+    if (!ann.reveal(id)) toast(t("This item is detached from the text."));
   }
 
   /** Selects a range in the editor, switching scene or view when the current view hides it. */
@@ -3586,8 +3603,9 @@ export class App {
     if (this.panel === 'export' && /^Mod\+(=|-|0)$/.test(combo)) return;
     const matches = this.commands.lookup(combo);
     if (!matches.length) return;
-    // Writing a document: the view keys (Mod+1 Script, Mod+2 Scene …) lead back to the screenplay.
-    if (!inDialog && this.docs.hasFocus() && matches[0].id.startsWith('view.')) {
+    // Writing a document: the view keys (Mod+1 Script, Mod+2 Scene …) lead back to the screenplay;
+    // comments, highlights and rewrites work on the document.
+    if (!inDialog && this.docs.hasFocus() && (matches[0].id.startsWith('view.') || ['edit.comment', 'edit.highlight', 'edit.rewrite'].includes(matches[0].id))) {
       e.preventDefault();
       e.stopPropagation();
       this.run(matches[0].id);

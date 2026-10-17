@@ -262,6 +262,11 @@ delete or export it as PDF. A document opens in place of the screenplay in a cal
 Documents are plain text files in the project folder (`Exposé.txt`), saved automatically
 like the screenplay; Export while a document is open makes a PDF of it.
 
+Highlights, comments and Rewrite… (other versions of a passage) work in documents as in the
+screenplay; while a document is open, the Review pane shows its own. They are kept in the
+project information, not in the text file. The **…** menu of Documents sets their typeface
+(serif, sans, or the screenplay's monospace face) on screen and in their PDFs.
+
 ## Importing
 
 File → Import Screenplay… reads Fountain, Final Draft (.fdx) and PDF screenplays into a new

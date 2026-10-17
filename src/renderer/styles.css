@@ -37,6 +37,8 @@
   --ui-small: 12px;
   /* Sizes and spacing follow DESIGN.md: 4 px grid; rows 28, controls 30, small controls 24. */
   --ctl-h: 30px;
+  /* The bottom row: workspace switcher (left) and status line, one height so they line up. */
+  --foot-h: 36px;
   --row-h: 28px;
   --radius: 6px;
   --gap: 12px;
@@ -195,7 +197,7 @@ body.in-export #app { grid-template-rows: 38px 40px minmax(0, 1fr) 26px; }
 .outline .list { flex: 1; padding-bottom: 12px; }
 .empty-note { padding: 8px 12px; color: var(--text-3); font-size: var(--ui-small); }
 
-.statusbar { height: 26px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 14px; background: var(--panel); border-top: 1px solid var(--line); color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.statusbar { height: var(--foot-h); box-sizing: border-box; flex: none; display: flex; align-items: center; line-height: 16px; gap: 18px; padding: 0 14px; background: var(--panel); border-top: 1px solid var(--line); color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .statusbar .save-state.unsaved { color: var(--text-2); }
 .statusbar .save-state.error { color: var(--danger); }
 .statusbar button { border: 0; background: none; color: inherit; font: inherit; padding: 0; cursor: default; }
@@ -384,8 +386,10 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 .export-side .form-row select.field { width: 100%; }
 
 .export-side .check { display: flex; align-items: center; gap: 8px; color: var(--text); min-height: 22px; }
-.export-side .foot { border-top: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-.export-side .foot .page-info { font-size: 12px; color: var(--text-3); padding: 4px 0 8px; }
+.export-side .foot { border-top: 1px solid var(--line); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+/* Separator, page count, button and the bottom edge: the same 12–14px rhythm. */
+.export-side .foot .page-info { font-size: 12px; line-height: 14px; color: var(--text-3); padding: 0 1px; }
+.export-side .foot .warnings:empty { display: none; }
 .export-side .warnings { color: var(--warn); font-size: 11.5px; line-height: 1.4; }
 .export-side .capacity { color: var(--text-3); font-size: 11.5px; }
 .export-preview-wrap { flex: 1; min-width: 0; position: relative; display: flex; }
@@ -467,6 +471,7 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 .deco-hl-pink { background: var(--hl-pink, rgba(229, 83, 75, 0.28)); }
 .deco-comment { background: color-mix(in srgb, var(--comment) 12%, transparent); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--comment) 85%, transparent); }
 .deco-comment.resolved { background: transparent; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--comment) 45%, transparent); }
+.rv-scope { font-size: var(--ui-small); color: var(--text-3); padding: 2px 2px 10px; }
 .deco-passage { box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--passage) 80%, transparent); background: color-mix(in srgb, var(--passage) 9%, transparent); }
 
 /* Right pane tabs: five fit in a narrow pane */
@@ -617,7 +622,7 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 
 
 /* Workspace switcher and settings at the bottom of the scene pane */
-.workspace-bar { flex: none; display: flex; align-items: center; gap: 4px; height: 44px; padding: 0 8px; border-top: 1px solid var(--line); }
+.workspace-bar { flex: none; display: flex; align-items: center; gap: 4px; height: var(--foot-h); box-sizing: border-box; padding: 0 8px; border-top: 1px solid var(--line); }
 .ws-switch { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: calc(100% - 34px); height: var(--ctl-h); padding: 0 10px 0 8px; border: 0; border-radius: 5px; background: none; color: var(--text); font: inherit; font-size: var(--ui-size); cursor: default; }
 .ws-switch:hover { background: var(--panel-2); }
 .ws-switch .ws-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }

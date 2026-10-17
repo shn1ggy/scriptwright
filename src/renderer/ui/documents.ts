@@ -13,7 +13,12 @@ import { projectExportSettings } from './export';
 import { DocumentRecord, EditorSettings } from '../../shared/types';
 import { cleanText, titleFields } from '../../shared/fountain';
 import { Align, BlockKind, InlineKind, alignOf, blockKind, hasInline, setAlign, setBlock, toggleInline } from '../../shared/docformat';
-import { selFrom, selTo } from '../../shared/doc';
+import { Pos, selFrom, selTo } from '../../shared/doc';
+import { Annotations, AnnStore } from '../annotations';
+import { formatCombo } from '../commands';
+import { deleteComment, openCommentDialog } from './review';
+import { openRewrite, openRewriteFor, passageLabel } from './rewrite';
+import { CommentRecord, PassageRecord } from '../../shared/types';
 import { t, tn } from '../../shared/i18n';
 
 const countWords = (s: string) => (s.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
@@ -35,8 +40,27 @@ export class Documents {
   private editor: Editor | null = null;
   private cur: OpenDoc | null = null;
   private saveTimer: any = null;
+  private annDepth = 0;
+  /** Highlights, comments and alternative passages of the open document. */
+  annotations: Annotations;
 
   constructor(private app: App) {
+    const docs = this;
+    this.annotations = new Annotations({
+      get editor() {
+        return docs.ensureEditor();
+      },
+      store: () => docs.store(),
+      undoable: (fn, label) => docs.undoable(fn, label),
+      markDirty: () => app.markMetaDirty(),
+      headingAt: (i) => docs.headingAt(i),
+      changed: () => app.rightPane?.annotationsChanged(),
+      reveal: (a, b) => {
+        docs.editor?.setSelection({ anchor: a, head: b }, { scroll: 'center' });
+        docs.editor?.focus();
+      },
+      scope: 'document',
+    });
     this.chevron = h('span', { class: 'collapse-mark', 'aria-hidden': 'true' }, icon('chevronDown'));
     this.collapser = h('button', { class: 'collapser', tabindex: '-1', title: t('Show or hide the documents'), 'aria-expanded': 'true', onclick: () => this.toggleCollapsed() }, t('Documents'), this.chevron);
     this.countEl = h('span', { class: 'dim' });
@@ -81,6 +105,58 @@ export class Documents {
     if (!m) return [];
     m.documents ??= [];
     return m.documents;
+  }
+
+  /** The open document's record lists (created when first needed). */
+  private store(): AnnStore | null {
+    const r = this.cur?.rec;
+    if (!r || !this.app.project) return null;
+    r.highlights ??= [];
+    r.comments ??= [];
+    r.passages ??= [];
+    return r as AnnStore;
+  }
+
+  /** The heading above a line, kept with comments like a scene heading in the screenplay. */
+  private headingAt(line: number): string | undefined {
+    const ed = this.editor;
+    if (!ed) return undefined;
+    for (let i = Math.min(line, ed.lines.length - 1); i >= 0; i--) {
+      if (ed.parsed.lines[i]?.type === 'section') return ed.lines[i].text.replace(/^[\s>]*#+\s*/, '').replace(/\s*<\s*$/, '').trim() || undefined;
+    }
+    return undefined;
+  }
+
+  /** A change to the document's comments, highlights or passages as one step of its undo history. */
+  private undoable<T>(fn: () => T, label: string): T {
+    const rec = this.cur?.rec;
+    const ed = this.editor;
+    if (!rec || !ed || this.annDepth > 0) return fn();
+    const snap = () => {
+      const anchors = new Map<string, any>();
+      for (const [id, an] of this.annotations.live) anchors.set(id, { a: { ...an.a }, b: { ...an.b } });
+      return { json: JSON.stringify({ highlights: rec.highlights ?? [], comments: rec.comments ?? [], passages: rec.passages ?? [] }), anchors, live: JSON.stringify([...anchors]) };
+    };
+    const before = snap();
+    this.annDepth++;
+    let out: T;
+    try {
+      out = fn();
+    } finally {
+      this.annDepth--;
+    }
+    const after = snap();
+    if (after.json !== before.json || after.live !== before.live) {
+      const apply = (x: ReturnType<typeof snap>) => {
+        if (this.cur?.rec !== rec) return;
+        Object.assign(rec, JSON.parse(x.json));
+        this.annotations.restoreLive(x.anchors);
+        this.app.markMetaDirty();
+        this.app.rightPane?.render?.();
+      };
+      ed.pushCustom({ undo: () => apply(before), redo: () => apply(after) }, label);
+    }
+    return out;
   }
 
   setCollapsed(c: boolean) {
@@ -196,6 +272,17 @@ export class Documents {
         if (this.collapsed) this.setCollapsed(false);
         this.render();
       } },
+      { head: t('Font') },
+      ...([
+        ['serif', t('Serif')],
+        ['sans', t('Sans Serif')],
+        ['mono', t('Monospace ({0})', this.app.settings.editor.fontFamily)],
+      ] as const).map(([k, label]) => ({ label: `${(p.meta.docFont ?? 'serif') === k ? '✓' : '   '} ${label}`, run: () => {
+        if (k === 'serif') delete p.meta.docFont;
+        else p.meta.docFont = k;
+        this.app.markMetaDirty();
+        this.applyFont();
+      } })),
       { sep: true },
       { label: `${p.meta.docJustify ? '✓' : '   '} ${t('Justified Text in PDF')}`, run: () => {
         p.meta.docJustify = !p.meta.docJustify;
@@ -303,13 +390,15 @@ export class Documents {
     // The document editor handles its own undo and select-all keys.
     ed.editKeysFromMenu = false;
     ed.hooks = {
-      onChange: (origin) => {
-        if (origin === 'load') return;
+      onChange: (origin, steps) => {
+        if (origin === 'load' || !this.cur) return;
+        this.annotations.onChange(origin, steps);
         this.scheduleSave();
         this.app.updateCounts();
       },
       onSelection: () => this.app.updateCounts(),
-      onContextMenu: (e) => this.editorMenu(e),
+      onContextMenu: (e, pos) => this.editorMenu(e, pos),
+      onModClick: (e, pos) => this.app.openAnnotationAt(e, pos),
       isMisspelled: this.app.spellHook(),
     };
     this.editor = ed;
@@ -318,6 +407,11 @@ export class Documents {
 
   applySettings(s: EditorSettings) {
     if (this.editor) this.editor.applySettings(s);
+  }
+
+  /** Serif, sans or the screenplay's monospace face for the project's documents. */
+  private applyFont() {
+    this.editor?.setProseFont(this.app.project?.meta.docFont ?? 'serif');
   }
 
   /** Opens a document in place of the screenplay. */
@@ -348,10 +442,15 @@ export class Documents {
     }
     this.app.leaveForDocument();
     const ed = this.ensureEditor();
+    this.detach();
+    this.applyFont();
+    this.cur = { rec, hash: r.hash, saved: -1 };
     ed.setText(r.text);
-    this.cur = { rec, hash: r.hash, saved: ed.version };
+    this.cur.saved = ed.version;
+    this.annotations.load();
     this.app.center.classList.add('doc-open');
     this.render();
+    this.app.rightPane?.render?.();
     this.app.updateChrome();
     this.app.updateCounts();
     ed.focus();
@@ -361,12 +460,22 @@ export class Documents {
   async close(focusScript = true) {
     if (!this.cur) return;
     await this.flush();
+    this.detach();
     this.cur = null;
     this.app.center.classList.remove('doc-open');
     this.render();
+    this.app.rightPane?.render?.();
     this.app.updateChrome();
     this.app.updateCounts();
     if (focusScript) this.app.editor.focus();
+  }
+
+  /** Keeps the open document's anchors in its record and lets go of them. */
+  private detach() {
+    if (!this.cur) return;
+    this.annotations.syncToMeta();
+    this.annotations.live.clear();
+    this.editor?.setDecorations([]);
   }
 
   private scheduleSave() {
@@ -396,8 +505,10 @@ export class Documents {
       this.app.markMetaDirty();
       c.hash = r.diskHash ?? null;
       c.saved = version;
+      this.annotations.live.clear();
       this.editor.setText(r.diskText ?? '');
       c.saved = this.editor.version;
+      this.annotations.load();
       this.render();
       alertDialog(t('Document changed elsewhere'), t('“{0}” was changed on another computer while you wrote. That version is shown now; yours was kept as “{1}”.', c.rec.title, rec.title));
       return false;
@@ -430,9 +541,11 @@ export class Documents {
     return t('{0} · {1} words · {2} characters · about {3}', this.cur.rec.title, words.toLocaleString(), chars.toLocaleString(), tn(pages, '{0} page', '{0} pages'));
   }
 
-  private editorMenu(e: MouseEvent) {
+  private editorMenu(e: MouseEvent, pos: Pos | null) {
     const ed = this.editor;
     if (!ed) return;
+    const app = this.app;
+    const ann = this.annotations;
     const has = !!ed.selectedText();
     const sel = ed.sel;
     const from = selFrom(sel);
@@ -484,10 +597,34 @@ export class Documents {
         } },
         { label: t('Select All'), run: () => ed.selectAll() },
         { sep: true },
+        // Like in the screenplay: other versions of a passage, comments and highlights.
+        { label: t('Rewrite…'), kbd: app.commands.label('edit.rewrite'), run: () => openRewrite(app, ann) },
+        { label: t('Comment…'), kbd: app.commands.label('edit.comment'), disabled: !has, run: () => void app.addComment() },
+        { head: t('Highlight') },
+        ...(['yellow', 'green', 'blue', 'pink'] as const).map((c) => ({ label: app.settings.highlights[c].label, dot: app.settings.highlights[c].color, disabled: !has, run: () => app.highlight(c) })),
+        { label: t('Remove highlight'), disabled: !has && !(pos && ann.at(pos).some((r) => r.kind === 'highlight')), run: () => app.highlight(null, pos) },
+        ...this.annotationItems(pos),
+        { sep: true },
         { label: t('Export as PDF…'), run: () => void this.exportPdf() },
       ],
       { x: e.clientX, y: e.clientY },
     );
+  }
+
+  /** Open or delete the comments, and open the versions of the passages, at a position. */
+  private annotationItems(pos: Pos | null): MenuItem[] {
+    if (!pos) return [];
+    const ann = this.annotations;
+    const { comments, passages } = this.app.annotationsAt(pos, ann);
+    const items: MenuItem[] = [];
+    if (comments.length || passages.length) items.push({ sep: true });
+    for (const c of comments as CommentRecord[]) {
+      const label = comments.length > 1 ? ` “${c.text.slice(0, 24)}${c.text.length > 24 ? '…' : ''}”` : '';
+      items.push({ label: t('Open comment{0}…', label), kbd: formatCombo('Mod+Click'), run: () => openCommentDialog(this.app, ann, c.id) });
+      items.push({ label: t('Delete comment{0}', label), run: () => deleteComment(ann, c.id) });
+    }
+    for (const p of passages as PassageRecord[]) items.push({ label: passages.length > 1 ? t('Versions of {0}…', passageLabel(ann, p, 30)) : t('Passage versions…'), kbd: comments.length ? undefined : formatCombo('Mod+Click'), run: () => openRewriteFor(this.app, ann, p.id) });
+    return items;
   }
 
   /** Bold, italic or underline for the selection (or the word at the caret), line by line. */
@@ -576,7 +713,7 @@ export class Documents {
     if (!dest) return;
     try {
       const paper = projectExportSettings(this.app).paper;
-      const pdf = await bridge.call('exportDocumentPdf', this.editor.getText(), { paper, title, author, docTitle: c.rec.title, justify: !!p.meta.docJustify });
+      const pdf = await bridge.call('exportDocumentPdf', this.editor.getText(), { paper, title, author, docTitle: c.rec.title, justify: !!p.meta.docJustify, font: p.meta.docFont ?? 'serif', mono: this.app.settings.editor.fontFamily });
       const file = dest.toLowerCase().endsWith('.pdf') ? dest : dest + '.pdf';
       await bridge.call('writeFile', file, pdf as unknown as Uint8Array);
       toast(t('Saved as {0}.', file.split(/[\\/]/).pop() ?? file), bridge.isElectron ? { actions: [{ label: t('Show in folder'), run: () => void bridge.window('reveal', file) }] } : {});
@@ -609,6 +746,7 @@ export class Documents {
   /** A project closes: forget the open document (after saving it). */
   async reset() {
     if (this.cur) await this.flush();
+    this.detach();
     this.cur = null;
     this.app.center.classList.remove('doc-open');
     this.render();

@@ -60,6 +60,11 @@ export interface Highlight {
 
 export type ChangeOrigin = 'input' | 'undo' | 'redo' | 'command' | 'load' | 'external';
 
+export type ProseFont = 'serif' | 'sans' | 'mono';
+const PROSE_SERIF = `'Iowan Old Style', 'Charter', 'Georgia', 'Cambria', 'Times New Roman', serif`;
+/** A humanist sans for reading: Segoe UI on Windows, Avenir Next on the Mac. */
+const PROSE_SANS = `'Segoe UI', 'Avenir Next', 'Helvetica Neue', 'Arial', 'Liberation Sans', 'DejaVu Sans', sans-serif`;
+
 export interface EditorHooks {
   onChange?(origin: ChangeOrigin, steps: Step[]): void;
   onSelection?(): void;
@@ -202,12 +207,19 @@ export class Editor {
     this.settings = s;
     this.extraPrefixes = s.extraPrefixes;
     const st = this.dom.style;
-    if (this.proseMode) {
-      // Documents read like a book page: a serif face, a little larger, airy lines.
-      const size = Math.round(s.fontSize * 1.06);
-      st.setProperty('--ed-font', `'Iowan Old Style', 'Charter', 'Georgia', 'Cambria', 'Times New Roman', serif`);
+    if (this.proseMode && this.proseFont === 'mono') {
+      // The screenplay's own typewriter face, at its size, with a little more air between lines.
+      st.setProperty('--ed-font', `'${s.fontFamily}', 'Courier Prime', 'Courier New', Courier, monospace`);
+      st.setProperty('--ed-size', `${s.fontSize}px`);
+      st.setProperty('--ed-lh', `${Math.round(s.fontSize * 1.55)}px`);
+      st.setProperty('--ed-measure', '68');
+    } else if (this.proseMode) {
+      // Documents read like a book page: a serif (or a clean sans) face, a little larger, airy lines.
+      const sans = this.proseFont === 'sans';
+      const size = Math.round(s.fontSize * (sans ? 1.0 : 1.06));
+      st.setProperty('--ed-font', sans ? PROSE_SANS : PROSE_SERIF);
       st.setProperty('--ed-size', `${size}px`);
-      st.setProperty('--ed-lh', `${Math.round(size * 1.62)}px`);
+      st.setProperty('--ed-lh', `${Math.round(size * (sans ? 1.6 : 1.62))}px`);
       st.setProperty('--ed-measure', '68');
     } else {
       st.setProperty('--ed-font', `'${s.fontFamily}', 'Courier Prime', 'Courier New', Courier, monospace`);
@@ -229,6 +241,15 @@ export class Editor {
   }
 
   /** Switches this editor to prose (documents) or back to screenplay writing. */
+  /** Typeface of a prose document: serif (book page), sans or the screenplay's monospace. */
+  private proseFont: ProseFont = 'serif';
+
+  setProseFont(f: ProseFont) {
+    if (f === this.proseFont) return;
+    this.proseFont = f;
+    if (this.proseMode) this.applySettings(this.settings);
+  }
+
   setProse(on: boolean) {
     this.proseMode = on;
     this.dom.classList.toggle('ed-prose', on);
