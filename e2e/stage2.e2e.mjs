@@ -175,8 +175,8 @@ await check('export settings saved in inches by the first version are converted'
   await app(() => { window.__app.project.meta.exportSettings = { paper: 'Letter', marginTop: 1, marginBottom: 1, marginLeft: 1.5, marginRight: 1, font: 'Courier', fontSize: 12, linesPerInch: 6, actionWidth: 6, characterIndent: 2, dialogueIndent: 1, dialogueWidth: 3.5, parentheticalIndent: 1.5, parentheticalWidth: 2.5 }; });
   await page.keyboard.press('Control+E');
   await page.waitForSelector('.export-preview canvas', { timeout: 15000 });
-  const cap = await page.locator('.export-side .foot .capacity').first().textContent();
-  assert(cap.includes('action 60') && cap.includes('dialogue 36'), cap);
+  const m = await page.evaluate(() => ['actionWidth', 'dialogueWidth'].map((k) => Number(document.querySelector(`.export-side input[aria-label="${k}"]`)?.value)));
+  assert(m[0] === 60 && m[1] === 36, JSON.stringify(m));
   await page.keyboard.press('Escape');
 });
 

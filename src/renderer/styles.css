@@ -855,15 +855,15 @@ label.check > input[type='checkbox'] { margin: 0; flex: none; }
 .tl-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--accent); pointer-events: none; z-index: 5; }
 .cards-divider.dragging { opacity: 0.4; }
 /* Acts and sequences in the scene list: foldable group rows; the chevron sits at the end. */
-.outline .act-row { color: var(--text); font-weight: 600; font-size: var(--ui-small); margin-top: 6px; }
+.outline .act-row, .documents .act-row { color: var(--text); font-weight: 600; font-size: var(--ui-small); margin-top: 6px; }
 .outline .act-row:first-child { margin-top: 0; }
 .outline .act-row.lvl-2 { font-weight: 500; color: var(--text-2); margin-top: 2px; }
-.outline .act-row .collapse-mark { display: inline-flex; color: var(--text-3); flex: none; }
-.outline .act-row .collapse-mark svg { width: 12px; height: 12px; }
-.outline .act-row:hover .collapse-mark { color: var(--text); }
-.outline .act-row .meta { font-weight: 400; }
-.outline .row.archived .label { color: var(--text-3); }
-.outline .row.archived:hover .label { color: var(--text-2); }
+.outline .act-row .collapse-mark, .documents .act-row .collapse-mark { display: inline-flex; color: var(--text-3); flex: none; }
+.outline .act-row .collapse-mark svg, .documents .act-row .collapse-mark svg { width: 12px; height: 12px; }
+.outline .act-row:hover .collapse-mark, .documents .act-row:hover .collapse-mark { color: var(--text); }
+.outline .act-row .meta, .documents .act-row .meta { font-weight: 400; }
+.outline .row.archived .label, .documents .row.archived .label { color: var(--text-3); }
+.outline .row.archived:hover .label, .documents .row.archived:hover .label { color: var(--text-2); }
 .archive-text { margin: 0; max-height: 50vh; overflow: auto; padding: 12px 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--field); font-family: 'Courier Prime', 'Courier New', monospace; white-space: pre-wrap; user-select: text; }
 .archive-detail { margin: 0; color: var(--text-2); white-space: pre-wrap; }
 
@@ -887,15 +887,25 @@ label.check > input[type='checkbox'] { margin: 0; flex: none; }
 .about-credits p { margin: 0 0 6px; font-size: var(--ui-small); color: var(--text-2); }
 
 /* Documents (exposé, treatment …) ---------------------------------------------------- */
-.documents { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 40%; }
+.documents { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 40%; border-top: 1px solid var(--line); }
+/* No documents yet: nothing to fold, only the + button. */
+.documents.empty .collapser { pointer-events: none; }
+.documents.empty .section-head .collapser .collapse-mark { display: none; }
 .documents .list { flex: 1; padding-bottom: 8px; }
-.docs-empty { padding: 2px 14px 10px; font-size: var(--ui-small); color: var(--text-3); line-height: 1.5; white-space: normal; }
 .doc-row .doc-icon { display: inline-flex; color: var(--text-3); flex: none; }
 .doc-row .doc-icon svg { width: 15px; height: 15px; }
 .doc-row.active .doc-icon { color: var(--text-2); }
 .doc-row.archived .label { color: var(--text-3); }
-.documents .archive-head { color: var(--text-3); font-size: var(--ui-small); gap: 6px; }
-.documents .archive-head .collapse-mark svg { width: 12px; height: 12px; }
+
+/* Compact tool row at the top of a menu (document formatting). */
+.menu-tools { display: flex; gap: 2px; padding: 2px 2px 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.menu-tool { min-width: 28px; height: 28px; padding: 0 6px; border: 0; border-radius: 4px; background: none; color: var(--text-2); font: inherit; font-size: 13px; cursor: default; }
+.menu-tool:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.menu-tool.on { background: var(--accent-tint-2); color: var(--text); }
+.menu-tool.b { font-weight: 700; }
+.menu-tool.i { font-style: italic; font-family: Georgia, serif; }
+.menu-tool.u { text-decoration: underline; text-underline-offset: 2px; }
+.menu-tool.sep-before { margin-left: 6px; }
 
 /* One editor shows at a time: the screenplay, or the open document. */
 .center.doc-open > .ed-scroller:not(.ed-prose) { display: none; }

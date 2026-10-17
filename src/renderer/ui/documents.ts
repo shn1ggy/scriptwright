@@ -12,6 +12,8 @@ import { SCENE_COLORS } from './outline';
 import { projectExportSettings } from './export';
 import { DocumentRecord, EditorSettings } from '../../shared/types';
 import { cleanText, titleFields } from '../../shared/fountain';
+import { BlockKind, InlineKind, blockKind, hasInline, setBlock, toggleInline } from '../../shared/docformat';
+import { selFrom, selTo } from '../../shared/doc';
 import { t, tn } from '../../shared/i18n';
 
 const countWords = (s: string) => (s.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
@@ -30,7 +32,6 @@ export class Documents {
   private collapser: HTMLButtonElement;
   private chevron: HTMLElement;
   private collapsed = false;
-  private archiveOpen = false;
   private editor: Editor | null = null;
   private cur: OpenDoc | null = null;
   private saveTimer: any = null;
@@ -77,12 +78,13 @@ export class Documents {
   setCollapsed(c: boolean) {
     this.collapsed = c;
     this.el.classList.toggle('collapsed', c);
-    this.list.classList.toggle('hidden', c);
+    this.list.classList.toggle('hidden', c || !this.records().length);
     this.chevron.replaceChildren(icon(c ? 'chevronRight' : 'chevronDown'));
     this.collapser.setAttribute('aria-expanded', String(!c));
   }
 
   private toggleCollapsed() {
+    if (!this.records().length) return;
     this.app.state.layout.documentsCollapsed = !this.collapsed;
     this.setCollapsed(!this.collapsed);
     this.app.saveStateSoon();
@@ -98,10 +100,10 @@ export class Documents {
     this.countEl.textContent = live.length ? String(live.length) : '';
     this.list.textContent = '';
     if (!this.app.project) return;
-    if (!all.length) {
-      this.list.append(h('div', { class: 'docs-empty' }, t('An exposé, a treatment or notes for this project: add them with +.')));
-      return;
-    }
+    // Nothing to fold while there are no documents: the header shows only the + button.
+    this.el.classList.toggle('empty', !all.length);
+    this.list.classList.toggle('hidden', this.collapsed || !all.length);
+    if (!all.length) return;
     const row = (d: DocumentRecord) => {
       const r = h(
         'button',
@@ -123,17 +125,23 @@ export class Documents {
     };
     for (const d of live) this.list.append(row(d));
     if (archived.length) {
+      // The same foldable group as the scene archive at the end of the scene list.
+      const l = this.app.state.layout;
+      const open = !!l.docArchiveOpen;
       const head = h(
-        'button',
-        { class: 'row archive-head', onclick: () => {
-          this.archiveOpen = !this.archiveOpen;
-          this.render();
-        } },
-        h('span', { class: 'collapse-mark', 'aria-hidden': 'true' }, icon(this.archiveOpen ? 'chevronDown' : 'chevronRight')),
-        h('span', { class: 'label' }, t('Archive ({0})', archived.length)),
+        'div',
+        { class: 'row archive-head act-row', role: 'button', 'aria-expanded': String(open), title: t('Documents taken out of the list but kept') },
+        h('span', { class: 'label' }, t('Archive')),
+        h('span', { class: 'meta' }, String(archived.length)),
+        h('span', { class: 'collapse-mark' }, icon(open ? 'chevronDown' : 'chevronRight')),
       );
+      head.addEventListener('click', () => {
+        l.docArchiveOpen = !open;
+        this.app.saveStateSoon();
+        this.render();
+      });
       this.list.append(head);
-      if (this.archiveOpen) for (const d of archived) this.list.append(row(d));
+      if (open) for (const d of archived) this.list.append(row(d));
     }
   }
 
@@ -384,8 +392,37 @@ export class Documents {
     const ed = this.editor;
     if (!ed) return;
     const has = !!ed.selectedText();
+    const sel = ed.sel;
+    const from = selFrom(sel);
+    const to = selTo(sel);
+    const line = ed.lines[sel.head.line]?.text ?? '';
+    // What is on at the caret (or for the selection on its first line).
+    const range = (): [number, number] => {
+      if (from.line === to.line && from.ch !== to.ch) return [from.ch, to.ch];
+      let a = sel.head.ch;
+      let b = a;
+      while (a > 0 && /[\p{L}\p{N}]/u.test(line[a - 1])) a--;
+      while (b < line.length && /[\p{L}\p{N}]/u.test(line[b])) b++;
+      return [a, b];
+    };
+    const [ra, rb] = range();
+    const inl = (k: InlineKind) => hasInline(line, ra, rb, k);
+    const blk = blockKind(line);
+    const tool = (text: string, title: string, run: () => void, on = false, cls = '') => ({ text, title, run, on, cls });
     openMenu(
       [
+        {
+          tools: [
+            tool('B', t('Bold'), () => this.formatInline('b'), inl('b'), 'b'),
+            tool('I', t('Italic'), () => this.formatInline('i'), inl('i'), 'i'),
+            tool('U', t('Underline'), () => this.formatInline('u'), inl('u'), 'u'),
+            tool('H1', t('Heading'), () => this.formatBlock('h1'), blk === 'h1', 'sep-before'),
+            tool('H2', t('Subheading'), () => this.formatBlock('h2'), blk === 'h2'),
+            tool('H3', t('Small heading'), () => this.formatBlock('h3'), blk === 'h3'),
+            tool('¶', t('Paragraph'), () => this.formatBlock('p'), blk === 'p'),
+            tool('•', t('List'), () => this.formatBlock('li'), blk === 'li'),
+          ],
+        },
         { label: t('Cut'), disabled: !has, run: async () => {
           await bridge.clipboard.writeText(ed.selectedText());
           ed.insertText('', 'other');
@@ -401,6 +438,53 @@ export class Documents {
       ],
       { x: e.clientX, y: e.clientY },
     );
+  }
+
+  /** Bold, italic or underline for the selection (or the word at the caret), line by line. */
+  private formatInline(kind: InlineKind) {
+    const ed = this.editor;
+    if (!ed) return;
+    const from = selFrom(ed.sel);
+    const to = selTo(ed.sel);
+    ed.edit((tx) => {
+      let first = { line: from.line, ch: from.ch };
+      let last = { line: to.line, ch: to.ch };
+      for (let i = from.line; i <= to.line; i++) {
+        const text = tx.lines[i].text;
+        const a = i === from.line ? from.ch : 0;
+        const b = i === to.line ? to.ch : text.length;
+        if (from.line !== to.line && !text.slice(a, b).trim()) continue;
+        const r = toggleInline(text, a, b, kind);
+        tx.setLine(i, r.text);
+        if (i === from.line) first = { line: i, ch: r.a };
+        if (i === to.line) last = { line: i, ch: r.b };
+      }
+      return { anchor: first, head: last };
+    });
+    ed.focus();
+  }
+
+  /** Heading, list item or paragraph for every line of the selection; again turns it back. */
+  private formatBlock(kind: BlockKind) {
+    const ed = this.editor;
+    if (!ed) return;
+    const from = selFrom(ed.sel);
+    const to = selTo(ed.sel);
+    const target: BlockKind = blockKind(ed.lines[from.line].text) === kind && kind !== 'p' ? 'p' : kind;
+    const head = ed.sel.head;
+    ed.edit((tx) => {
+      let caret = head.ch;
+      for (let i = from.line; i <= to.line; i++) {
+        const text = tx.lines[i].text;
+        if (!text.trim()) continue;
+        const r = setBlock(text, target);
+        tx.setLine(i, r.text);
+        if (i === head.line) caret = Math.max(0, Math.min(r.text.length, head.ch + r.shift));
+      }
+      const c = { line: head.line, ch: caret };
+      return { anchor: c, head: c };
+    });
+    ed.focus();
   }
 
   /** The open document as PDF, with the project's title and author above it. */
@@ -432,7 +516,6 @@ export class Documents {
     if (this.cur) await this.flush();
     this.cur = null;
     this.app.center.classList.remove('doc-open');
-    this.archiveOpen = false;
     this.render();
   }
 }

@@ -46,7 +46,7 @@ await check('workspace bar: switch, create and settings at the bottom of the sce
   await page.click('.workspace-bar .ws-switch');
   await page.waitForSelector('.menu');
   const items = await page.locator('.menu').textContent();
-  assert(items.includes('Open Folder as Workspace') && items.includes('Create New Workspace'), items);
+  assert(items.includes('Connect to Workspace Folder') && items.includes('Create New Workspace'), items);
   await page.keyboard.press('Escape');
   const more = await page.locator('.projects .section-head [aria-label="Project actions"]').click().then(() => page.locator('.menu').textContent());
   assert(!/Workspace/.test(more), 'workspace items still in the project menu: ' + more);

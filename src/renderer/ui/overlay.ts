@@ -31,7 +31,19 @@ export function overlayOpen(): boolean {
 // ------------------------------------------------------------------------------------
 // Menus
 
+/** A compact button in a menu's tool row (bold, italic, heading …). */
+export interface MenuTool {
+  text: string;
+  title: string;
+  on?: boolean;
+  /** Extra class for the glyph (b, i, u). */
+  cls?: string;
+  run: () => void;
+}
+
 export interface MenuItem {
+  /** A row of compact buttons instead of a text item. */
+  tools?: MenuTool[];
   label?: string;
   kbd?: string;
   run?: () => void;
@@ -67,6 +79,20 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | DOMRe
     }
     if (it.head) {
       menu.append(h('div', { class: 'menu-head' }, it.head));
+      continue;
+    }
+    if (it.tools) {
+      const bar = h('div', { class: 'menu-tools', role: 'group' });
+      for (const tool of it.tools) {
+        const b = h('button', { class: `menu-tool${tool.on ? ' on' : ''}${tool.cls ? ' ' + tool.cls : ''}`, title: tool.title, 'aria-label': tool.title, 'aria-pressed': String(!!tool.on) }, tool.text);
+        b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.addEventListener('click', () => {
+          close(true);
+          tool.run();
+        });
+        bar.append(b);
+      }
+      menu.append(bar);
       continue;
     }
     const row = h(

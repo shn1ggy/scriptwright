@@ -105,7 +105,6 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   );
   const previewWrap = h('div', { class: 'export-preview-wrap' }, preview, zoomBar);
   const warnings = h('div', { class: 'warnings' });
-  const cap = h('div', { class: 'capacity' });
   const revSummary = h('div', { class: 'capacity', style: { color: 'var(--text-2)' } });
   const marginsInfo = h('div', { class: 'capacity' });
   const pageInfo = h('div', { class: 'muted', style: { fontSize: '12px' } });
@@ -138,7 +137,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
       h('button', { class: 'btn', onclick: () => deletePreset() }, t("Delete preset")),
       h('button', { class: 'btn', onclick: () => resetDefaults() }, t("Reset to defaults")),
     ),
-    h('div', { class: 'export-main' }, h('div', { class: 'export-side' }, side, h('div', { class: 'foot' }, cap, warnings, pageInfo, exportBtn)), previewWrap),
+    h('div', { class: 'export-main' }, h('div', { class: 'export-side' }, side, h('div', { class: 'foot' }, warnings, pageInfo, exportBtn)), previewWrap),
   );
   host.append(root);
   // Esc goes back to writing, like leaving any other tab.
@@ -730,7 +729,6 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
 
   function updateCapacity() {
     const c = capacity(s, advance());
-    cap.textContent = t("{0} lines per page · action {1} · dialogue {2} · parenthetical {3} characters per line", c.cap.linesPerPage, c.cap.actionChars, c.cap.dialogueChars, c.cap.parentheticalChars);
     marginsInfo.textContent = t("The page holds {0} lines × {1} characters: {2} pt remain at the bottom and {3} characters to the right of the action.", c.cap.totalLines, c.cap.totalChars, Math.round(c.cap.bottomMarginPt), c.cap.rightMarginChars);
     warnings.textContent = c.warnings.join(' ');
   }
@@ -764,7 +762,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
     if (extra.length) warnings.textContent = [warnings.textContent, ...extra].filter(Boolean).join(' ');
     const n = r.pages;
     const withTitle = s.titlePage && app.editor.parsed.titleEnd > 0 && scopeKind !== 'pages' && !(baseline && s.revChangedPagesOnly);
-    pageInfo.textContent = [withTitle ? tn(n, '{0} page plus title page', '{0} pages plus title page') : tn(n, '{0} page', '{0} pages'), t('roughly {0} min of screen time (estimate: one page ≈ one minute)', n)].join(' · ');
+    pageInfo.textContent = withTitle ? tn(n, '{0} page plus title page', '{0} pages plus title page') : tn(n, '{0} page', '{0} pages');
     const rv = r.revision;
     revisionInfo = rv
       ? [

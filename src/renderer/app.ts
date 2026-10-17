@@ -560,15 +560,47 @@ export class App {
     for (const d of this.state.recentWorkspaces) items.push({ label: `${d === cur ? '✓' : '  '} ${base(d)}`, kbd: d === cur ? '' : undefined, run: () => d !== cur && this.setWorkspace(d) });
     items.push(
       { sep: true },
-      { label: t("Open Folder as Workspace…"), kbd: this.commands.label('project.openWorkspace'), run: () => this.chooseWorkspace() },
+      { label: t("Connect to Workspace Folder…"), kbd: this.commands.label('project.openWorkspace'), run: () => this.chooseWorkspace() },
       { label: t("Create New Workspace…"), run: () => this.createWorkspace() },
     );
     if (cur && bridge.isElectron) items.push({ sep: true }, { label: t("Show Workspace in Folder"), run: () => this.revealPath('') });
+    if (cur) items.push({ sep: true }, { label: t("Remove “{0}” from Scriptwright…", base(cur)), run: () => void this.removeWorkspace(cur) });
     if (this.state.recentWorkspaces.length > 1) items.push({ label: t("Clear List of Other Workspaces"), run: () => {
       this.state.recentWorkspaces = cur ? [cur] : [];
       this.saveStateSoon();
     } });
     openMenu(items, anchor.getBoundingClientRect());
+  }
+
+  /**
+   * Takes a workspace out of the app's list. Nothing is deleted: the folder and its projects
+   * stay where they are and can be connected again.
+   */
+  async removeWorkspace(dir: string) {
+    const name = dir.split(/[\\/]/).filter(Boolean).pop() ?? dir;
+    const ok = await confirmDialog(
+      t("Remove workspace"),
+      h('div', null, h('p', null, t("“{0}” is removed from Scriptwright only. The folder and all projects in it stay on your computer, untouched; you can connect it again at any time.", name)), h('p', { class: 'dim', style: { userSelect: 'text', wordBreak: 'break-all' } }, dir)),
+      t("Remove from Scriptwright"),
+    );
+    if (!ok) return;
+    const rest = this.state.recentWorkspaces.filter((d) => d !== dir);
+    this.state.recentWorkspaces = rest;
+    if (this.state.workspace === dir) {
+      if (rest.length) {
+        await this.setWorkspace(rest[0]);
+      } else {
+        await this.closeProject();
+        this.state.workspace = undefined;
+        this.state.lastProject = undefined;
+        await this.refreshProjects();
+        this.renderWorkspaceBar();
+        this.updateWelcome();
+        this.updateChrome();
+      }
+    }
+    this.saveStateSoon();
+    toast(t("“{0}” was removed from Scriptwright. The folder is unchanged.", name));
   }
 
   private workspaceBar!: HTMLElement;
@@ -2804,7 +2836,7 @@ export class App {
       box.append(
         h('h1', null, t("Choose a workspace")),
         h('p', null, t("A workspace is a folder that holds your screenplay projects. It can be inside a synced folder.")),
-        h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => this.chooseWorkspace() }, t("Choose folder…"))),
+        h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => this.chooseWorkspace() }, t("Connect to workspace folder…"))),
       );
       if (this.state.recentWorkspaces.length) {
         const rec = h('div', { class: 'recent' }, h('div', { class: 'section-head', style: { padding: '0' } }, t("Recent")));
@@ -2934,7 +2966,7 @@ export class App {
     reg('view.history', t("History"), t("View"), [isMac ? 'Mod+Y' : 'Mod+Shift+H'], () => (this.panel === 'history' ? this.closePanel() : this.openPanel('history')), { inFields: true, enabled: hasProject, menu: 'View' });
     reg('file.export', t("Export PDF…"), t("File"), ['Mod+E'], () => (this.panel === 'export' ? this.closePanel() : this.openPanel('export')), { inFields: true, enabled: hasProject, menu: 'File' });
     reg('project.new', t("New Project…"), t("File"), ['Mod+Shift+N'], () => this.newProject(), { menu: 'File' });
-    reg('project.openWorkspace', t("Open Folder as Workspace…"), t("File"), ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
+    reg('project.openWorkspace', t("Connect to Workspace Folder…"), t("File"), ['Mod+O'], () => this.chooseWorkspace(), { menu: 'File' });
     reg('workspace.create', t("Create New Workspace…"), t("File"), [], () => this.createWorkspace(), { menu: 'File' });
     reg('project.importFountain', t("Import Screenplay (Fountain, Final Draft, PDF)…"), t("File"), ['Mod+I'], () => this.importFountain(), { menu: 'File' });
     reg('project.backup', t("Back Up Project…"), t("File"), ['Mod+Shift+S'], () => this.backupProject(), { enabled: hasProject, menu: 'File' });

@@ -680,6 +680,8 @@ export interface LayoutState {
   scenesCollapsed?: boolean;
   /** Documents list folded away in the left pane. */
   documentsCollapsed?: boolean;
+  /** Documents list: the archive group is open. */
+  docArchiveOpen?: boolean;
   /** Characters view: width of the detail pane and of the name column. */
   charDetailWidth?: number;
   charNameWidth?: number;

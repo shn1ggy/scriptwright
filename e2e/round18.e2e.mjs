@@ -33,6 +33,12 @@ await check('the status line sits under the writing column; the left pane runs t
   assert(status.x >= pane.x + pane.width - 2, `status starts at ${status.x}`);
 });
 
+await check('without documents the section has no hint and nothing to fold', async () => {
+  assert(await page.locator('.documents.empty').count() === 1, 'not marked empty');
+  assert(!(await page.locator('.documents .list').isVisible()), 'empty list shown');
+  assert(!(await page.locator('.documents .collapse-mark').isVisible()), 'fold arrow shown');
+});
+
 await check('a new exposé is created, written and saved as a Markdown file', async () => {
   await page.locator('.documents .section-head .icon-btn').click();
   await page.locator('.menu [role="menuitem"]', { hasText: 'Exposé' }).click();
@@ -76,6 +82,35 @@ await check('a scene or the Script tab leads back to the screenplay; the documen
   assert((await page.locator('.viewbar .tab.on').textContent()) === 'Script', 'Script tab not marked');
 });
 
+await check('the right-click menu formats text: bold, heading, list', async () => {
+  const ed = () => app(() => window.__app.docs.docEditor.getText());
+  if (!(await app(() => window.__app.docs.isOpen))) await page.locator('.documents .doc-row').first().click();
+  await sleep(300);
+  // The word "application" on the paragraph line.
+  await app(() => {
+    const e = window.__app.docs.docEditor;
+    const i = e.lines.findIndex((l) => l.text.startsWith('Lisa'));
+    const ch = e.lines[i].text.indexOf('application') + 3;
+    e.setSelection({ anchor: { line: i, ch }, head: { line: i, ch } });
+  });
+  const caret = await page.locator('.ed-prose .ed-caret').boundingBox();
+  await page.mouse.click(caret.x + 1, caret.y + 4, { button: 'right' });
+  await sleep(150);
+  if (shots) await page.screenshot({ path: path.join(shots, 'doc-menu.png') });
+  await page.locator('.menu .menu-tool[aria-label="Bold"]').click();
+  await sleep(150);
+  assert((await ed()).includes('**application**'), await ed());
+  await page.mouse.click(caret.x + 1, caret.y + 4, { button: 'right' });
+  await page.locator('.menu .menu-tool[aria-label="Bold"].on').waitFor({ timeout: 2000 });
+  await page.locator('.menu .menu-tool[aria-label="Subheading"]').click();
+  await sleep(150);
+  assert((await ed()).includes('## Lisa, 41'), await ed());
+  await page.mouse.click(caret.x + 1, caret.y + 4, { button: 'right' });
+  await page.locator('.menu .menu-tool[aria-label="Paragraph"]').click();
+  await sleep(150);
+  assert((await ed()).includes('\nLisa, 41'), 'heading not undone');
+});
+
 await check('rename, colour and archive from the context menu', async () => {
   await page.locator('.documents .doc-row').first().click({ button: 'right' });
   await page.locator('.menu [role="menuitem"]', { hasText: 'Rename' }).click();
@@ -98,6 +133,7 @@ await check('rename, colour and archive from the context menu', async () => {
   await sleep(300);
   assert(!(await app(() => window.__app.docs.isOpen)), 'archived document still open');
   assert((await page.locator('.documents .archive-head').textContent()).includes('1'), 'no archive group');
+  assert(await page.locator('.documents .archive-head.act-row').count() === 1, 'archive head differs from the scene archive');
   assert(fs.existsSync(path.join(projectDir, 'Treatment.md')), 'archive deleted the file');
 });
 
@@ -126,7 +162,24 @@ await check('the brightness slider fills up to its value', async () => {
   const fill = await page.locator('.preview-dim input').evaluate((e) => e.style.getPropertyValue('--fill'));
   assert(/%$/.test(fill), `fill ${fill}`);
   if (shots) await page.screenshot({ path: path.join(shots, 'export-head.png'), clip: { x: 0, y: 76, width: 1280, height: 44 } });
+  await sleep(1500);
+  const foot = await page.locator('.export-side .foot').textContent();
+  assert(/page/.test(foot) && !/min|lines per page/.test(foot), foot);
+  if (shots) await page.screenshot({ path: path.join(shots, 'export-foot.png'), clip: { x: 0, y: 600, width: 400, height: 200 } });
   await app(() => window.__app.closePanel());
+});
+
+await check('a workspace can be removed from the app without touching its folder', async () => {
+  const ws = await app(() => window.__app.state.workspace);
+  await page.locator('.ws-switch').click();
+  await page.locator('.menu [role="menuitem"]', { hasText: 'from Scriptwright' }).click();
+  await sleep(200);
+  if (shots) await page.screenshot({ path: path.join(shots, 'remove-ws.png') });
+  await page.locator('.dialog .btn.primary').click();
+  await sleep(500);
+  assert(!(await app(() => window.__app.state.workspace)), 'still connected');
+  assert(fs.existsSync(ws), 'folder gone');
+  assert((await app(() => window.__app.state.recentWorkspaces)).length === 0, 'still listed');
 });
 
 console.log(results.map((r) => r.join(' — ')).join('\n'));
