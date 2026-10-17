@@ -26,14 +26,14 @@ const select = (phrase) => app((p) => {
   ed.focus();
 }, phrase);
 
-await check('the status line and the workspace switcher share one bottom row', async () => {
+await check('the workspace row keeps its height; the status line centres its text', async () => {
   const ws = await page.locator('.workspace-bar').boundingBox();
+  assert(Math.round(ws.height) === 44, `workspace row ${ws.height}`);
   const st = await page.locator('.statusbar').boundingBox();
-  assert(Math.abs(ws.y - st.y) < 1 && Math.abs(ws.height - st.height) < 1, `workspace ${ws.y}/${ws.height}, status ${st.y}/${st.height}`);
-  const mid = (b) => b.y + b.height / 2;
-  const a = await page.locator('.ws-switch .ws-name').boundingBox();
-  const b = await page.locator('.statusbar .count').boundingBox();
-  assert(Math.abs(mid(a) - mid(b)) <= 1, `text centres ${mid(a)} / ${mid(b)}`);
+  const c = await page.locator('.statusbar .count').boundingBox();
+  // The bar has a 1px line on top: the text sits in the middle of what is below it.
+  const mid = st.y + 1 + (st.height - 1) / 2;
+  assert(Math.abs(c.y + c.height / 2 - mid) <= 1, `text ${c.y + c.height / 2}, bar ${mid}`);
 });
 
 await check('the export foot keeps one rhythm: line, page count, button, edge', async () => {
@@ -46,6 +46,13 @@ await check('the export foot keeps one rhythm: line, page count, button, edge', 
     return { top: p.top - f.top, mid: b.top - p.bottom, bottom: f.bottom - b.bottom };
   });
   assert(Math.max(g.top, g.mid, g.bottom) - Math.min(g.top, g.mid, g.bottom) <= 3, JSON.stringify(g));
+  // The status line runs across the window, whole, under the export side bar.
+  const st = await page.locator('.statusbar').boundingBox();
+  const vh = await app(() => window.innerHeight);
+  assert(Math.abs(st.y + st.height - vh) < 1 && st.height >= 35, `status ${st.y}/${st.height} in ${vh}`);
+  const side = await page.locator('.export-side').boundingBox();
+  assert(side.y + side.height <= st.y + 1, `export side ends at ${side.y + side.height}, status at ${st.y}`);
+  if (shots) await page.screenshot({ path: path.join(shots, 'export-foot.png'), clip: { x: 0, y: vh - 160, width: 720, height: 160 } });
   await app(() => window.__app.closePanel());
 });
 

@@ -37,8 +37,8 @@
   --ui-small: 12px;
   /* Sizes and spacing follow DESIGN.md: 4 px grid; rows 28, controls 30, small controls 24. */
   --ctl-h: 30px;
-  /* The bottom row: workspace switcher (left) and status line, one height so they line up. */
-  --foot-h: 36px;
+  /* The status line under the writing column (and across Export and History). */
+  --status-h: 36px;
   --row-h: 28px;
   --radius: 6px;
   --gap: 12px;
@@ -122,7 +122,7 @@ input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px 
 body { user-select: none; -webkit-user-select: none; }
 input, textarea, [contenteditable='true'] { user-select: text; -webkit-user-select: text; }
 #app { display: grid; grid-template-rows: 38px 40px minmax(0, 1fr); height: 100vh; }
-body.in-export #app { grid-template-rows: 38px 40px minmax(0, 1fr) 26px; }
+body.in-export #app { grid-template-rows: 38px 40px minmax(0, 1fr) var(--status-h); }
 .titlebar, .viewbar { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--panel); min-width: 0; }
 /* Outer edge: text in the tab bar starts and ends 14 px from the window edge, like the panes below. */
 .viewbar { padding: 0; }
@@ -197,7 +197,7 @@ body.in-export #app { grid-template-rows: 38px 40px minmax(0, 1fr) 26px; }
 .outline .list { flex: 1; padding-bottom: 12px; }
 .empty-note { padding: 8px 12px; color: var(--text-3); font-size: var(--ui-small); }
 
-.statusbar { height: var(--foot-h); box-sizing: border-box; flex: none; display: flex; align-items: center; line-height: 16px; gap: 18px; padding: 0 14px; background: var(--panel); border-top: 1px solid var(--line); color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.statusbar { height: var(--status-h); box-sizing: border-box; flex: none; display: flex; align-items: center; line-height: 16px; gap: 18px; padding: 0 14px; background: var(--panel); border-top: 1px solid var(--line); color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .statusbar .save-state.unsaved { color: var(--text-2); }
 .statusbar .save-state.error { color: var(--danger); }
 .statusbar button { border: 0; background: none; color: inherit; font: inherit; padding: 0; cursor: default; }
@@ -622,7 +622,7 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 
 
 /* Workspace switcher and settings at the bottom of the scene pane */
-.workspace-bar { flex: none; display: flex; align-items: center; gap: 4px; height: var(--foot-h); box-sizing: border-box; padding: 0 8px; border-top: 1px solid var(--line); }
+.workspace-bar { flex: none; display: flex; align-items: center; gap: 4px; height: 44px; padding: 0 8px; border-top: 1px solid var(--line); }
 .ws-switch { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: calc(100% - 34px); height: var(--ctl-h); padding: 0 10px 0 8px; border: 0; border-radius: 5px; background: none; color: var(--text); font: inherit; font-size: var(--ui-size); cursor: default; }
 .ws-switch:hover { background: var(--panel-2); }
 .ws-switch .ws-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }

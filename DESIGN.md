@@ -28,7 +28,7 @@ file first, then the code.
 │  1 INT. …      │                                               │           │
 │ ─────────────  │                                               │           │
 │ workspace ⌄ ⌘⚙ │                                               │           │
-├ status bar 36 ─ (under the text view only, level with the workspace row) saved · counts ···· Scene 4 of 38 ‹ › ┤
+├ status bar 36 ─ (under the text view only) saved · counts ···· Scene 4 of 38 ‹ › ┤
 ```
 
 - The **tab bar holds only tabs.** Options of a view live in that view's own header row.
@@ -93,7 +93,7 @@ Everything sits on a **4 px grid**. Spacing steps: **4 · 8 · 12 · 16 · 20 ·
 | Dialog head / foot | 46 / 58 | 20 sides |
 | Dialog body | | 20 top/bottom, 24 sides, 14 between rows |
 | Settings: navigation row | 32 | 12 sides |
-| Status bar and workspace row | 36 (`--foot-h`, one row) | 14 sides |
+| Status bar | 36 (`--status-h`) | 14 sides |
 
 Forms use a two-column grid: **label column 160–168 px, gap 16 px**, field up to 380 px.
 Help text sits directly under its field (4 px), and the next row follows after 14 px.
