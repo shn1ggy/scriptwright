@@ -14,6 +14,8 @@ export interface DocumentPdfOptions {
   author: string;
   /** The document's own name ("Exposé"). */
   docTitle: string;
+  /** Paragraphs set justified (flush on both sides). */
+  justify?: boolean;
 }
 
 const SERIFS = ['Charter', 'Iowan Old Style', 'Georgia', 'Cambria', 'Palatino', 'Book Antiqua', 'Times New Roman', 'Liberation Serif', 'DejaVu Serif'];
@@ -68,7 +70,7 @@ export function renderDocumentPdf(text: string, o: DocumentPdfOptions, info: Ren
   newPage();
 
   /** Sets styled text wrapped to the column; returns nothing, advances y. */
-  const paragraph = (segs: Seg[], size: number, lead: number, indent = 0, extraStyle = 0) => {
+  const paragraph = (segs: Seg[], size: number, lead: number, indent = 0, extraStyle = 0, align: 'left' | 'center' | 'right' | 'justify' = 'left') => {
     // Words keep their styled pieces; spaces separate them.
     type Word = { segs: Seg[]; w: number };
     const words: Word[] = [];
@@ -93,13 +95,18 @@ export function renderDocumentPdf(text: string, o: DocumentPdfOptions, info: Ren
     const avail = width - indent;
     let line: Word[] = [];
     let lineW = 0;
-    const flush = () => {
+    const flush = (last: boolean) => {
       if (!line.length) return;
       if (y + lead > bottom) newPage();
       let x = left + indent;
+      const free = avail - lineW;
+      if (align === 'center') x += free / 2;
+      else if (align === 'right') x += free;
+      // Justified: the gaps share the free space, except on a paragraph's last line.
+      const gap = align === 'justify' && !last && line.length > 1 ? space + free / (line.length - 1) : space;
       const base = y + size * 0.8;
       line.forEach((w, i) => {
-        if (i > 0) x += space;
+        if (i > 0) x += gap;
         for (const s of w.segs) {
           const sw = doc.measure(font(s.style), s.text, size);
           doc.text(x, base, s.text, font(s.style), size);
@@ -113,11 +120,11 @@ export function renderDocumentPdf(text: string, o: DocumentPdfOptions, info: Ren
     };
     for (const w of words) {
       const need = line.length ? lineW + space + w.w : w.w;
-      if (line.length && need > avail) flush();
+      if (line.length && need > avail) flush(false);
       lineW = line.length ? lineW + space + w.w : w.w;
       line.push(w);
     }
-    flush();
+    flush(true);
   };
 
   // Head: project title, then the document's name and the author.
@@ -149,14 +156,14 @@ export function renderDocumentPdf(text: string, o: DocumentPdfOptions, info: Ren
       y += prevBlank ? lead * 0.3 : lead * 0.8;
       // Keep a heading with at least two lines of what follows.
       if (y + size * 1.4 + lead * 2 > bottom) newPage();
-      paragraph(segs, size, size * 1.4, 0, lvl === 3 ? S_BOLD | S_ITALIC : S_BOLD);
+      paragraph(segs, size, size * 1.4, 0, lvl === 3 ? S_BOLD | S_ITALIC : S_BOLD, pl.align ?? 'left');
       y += 4;
     } else if (pl.type === 'listItem') {
       if (y + lead > bottom) newPage();
       doc.text(left + 4, y + body * 0.8, '•', 'F0', body);
       paragraph(segs, body, lead, 16);
     } else {
-      paragraph(segs, body, lead);
+      paragraph(segs, body, lead, 0, 0, pl.align ?? (o.justify ? 'justify' : 'left'));
     }
     prevBlank = false;
   }

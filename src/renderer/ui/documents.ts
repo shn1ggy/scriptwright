@@ -12,7 +12,7 @@ import { SCENE_COLORS } from './outline';
 import { projectExportSettings } from './export';
 import { DocumentRecord, EditorSettings } from '../../shared/types';
 import { cleanText, titleFields } from '../../shared/fountain';
-import { BlockKind, InlineKind, blockKind, hasInline, setBlock, toggleInline } from '../../shared/docformat';
+import { Align, BlockKind, InlineKind, alignOf, blockKind, hasInline, setAlign, setBlock, toggleInline } from '../../shared/docformat';
 import { selFrom, selTo } from '../../shared/doc';
 import { t, tn } from '../../shared/i18n';
 
@@ -44,7 +44,15 @@ export class Documents {
     this.el = h(
       'div',
       { class: 'documents' },
-      h('div', { class: 'section-head' }, this.collapser, this.countEl, h('span', { class: 'spacer' }), iconButton('plus', t('New document'), (e) => this.newMenu(e.currentTarget as HTMLElement))),
+      h(
+        'div',
+        { class: 'section-head' },
+        this.collapser,
+        this.countEl,
+        h('span', { class: 'spacer' }),
+        iconButton('plus', t('New document'), (e) => this.newMenu(e.currentTarget as HTMLElement)),
+        iconButton('more', t('Document actions'), (e) => this.moreMenu(e.currentTarget as HTMLElement)),
+      ),
       this.list,
     );
   }
@@ -94,6 +102,7 @@ export class Documents {
   // The list
 
   render() {
+    this.convertOldFiles();
     const all = this.records();
     const live = all.filter((d) => !d.archived);
     const archived = all.filter((d) => d.archived);
@@ -164,10 +173,43 @@ export class Documents {
     openMenu(items, anchor.getBoundingClientRect());
   }
 
+  /** The section's own menu, like the ones of Projects and Scenes. */
+  private moreMenu(anchor: HTMLElement) {
+    const p = this.app.project;
+    if (!p) return;
+    const live = this.records().filter((d) => !d.archived);
+    const archived = this.records().filter((d) => d.archived);
+    const l = this.app.state.layout;
+    const items: MenuItem[] = [
+      { label: t('New Document…'), run: () => this.newMenu(anchor) },
+      ...(bridge.isElectron ? [{ label: t('Show Documents in Folder'), run: () => this.app.revealPath(p.rel) }] : []),
+      { sep: true },
+      { label: t('Sort by Name'), disabled: live.length < 2, run: () => {
+        const others = this.records().filter((d) => d.archived);
+        p.meta.documents = [...live.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true })), ...others];
+        this.app.markMetaDirty();
+        this.render();
+      } },
+      { label: l.docArchiveOpen ? t('Hide Archive') : t('Show Archive ({0})', archived.length), disabled: !archived.length, run: () => {
+        l.docArchiveOpen = !l.docArchiveOpen;
+        this.app.saveStateSoon();
+        if (this.collapsed) this.setCollapsed(false);
+        this.render();
+      } },
+      { sep: true },
+      { label: `${p.meta.docJustify ? '✓' : '   '} ${t('Justified Text in PDF')}`, run: () => {
+        p.meta.docJustify = !p.meta.docJustify;
+        this.app.markMetaDirty();
+      } },
+    ];
+    openMenu(items, anchor.getBoundingClientRect());
+  }
+
   private menu(d: DocumentRecord, at: { x: number; y: number }) {
     const items: MenuItem[] = [
       { label: t('Open'), run: () => void this.open(d.id) },
       { label: t('Rename…'), run: () => void this.rename(d) },
+      ...(bridge.isElectron ? [{ label: t('Show in Folder'), run: () => this.app.revealPath(`${this.app.project!.rel}/${d.file}`) }] : []),
       { label: t('Export as PDF…'), run: async () => {
         await this.open(d.id);
         await this.exportPdf();
@@ -408,7 +450,8 @@ export class Documents {
     const [ra, rb] = range();
     const inl = (k: InlineKind) => hasInline(line, ra, rb, k);
     const blk = blockKind(line);
-    const tool = (text: string, title: string, run: () => void, on = false, cls = '') => ({ text, title, run, on, cls });
+    const al = alignOf(line);
+    const tool = (text: string, title: string, run: () => void, on = false, cls = '', ic?: string) => ({ text, title, run, on, cls, icon: ic });
     openMenu(
       [
         {
@@ -421,6 +464,13 @@ export class Documents {
             tool('H3', t('Small heading'), () => this.formatBlock('h3'), blk === 'h3'),
             tool('¶', t('Paragraph'), () => this.formatBlock('p'), blk === 'p'),
             tool('•', t('List'), () => this.formatBlock('li'), blk === 'li'),
+          ],
+        },
+        {
+          tools: [
+            tool('', t('Align left'), () => this.formatAlign('left'), al === 'left', '', 'alignLeft'),
+            tool('', t('Centre'), () => this.formatAlign('center'), al === 'center', '', 'alignCenter'),
+            tool('', t('Align right'), () => this.formatAlign('right'), al === 'right', '', 'alignRight'),
           ],
         },
         { label: t('Cut'), disabled: !has, run: async () => {
@@ -464,6 +514,30 @@ export class Documents {
     ed.focus();
   }
 
+  /** Left, centred or right for every line of the selection. */
+  private formatAlign(align: Align) {
+    const ed = this.editor;
+    if (!ed) return;
+    const from = selFrom(ed.sel);
+    const to = selTo(ed.sel);
+    const head = ed.sel.head;
+    ed.edit((tx) => {
+      let caret = head.ch;
+      for (let i = from.line; i <= to.line; i++) {
+        const text = tx.lines[i].text;
+        if (!text.trim()) continue;
+        // List items stay on the left.
+        if (blockKind(text) === 'li' && align !== 'left') continue;
+        const r = setAlign(text, align);
+        tx.setLine(i, r.text);
+        if (i === head.line) caret = Math.max(0, Math.min(r.text.length, head.ch + r.shift));
+      }
+      const c = { line: head.line, ch: caret };
+      return { anchor: c, head: c };
+    });
+    ed.focus();
+  }
+
   /** Heading, list item or paragraph for every line of the selection; again turns it back. */
   private formatBlock(kind: BlockKind) {
     const ed = this.editor;
@@ -502,12 +576,33 @@ export class Documents {
     if (!dest) return;
     try {
       const paper = projectExportSettings(this.app).paper;
-      const pdf = await bridge.call('exportDocumentPdf', this.editor.getText(), { paper, title, author, docTitle: c.rec.title });
+      const pdf = await bridge.call('exportDocumentPdf', this.editor.getText(), { paper, title, author, docTitle: c.rec.title, justify: !!p.meta.docJustify });
       const file = dest.toLowerCase().endsWith('.pdf') ? dest : dest + '.pdf';
       await bridge.call('writeFile', file, pdf as unknown as Uint8Array);
       toast(t('Saved as {0}.', file.split(/[\\/]/).pop() ?? file), bridge.isElectron ? { actions: [{ label: t('Show in folder'), run: () => void bridge.window('reveal', file) }] } : {});
     } catch (e: any) {
       alertDialog(t('Export failed'), e?.message ?? String(e));
+    }
+  }
+
+  private converting = new Set<string>();
+
+  /** Documents of version 0.20 were .md files: they become .txt files (same text). */
+  private convertOldFiles() {
+    const p = this.app.project;
+    if (!p) return;
+    for (const d of this.records()) {
+      if (!/\.md$/i.test(d.file) || this.converting.has(d.id) || this.cur?.rec.id === d.id) continue;
+      this.converting.add(d.id);
+      void bridge
+        .call('renameDocument', p.rel, d.file, d.title)
+        .then((file: string) => {
+          if (this.app.project !== p) return;
+          d.file = file;
+          this.app.markMetaDirty();
+        })
+        .catch(() => {})
+        .finally(() => this.converting.delete(d.id));
     }
   }
 

@@ -19,9 +19,9 @@ test('documents are Markdown files beside the screenplay, with unique names', ()
   const { root, b, rel, dir } = setup();
   const a = b.createDocument(rel, 'Exposé');
   const c = b.createDocument(rel, 'Exposé');
-  assert.equal(a.file, 'Exposé.md');
-  assert.equal(c.file, 'Exposé 2.md');
-  assert.ok(fs.existsSync(path.join(dir, 'Exposé.md')));
+  assert.equal(a.file, 'Exposé.txt');
+  assert.equal(c.file, 'Exposé 2.txt');
+  assert.ok(fs.existsSync(path.join(dir, 'Exposé.txt')));
   const saved = b.saveDocument(rel, a.file, '# Logline\n\nText.\n', a.hash);
   assert.ok(saved.ok);
   assert.equal(b.readDocument(rel, a.file)?.text, '# Logline\n\nText.\n');
@@ -44,13 +44,13 @@ test('rename follows the title; delete keeps a copy; paths outside the project a
   const { root, b, rel, dir } = setup();
   const a = b.createDocument(rel, 'Notes', 'x');
   const renamed = b.renameDocument(rel, a.file, 'Character notes');
-  assert.equal(renamed, 'Character notes.md');
-  assert.ok(!fs.existsSync(path.join(dir, 'Notes.md')));
+  assert.equal(renamed, 'Character notes.txt');
+  assert.ok(!fs.existsSync(path.join(dir, 'Notes.txt')));
   await b.deleteDocument(rel, renamed);
   assert.ok(!fs.existsSync(path.join(dir, renamed)));
   const kept = fs.readdirSync(path.join(dir, '.scriptwright', 'deleted'));
-  assert.ok(kept.some((f) => f.endsWith('Character notes.md')));
-  assert.throws(() => b.readDocument(rel, '../outside.md'));
+  assert.ok(kept.some((f) => f.endsWith('Character notes.txt')));
+  assert.throws(() => b.readDocument(rel, '../outside.txt'));
   assert.throws(() => b.readDocument(rel, 'DRUCK.fountain'));
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -59,5 +59,19 @@ test('a document exports as a PDF', () => {
   const { root, b } = setup();
   const pdf = b.exportDocumentPdf('# Logline\n\nLisa, 41, sends out *one more* application.\n\n- a point\n', { paper: 'A4', title: 'DRUCK', author: 'Nico Sanft', docTitle: 'Exposé' });
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('a document from version 0.20 (.md) is renamed to .txt with its text', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sw-docs-md-'));
+  const b = new Backend({ userDataDir: path.join(root, 'ud'), fontsDir: path.join(root, 'fonts') });
+  fs.mkdirSync(path.join(root, 'ws'));
+  b.setWorkspace(path.join(root, 'ws'));
+  const p = b.createProject('Old');
+  const dir = path.join(root, 'ws', p.rel);
+  fs.writeFileSync(path.join(dir, 'Exposé.md'), '# Logline\n');
+  assert.equal(b.renameDocument(p.rel, 'Exposé.md', 'Exposé'), 'Exposé.txt');
+  assert.equal(fs.readFileSync(path.join(dir, 'Exposé.txt'), 'utf8'), '# Logline\n');
+  assert.ok(!fs.existsSync(path.join(dir, 'Exposé.md')));
   fs.rmSync(root, { recursive: true, force: true });
 });

@@ -356,7 +356,7 @@ await check('export preview renders real PDF pages', async () => {
   await sleep(500);
   await page.keyboard.press('Control+E');
   await page.waitForSelector('.export-preview canvas', { timeout: 15000 });
-  const info = await page.locator('.export-side .foot .muted').textContent();
+  const info = await page.locator('.export-side .foot .page-info').textContent();
   assert(/\d+ page/.test(info), info);
   await page.screenshot({ path: path.join(os.tmpdir(), 'sw-export.png') });
   await page.keyboard.press('Escape');

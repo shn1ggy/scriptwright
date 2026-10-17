@@ -80,7 +80,7 @@ await check('strict order marks moved scenes; changed pages only', async () => {
   await page.click('label:has-text("Ignore scene order")');
   await page.click('label:has-text("Only pages with changes")');
   await sleep(1500);
-  const info = await page.locator('.export-side .foot .muted').textContent();
+  const info = await page.locator('.export-side .foot .page-info').textContent();
   assert(/^1 page$/.test(info.trim()), info);
   await page.screenshot({ path: path.join(os.tmpdir(), 'sw-rev-preview.png') });
   await page.keyboard.press('Escape');

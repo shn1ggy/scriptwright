@@ -3586,6 +3586,13 @@ export class App {
     if (this.panel === 'export' && /^Mod\+(=|-|0)$/.test(combo)) return;
     const matches = this.commands.lookup(combo);
     if (!matches.length) return;
+    // Writing a document: the view keys (Mod+1 Script, Mod+2 Scene …) lead back to the screenplay.
+    if (!inDialog && this.docs.hasFocus() && matches[0].id.startsWith('view.')) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.run(matches[0].id);
+      return;
+    }
     if (inDialog) {
       // Inside dialogs only a few global commands work; Tab keeps its normal meaning.
       return;

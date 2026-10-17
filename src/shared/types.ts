@@ -203,6 +203,8 @@ export interface ProjectMeta {
   numbersLocked?: boolean;
   /** Documents beside the screenplay (exposé, treatment …), in their order in the list. */
   documents?: DocumentRecord[];
+  /** Documents print with justified paragraphs. */
+  docJustify?: boolean;
   /** Story structure: the chosen model, which scene carries each beat, and an own model's beats. */
   structure?: StructureState;
 }

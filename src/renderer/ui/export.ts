@@ -107,7 +107,7 @@ export function openExport(app: App, host: HTMLElement, preset: ExportPreset = {
   const warnings = h('div', { class: 'warnings' });
   const revSummary = h('div', { class: 'capacity', style: { color: 'var(--text-2)' } });
   const marginsInfo = h('div', { class: 'capacity' });
-  const pageInfo = h('div', { class: 'muted', style: { fontSize: '12px' } });
+  const pageInfo = h('div', { class: 'page-info' });
   const exportBtn = h('button', { class: 'btn primary', onclick: () => doExport() }, t("Export PDF…"));
   const presetSel = h('select', { class: 'field', 'aria-label': t("Preset") });
 

@@ -70,18 +70,43 @@ export function toggleInline(text: string, a: number, b: number, kind: InlineKin
 
 const BLOCK_PREFIX = /^\s*(?:#{1,6}\s*|[-•]\s+)/;
 
+export type Align = 'left' | 'center' | 'right';
+
+/** A line split into its alignment markers and what is between them. */
+function splitAlign(text: string): { align: Align; open: string; body: string; close: string } {
+  const m = /^(\s*>\s?)(.*?)(\s?<\s*)?$/.exec(text);
+  if (!m) return { align: 'left', open: '', body: text, close: '' };
+  return { align: m[3] ? 'center' : 'right', open: m[1], body: m[2], close: m[3] ?? '' };
+}
+
+export function alignOf(text: string): Align {
+  return splitAlign(text).align;
+}
+
+/** Left, centred ("> text <") or right-aligned ("> text"). Returns the shift of the text. */
+export function setAlign(text: string, align: Align): { text: string; shift: number } {
+  const sp = splitAlign(text);
+  const open = align === 'left' ? '' : '> ';
+  const close = align === 'center' ? ' <' : '';
+  return { text: open + sp.body + close, shift: open.length - sp.open.length };
+}
+
 export function blockKind(text: string): BlockKind {
-  const m = /^\s*(#{1,6})/.exec(text);
+  const body = splitAlign(text).body;
+  const m = /^\s*(#{1,6})/.exec(body);
   if (m) return m[1].length === 1 ? 'h1' : m[1].length === 2 ? 'h2' : 'h3';
-  if (/^\s*[-•]\s/.test(text)) return 'li';
+  if (/^\s*[-•]\s/.test(body)) return 'li';
   return 'p';
 }
 
-/** Makes a line a heading, a list item or a plain paragraph. Returns the shift of its text. */
+/** Makes a line a heading, a list item or a plain paragraph (its alignment stays). Returns the shift of its text. */
 export function setBlock(text: string, kind: BlockKind): { text: string; shift: number } {
-  const m = BLOCK_PREFIX.exec(text);
-  const body = m ? text.slice(m[0].length) : text.replace(/^\s+/, '');
-  const cut = text.length - body.length;
+  const sp = splitAlign(text);
+  const m = BLOCK_PREFIX.exec(sp.body);
+  const body = m ? sp.body.slice(m[0].length) : sp.body.replace(/^\s+/, '');
+  const cut = sp.body.length - body.length;
+  // A list item cannot be aligned: it goes back to the left.
+  const keep = kind === 'li' ? { open: '', close: '' } : sp;
   const prefix = kind === 'h1' ? '# ' : kind === 'h2' ? '## ' : kind === 'h3' ? '### ' : kind === 'li' ? '- ' : '';
-  return { text: prefix + body, shift: prefix.length - cut };
+  return { text: keep.open + prefix + body + keep.close, shift: keep.open.length - sp.open.length + prefix.length - cut };
 }

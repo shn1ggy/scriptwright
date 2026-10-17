@@ -49,6 +49,9 @@ const PATHS: Record<string, string> = {
   minimal: 'M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4',
   restore: 'M5 10a5 5 0 1 0 1.5-3.5M5 4v3h3',
   list: 'M7 5.5h9M7 10h9M7 14.5h9M4 5.5h.01M4 10h.01M4 14.5h.01',
+  alignLeft: 'M4 5h12M4 8.5h8M4 12h12M4 15.5h8',
+  alignCenter: 'M4 5h12M6 8.5h8M4 12h12M6 15.5h8',
+  alignRight: 'M4 5h12M8 8.5h8M4 12h12M8 15.5h8',
   cards: 'M3.5 4.5h5.5v4.5H3.5zM11 4.5h5.5v4.5H11zM3.5 11h5.5v4.5H3.5zM11 11h5.5v4.5H11z',
 };
 

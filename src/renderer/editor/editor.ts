@@ -777,6 +777,7 @@ export class Editor {
     if (p.dual) cls += ` dual-${p.dual}`;
     if (p.inDialogue) cls += ' in-dialogue';
     if (p.type === 'section') cls += ` lvl-${Math.min(3, p.level ?? 1)}`;
+    if (p.align) cls += ` align-${p.align}`;
     e.className = cls;
     e.textContent = '';
     v.segs = [];
@@ -1673,7 +1674,7 @@ function sameRender(prev: LineView['prev'], text: string, p: ParsedLine, active:
   if (!prev) return false;
   const q = prev.p;
   if (prev.text !== text || prev.active !== active || prev.miss !== miss || prev.sn !== sn) return false;
-  if (q.type !== p.type || q.dual !== p.dual || q.level !== p.level || q.inDialogue !== p.inDialogue || q.sceneNumber !== p.sceneNumber) return false;
+  if (q.type !== p.type || q.dual !== p.dual || q.level !== p.level || q.align !== p.align || q.inDialogue !== p.inDialogue || q.sceneNumber !== p.sceneNumber) return false;
   const a = q.flags;
   const b = p.flags;
   if (a === b) return true;

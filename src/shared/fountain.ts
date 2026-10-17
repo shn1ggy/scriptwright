@@ -46,6 +46,8 @@ export interface ParsedLine {
   sceneNumber?: string;
   /** Section depth (# = 1, ## = 2 …). */
   level?: number;
+  /** Prose documents: a centred ("> text <") or right-aligned ("> text") line. */
+  align?: 'center' | 'right';
   /** Normalized character name on cue lines. */
   cue?: string;
   /** Title-page key on the first line of a title-page field (lowercase). */
@@ -776,7 +778,16 @@ function parseProse(lines: string[]): ParseResult {
       pl.type = 'blank';
       continue;
     }
-    const lead = leadingSpaces(text);
+    let lead = leadingSpaces(text);
+    // Alignment: "> text <" is centred, "> text" right-aligned (as in Fountain).
+    if (text[lead] === '>') {
+      const open = lead + 1 + (text[lead + 1] === ' ' ? 1 : 0);
+      const close = /\s?<\s*$/.exec(text);
+      pl.align = close && close.index >= open ? 'center' : 'right';
+      addMarker(pl, text.length, lead, open);
+      if (close && close.index >= open) addMarker(pl, text.length, close.index, text.length);
+      lead = open;
+    }
     if (text[lead] === '#') {
       let k = lead;
       while (text[k] === '#') k++;
@@ -786,7 +797,7 @@ function parseProse(lines: string[]): ParseResult {
       applyInline(text, pl);
       continue;
     }
-    if (/^\s*[-•]\s/.test(text)) {
+    if (!pl.align && /^\s*[-•]\s/.test(text)) {
       const m = /^\s*[-•]\s/.exec(text)!;
       pl.type = 'listItem';
       addMarker(pl, text.length, 0, m[0].length);

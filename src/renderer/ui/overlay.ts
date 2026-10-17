@@ -1,6 +1,6 @@
 // Menus, dialogs and toasts. All share the same compact styling and keyboard behavior.
 
-import { h, iconButton } from './dom';
+import { h, icon, iconButton } from './dom';
 import { t } from '../../shared/i18n';
 
 // ------------------------------------------------------------------------------------
@@ -34,6 +34,8 @@ export function overlayOpen(): boolean {
 /** A compact button in a menu's tool row (bold, italic, heading …). */
 export interface MenuTool {
   text: string;
+  /** An icon (by name) instead of the text. */
+  icon?: string;
   title: string;
   on?: boolean;
   /** Extra class for the glyph (b, i, u). */
@@ -84,7 +86,7 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | DOMRe
     if (it.tools) {
       const bar = h('div', { class: 'menu-tools', role: 'group' });
       for (const tool of it.tools) {
-        const b = h('button', { class: `menu-tool${tool.on ? ' on' : ''}${tool.cls ? ' ' + tool.cls : ''}`, title: tool.title, 'aria-label': tool.title, 'aria-pressed': String(!!tool.on) }, tool.text);
+        const b = h('button', { class: `menu-tool${tool.on ? ' on' : ''}${tool.cls ? ' ' + tool.cls : ''}`, title: tool.title, 'aria-label': tool.title, 'aria-pressed': String(!!tool.on) }, tool.icon ? icon(tool.icon) : tool.text);
         b.addEventListener('mousedown', (e) => e.preventDefault());
         b.addEventListener('click', () => {
           close(true);

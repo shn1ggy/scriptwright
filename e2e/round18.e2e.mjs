@@ -40,14 +40,14 @@ await check('without documents the section has no hint and nothing to fold', asy
 });
 
 await check('a new exposé is created, written and saved as a Markdown file', async () => {
-  await page.locator('.documents .section-head .icon-btn').click();
+  await page.locator('.documents .section-head .icon-btn').first().click();
   await page.locator('.menu [role="menuitem"]', { hasText: 'Exposé' }).click();
   await sleep(400);
   assert(await app(() => window.__app.docs.isOpen), 'not open');
   assert(await page.locator('.ed-scroller.ed-prose').isVisible(), 'prose editor hidden');
   await page.keyboard.type('# Logline\n\nLisa, 41, sends out *one more* application.\n\n- first point\n');
   await sleep(1400);
-  const file = path.join(projectDir, 'Exposé.md');
+  const file = path.join(projectDir, 'Exposé.txt');
   assert(fs.existsSync(file), 'no file');
   assert(fs.readFileSync(file, 'utf8').includes('Lisa, 41, sends out *one more* application.'), 'text not saved');
   const status = await page.locator('.statusbar .count').textContent();
@@ -109,6 +109,31 @@ await check('the right-click menu formats text: bold, heading, list', async () =
   await page.locator('.menu .menu-tool[aria-label="Paragraph"]').click();
   await sleep(150);
   assert((await ed()).includes('\nLisa, 41'), 'heading not undone');
+  await page.mouse.click(caret.x + 1, caret.y + 4, { button: 'right' });
+  await page.locator('.menu .menu-tool[aria-label="Centre"]').click();
+  await sleep(150);
+  assert((await ed()).includes('> Lisa, 41') && /application\*\* <|\. </.test(await ed()), await ed());
+  assert(await page.locator('.ed-prose .ln.align-center').count() === 1, 'not centred on screen');
+  await page.mouse.click(caret.x + 1, caret.y + 4, { button: 'right' });
+  await page.locator('.menu .menu-tool[aria-label="Align left"]').click();
+  await sleep(150);
+  assert(!(await ed()).includes('> Lisa'), 'alignment not removed');
+});
+
+await check('Mod+1 while writing a document goes back to the script', async () => {
+  await app(() => window.__app.docs.docEditor.focus());
+  await page.keyboard.press('Control+1');
+  await sleep(300);
+  assert(!(await app(() => window.__app.docs.isOpen)), 'document still open');
+  assert((await page.locator('.viewbar .tab.on').textContent()) === 'Script', 'not on Script');
+  await page.locator('.documents .doc-row').first().click();
+  await sleep(300);
+});
+
+await check('the + buttons line up in every section', async () => {
+  const xs = await page.$$eval('.pane-left .section-head', (heads) => heads.map((h) => { const b = [...h.querySelectorAll('.icon-btn')]; return Math.round(b[0].getBoundingClientRect().left); }));
+  assert(new Set(xs).size === 1, JSON.stringify(xs));
+  if (shots) await page.screenshot({ path: path.join(shots, 'heads.png'), clip: { x: 0, y: 76, width: 300, height: 724 } });
 });
 
 await check('rename, colour and archive from the context menu', async () => {
@@ -117,12 +142,12 @@ await check('rename, colour and archive from the context menu', async () => {
   await page.locator('.dialog input.field').fill('Exposé v2');
   await page.keyboard.press('Enter');
   await sleep(400);
-  assert(fs.existsSync(path.join(projectDir, 'Exposé v2.md')), 'file not renamed');
+  assert(fs.existsSync(path.join(projectDir, 'Exposé v2.txt')), 'file not renamed');
   await page.locator('.documents .doc-row').first().click({ button: 'right' });
   await page.locator('.menu [role="menuitem"]', { hasText: 'Green' }).click();
   await sleep(150);
   assert(await page.locator('.documents .doc-row.tinted').count() === 1, 'no colour');
-  await page.locator('.documents .section-head .icon-btn').click();
+  await page.locator('.documents .section-head .icon-btn').first().click();
   await page.locator('.menu [role="menuitem"]', { hasText: 'Treatment' }).click();
   await sleep(400);
   await page.keyboard.type('# Act one\n\nThe copy shop at night.');
@@ -134,7 +159,7 @@ await check('rename, colour and archive from the context menu', async () => {
   assert(!(await app(() => window.__app.docs.isOpen)), 'archived document still open');
   assert((await page.locator('.documents .archive-head').textContent()).includes('1'), 'no archive group');
   assert(await page.locator('.documents .archive-head.act-row').count() === 1, 'archive head differs from the scene archive');
-  assert(fs.existsSync(path.join(projectDir, 'Treatment.md')), 'archive deleted the file');
+  assert(fs.existsSync(path.join(projectDir, 'Treatment.txt')), 'archive deleted the file');
 });
 
 await check('the document exports as a PDF', async () => {

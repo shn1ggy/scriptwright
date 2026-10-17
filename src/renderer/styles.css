@@ -385,6 +385,7 @@ body.minimal .titlebar, body.minimal .viewbar, body.minimal .statusbar, body.min
 
 .export-side .check { display: flex; align-items: center; gap: 8px; color: var(--text); min-height: 22px; }
 .export-side .foot { border-top: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.export-side .foot .page-info { font-size: 12px; color: var(--text-3); padding: 4px 0 8px; }
 .export-side .warnings { color: var(--warn); font-size: 11.5px; line-height: 1.4; }
 .export-side .capacity { color: var(--text-3); font-size: 11.5px; }
 .export-preview-wrap { flex: 1; min-width: 0; position: relative; display: flex; }
@@ -862,6 +863,9 @@ label.check > input[type='checkbox'] { margin: 0; flex: none; }
 .outline .act-row .collapse-mark svg, .documents .act-row .collapse-mark svg { width: 12px; height: 12px; }
 .outline .act-row:hover .collapse-mark, .documents .act-row:hover .collapse-mark { color: var(--text); }
 .outline .act-row .meta, .documents .act-row .meta { font-weight: 400; }
+/* Archive groups stay in the background: quieter than every row they hold. */
+.outline .row.archive-head, .documents .row.archive-head { color: var(--text-3); font-weight: 500; opacity: 0.75; }
+.outline .row.archive-head:hover, .documents .row.archive-head:hover { opacity: 1; color: var(--text-2); }
 .outline .row.archived .label, .documents .row.archived .label { color: var(--text-3); }
 .outline .row.archived:hover .label, .documents .row.archived:hover .label { color: var(--text-2); }
 .archive-text { margin: 0; max-height: 50vh; overflow: auto; padding: 12px 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--field); font-family: 'Courier Prime', 'Courier New', monospace; white-space: pre-wrap; user-select: text; }
@@ -906,6 +910,7 @@ label.check > input[type='checkbox'] { margin: 0; flex: none; }
 .menu-tool.i { font-style: italic; font-family: Georgia, serif; }
 .menu-tool.u { text-decoration: underline; text-underline-offset: 2px; }
 .menu-tool.sep-before { margin-left: 6px; }
+.menu-tool svg { width: 16px; height: 16px; vertical-align: middle; }
 
 /* One editor shows at a time: the screenplay, or the open document. */
 .center.doc-open > .ed-scroller:not(.ed-prose) { display: none; }
@@ -920,4 +925,6 @@ label.check > input[type='checkbox'] { margin: 0; flex: none; }
 .ed-prose .el-section.lvl-2 { font-size: 1.22em; line-height: 1.45; }
 .ed-prose .el-section.lvl-3 { font-size: 1.05em; font-style: italic; }
 .ed-prose .el-listItem { padding-left: 1.3em; }
+.ed-prose .align-center { text-align: center; }
+.ed-prose .align-right { text-align: right; }
 .ed-prose .el-listItem:not(.is-active)::before { content: '•'; position: absolute; left: 0.25em; color: var(--text-2); }

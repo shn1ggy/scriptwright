@@ -120,7 +120,7 @@ await check('export: dialogue only for one character, lines/characters settings,
   await page.selectOption('select[aria-label="What to export"]', 'dialogue');
   await page.selectOption('.export-side select[aria-label="Character"]', 'TOM');
   await sleep(1500);
-  const info = await page.locator('.export-side .foot .muted').textContent();
+  const info = await page.locator('.export-side .foot .page-info').textContent();
   assert(/1 page/.test(info), info);
   const units = await page.locator('.export-side .ex-section:has(.ex-head:has-text("Page layout"))').textContent();
   assert(units.includes('lines') && units.includes('characters'), units);

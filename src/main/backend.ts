@@ -835,19 +835,20 @@ export class Backend extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------------
-  // Documents: exposé, treatment … as Markdown files beside the screenplay
+  // Documents: exposé, treatment … as plain text files beside the screenplay (headings and
+  // emphasis written with Markdown's # and * markers)
 
   private docPath(rel: string, file: string): string {
     const dir = this.resolve(rel);
     const full = path.resolve(dir, file);
-    if (path.dirname(full) !== dir || !/\.md$/i.test(full)) throw new Error('Invalid document');
+    if (path.dirname(full) !== dir || !/\.(txt|md)$/i.test(full)) throw new Error('Invalid document');
     return full;
   }
 
   private freeDocName(dir: string, title: string, except?: string): string {
     const base = safeName(title) || 'Document';
     for (let n = 1; ; n++) {
-      const name = n === 1 ? `${base}.md` : `${base} ${n}.md`;
+      const name = n === 1 ? `${base}.txt` : `${base} ${n}.txt`;
       if (name === except || !fs.existsSync(path.join(dir, name))) return name;
     }
   }

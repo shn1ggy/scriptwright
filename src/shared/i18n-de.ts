@@ -1407,4 +1407,12 @@ export const DE: Record<string, string> = {
   "Small heading": "Kleine Überschrift",
   "Paragraph": "Absatz",
   "List": "Liste",
+  "Document actions": "Dokument-Aktionen",
+  "New Document…": "Neues Dokument …",
+  "Show Documents in Folder": "Dokumente im Ordner zeigen",
+  "Sort by Name": "Nach Name sortieren",
+  "Justified Text in PDF": "Blocksatz im PDF",
+  "Align left": "Linksbündig",
+  "Centre": "Zentriert",
+  "Align right": "Rechtsbündig",
 };
