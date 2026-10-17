@@ -56,5 +56,11 @@ foreach ($d in 'app', 'fonts') {
   if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
   Copy-Item (Join-Path $root $d) $dest -Recurse
 }
+# The app's own copies of the font (used by the editor's stylesheet) are the real ones too.
+if (Test-Path (Join-Path $fonts 'courier-prime.ok')) {
+  $appFonts = Join-Path $res 'app\dist\renderer\fonts'
+  New-Item -ItemType Directory -Path $appFonts -Force | Out-Null
+  Copy-Item (Join-Path $fonts 'CourierPrime-*.ttf') $appFonts -Force
+}
 Write-Host "== Starting"
 Start-Process $exe
