@@ -259,7 +259,7 @@ Scenes; every section folds away). Add one with **+**; right-click to rename, co
 delete or export it as PDF. A document opens in place of the screenplay in a calm prose view:
 `# Heading`, `## Subheading`, `- list item`, `*italic*`, `**bold**`, `_underline_` and
 `[[notes]]` work as in Fountain. Clicking a scene or the Script tab goes back to the screenplay.
-Documents are plain plain text file (.txt)s in the project folder (`Exposé.md`), saved automatically
+Documents are plain text files in the project folder (`Exposé.txt`), saved automatically
 like the screenplay; Export while a document is open makes a PDF of it.
 
 ## Importing
