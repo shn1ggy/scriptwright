@@ -1,7 +1,7 @@
 {
   "name": "scriptwright",
   "productName": "Scriptwright",
-  "version": "0.24.1",
+  "version": "0.24.2",
   "description": "A calm, minimal screenplay writer built on Fountain — plain text files in an Obsidian-style vault/workspace, for writers who want to write, not manage a production.",
   "author": "Nico Sanft",
   "license": "UNLICENSED",

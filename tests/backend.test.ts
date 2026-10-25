@@ -166,11 +166,21 @@ test('external change event is emitted', async () => {
   const p = b.createProject('Film', 'A');
   b.openProject(p.rel);
   const got = new Promise<any>((res) => b.once('external', res));
-  fs.writeFileSync(path.join(ws, 'Film', 'Film.fountain'), 'Changed elsewhere');
-  const ev = await got;
-  assert.equal(ev.kind, 'changed');
-  assert.equal(ev.hash, sha('Changed elsewhere'));
-  b.dispose();
+  // Production watchers are deliberately unreferenced. Keep this test alive
+  // until the notification arrives, including the polling fallback on macOS.
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error('External change was not detected within 5 seconds')), 5000);
+  });
+  try {
+    fs.writeFileSync(path.join(ws, 'Film', 'Film.fountain'), 'Changed elsewhere');
+    const ev = await Promise.race([got, deadline]);
+    assert.equal(ev.kind, 'changed');
+    assert.equal(ev.hash, sha('Changed elsewhere'));
+  } finally {
+    clearTimeout(timeout);
+    b.dispose();
+  }
 });
 
 test('loose fountain files can be adopted into a project', () => {
