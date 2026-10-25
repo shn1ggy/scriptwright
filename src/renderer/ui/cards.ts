@@ -31,6 +31,12 @@ export class SceneCards {
   private dragId: string | null = null;
   /** An act or sequence divider being dragged to another card. */
   private dragSec: StorySection | null = null;
+  /** The single card currently showing a drop line, and which side. Dragover fires far more
+   * often than the screen repaints; coalescing to one DOM write per frame (and skipping it when
+   * nothing changed) is what keeps dragging smooth, especially on Windows. */
+  private dropEl: HTMLElement | null = null;
+  private dropSide: 'before' | 'after' | null = null;
+  private dropRaf = 0;
   private lastSig = '';
   readonly timeline: Timeline;
   private modeSeg: HTMLElement;
@@ -153,6 +159,26 @@ export class SceneCards {
     });
   }
 
+  /** Shows the drop line on at most one card, skipping the DOM write when nothing changed. */
+  private setDrop(el: HTMLElement | null, side: 'before' | 'after' | null) {
+    if (el === this.dropEl && side === this.dropSide) return;
+    if (this.dropEl) this.dropEl.classList.remove('drop-before', 'drop-after');
+    this.dropEl = el;
+    this.dropSide = side;
+    if (el && side) el.classList.add(side === 'before' ? 'drop-before' : 'drop-after');
+  }
+
+  /** Coalesces a run of dragover events into one drop-line update per frame. */
+  private scheduleDrop(el: HTMLElement, side: 'before' | 'after') {
+    cancelAnimationFrame(this.dropRaf);
+    this.dropRaf = requestAnimationFrame(() => this.setDrop(el, side));
+  }
+
+  private clearDrop() {
+    cancelAnimationFrame(this.dropRaf);
+    this.setDrop(null, null);
+  }
+
   private items(): SceneItem[] {
     return this.app.scenes.filter((s) => s.kind === 'scene');
   }
@@ -205,14 +231,16 @@ export class SceneCards {
         });
         d.addEventListener('dragstart', (e) => {
           this.dragSec = sec;
-          d.classList.add('dragging');
           e.dataTransfer!.effectAllowed = 'move';
           e.dataTransfer!.setData('text/plain', sec.title);
+          // Changing style before the browser has captured its native drag image is what makes
+          // dragging stutter badly on Windows; deferring it a tick keeps the capture fast.
+          setTimeout(() => d.classList.add('dragging'), 0);
         });
         d.addEventListener('dragend', () => {
           this.dragSec = null;
           d.classList.remove('dragging');
-          this.grid.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+          this.clearDrop();
         });
         this.grid.append(d);
       }
@@ -260,33 +288,35 @@ export class SceneCards {
       card.addEventListener('dragstart', (e) => {
         this.dragId = it.id;
         if (!this.app.sceneSel.has(it.id)) this.select(it.id);
-        for (const m of this.app.scenesFor(it)) this.cardEl(m.id)?.classList.add('dragging');
         e.dataTransfer!.effectAllowed = 'move';
         e.dataTransfer!.setData('text/plain', it.heading);
+        // Changing style before the browser has captured its native drag image is what makes
+        // dragging stutter badly on Windows; deferring it a tick keeps the capture fast.
+        const ids = this.app.scenesFor(it).map((m) => m.id);
+        setTimeout(() => { for (const id of ids) this.cardEl(id)?.classList.add('dragging'); }, 0);
       });
       card.addEventListener('dragend', () => {
         this.dragId = null;
         this.grid.querySelectorAll('.dragging').forEach((x) => x.classList.remove('dragging'));
-        this.grid.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+        this.clearDrop();
       });
       card.addEventListener('dragover', (e) => {
         if (this.dragSec) {
           const [lo, hi] = sectionRange(this.app, this.dragSec);
           if (k < lo || k > hi) return;
           e.preventDefault();
-          this.grid.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
-          card.classList.add('drop-before');
+          this.scheduleDrop(card, 'before');
           return;
         }
         if (!this.dragId || this.dragId === it.id || (this.app.sceneSel.size > 1 && this.app.sceneSel.has(it.id) && this.app.sceneSel.has(this.dragId))) return;
         e.preventDefault();
         const r = card.getBoundingClientRect();
         const after = e.clientX > r.left + r.width / 2;
-        this.grid.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
-        card.classList.add(after ? 'drop-after' : 'drop-before');
+        this.scheduleDrop(card, after ? 'after' : 'before');
       });
       card.addEventListener('drop', (e) => {
         e.preventDefault();
+        this.clearDrop();
         if (this.dragSec) {
           const sec = this.dragSec;
           this.dragSec = null;

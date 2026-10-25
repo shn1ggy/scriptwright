@@ -1,8 +1,8 @@
 {
   "name": "scriptwright",
   "productName": "Scriptwright",
-  "version": "0.23.1",
-  "description": "A fast, dependable screenplay editor built on Fountain.",
+  "version": "0.24.0",
+  "description": "A calm, minimal screenplay writer built on Fountain — plain text files in an Obsidian-style vault/workspace, for writers who want to write, not manage a production.",
   "author": "Nico Sanft",
   "license": "UNLICENSED",
   "private": true,
@@ -117,6 +117,6 @@
     }
   },
   "scriptwright": {
-    "updateRepo": ""
+    "updateRepo": "shn1ggy/scriptwright"
   }
 }

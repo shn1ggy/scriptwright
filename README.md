@@ -302,9 +302,11 @@ you used the project folder or the portable Windows folder before.
 ## Updates and releases
 
 Settings → About shows the version, build, system and credits, and looks for new versions on
-GitHub (automatically once a day at start, or with "Check now"). Set the repository either in
-About ("Releases from") or for every build in `package.json` → `scriptwright.updateRepo`
-(`owner/name`). The repository must be public: the app asks GitHub without signing in.
+GitHub (automatically once a day at start, or with "Check now"). The repository is set in
+`package.json` → `scriptwright.updateRepo` (currently `shn1ggy/scriptwright`), so nothing has to
+be typed in; About ("Releases from") can still point a particular copy of the app somewhere else
+(a fork, say) without changing the build. The repository must be public: the app asks GitHub
+without signing in.
 
 To publish a version:
 

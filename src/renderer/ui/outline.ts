@@ -36,6 +36,12 @@ export class OutlinePane {
   private selectedId: string | null = null;
   private lastSig = '';
   private dragId: string | null = null;
+  /** The single row currently showing a drop line, and which side; dragover fires far more
+   * often than the screen repaints, so coalescing to one DOM write per frame (and skipping it
+   * when nothing changed) is what keeps dragging smooth, especially on Windows. */
+  private dropEl: HTMLElement | null = null;
+  private dropSide: 'before' | 'after' | null = null;
+  private dropRaf = 0;
   /** Act and sequence rows with the scenes they hold (for marking a folded one as current). */
   private actRows: Array<{ row: HTMLElement; first: number; end: number }> = [];
 
@@ -282,9 +288,12 @@ export class OutlinePane {
         row.addEventListener('dragstart', (e) => {
           this.dragId = it.id;
           if (!this.app.sceneSel.has(it.id)) this.select(it.id);
-          for (const m of this.app.scenesFor(it)) this.rows.get(m.id)?.classList.add('dragging');
           e.dataTransfer!.effectAllowed = 'move';
           e.dataTransfer!.setData('text/plain', it.heading);
+          // Changing style before the browser has captured its native drag image is what makes
+          // dragging stutter badly on Windows; deferring it a tick keeps the capture fast.
+          const ids = this.app.scenesFor(it).map((m) => m.id);
+          setTimeout(() => { for (const id of ids) this.rows.get(id)?.classList.add('dragging'); }, 0);
         });
         row.addEventListener('dragend', () => {
           this.dragId = null;
@@ -296,10 +305,8 @@ export class OutlinePane {
           e.preventDefault();
           const r = row.getBoundingClientRect();
           const after = e.clientY > r.top + r.height / 2;
-          this.clearDrop();
-          row.classList.add(after ? 'drop-after' : 'drop-before');
+          this.scheduleDrop(row, after ? 'after' : 'before');
         });
-        row.addEventListener('dragleave', () => row.classList.remove('drop-before', 'drop-after'));
         row.addEventListener('drop', (e) => {
           e.preventDefault();
           const r = row.getBoundingClientRect();
@@ -365,8 +372,23 @@ export class OutlinePane {
     return parts.join('\n');
   }
 
+  private setDrop(el: HTMLElement | null, side: 'before' | 'after' | null) {
+    if (el === this.dropEl && side === this.dropSide) return;
+    if (this.dropEl) this.dropEl.classList.remove('drop-before', 'drop-after');
+    this.dropEl = el;
+    this.dropSide = side;
+    if (el && side) el.classList.add(side === 'before' ? 'drop-before' : 'drop-after');
+  }
+
+  /** Coalesces a run of dragover events into one drop-line update per frame. */
+  private scheduleDrop(el: HTMLElement, side: 'before' | 'after') {
+    cancelAnimationFrame(this.dropRaf);
+    this.dropRaf = requestAnimationFrame(() => this.setDrop(el, side));
+  }
+
   private clearDrop() {
-    for (const r of this.rows.values()) r.classList.remove('drop-before', 'drop-after');
+    cancelAnimationFrame(this.dropRaf);
+    this.setDrop(null, null);
   }
 
   updateActive() {
