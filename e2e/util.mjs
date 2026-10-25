@@ -3,9 +3,10 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 
-export const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export async function startHarness({ port = 5180 + Math.floor(Math.random() * 500), withSample = true, mac = false } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sw-e2e-'));

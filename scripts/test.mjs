@@ -3,8 +3,9 @@ import { build } from 'esbuild';
 import { readdirSync, rmSync, mkdirSync } from 'fs';
 import { spawnSync } from 'child_process';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, '.test-build');
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });

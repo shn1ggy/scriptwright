@@ -10,8 +10,9 @@ import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const version = pkg.version;
 

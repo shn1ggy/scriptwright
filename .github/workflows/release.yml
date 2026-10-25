@@ -93,7 +93,7 @@ jobs:
               [ -f "$f" ] || continue
               echo "#### $f (last 200 lines)"
               echo '```'
-              tail -n 200 "$f"
+              tail -n 1500 "$f"
               echo '```'
             done
           } > ci-report.md

@@ -3,10 +3,11 @@ import { build, context } from 'esbuild';
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, copyFileSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'dist');
 const watch = process.argv.includes('--watch');
 const prod = process.argv.includes('--prod');

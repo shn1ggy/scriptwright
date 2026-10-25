@@ -3,8 +3,9 @@
 import { createWriteStream, existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';
 import https from 'https';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dir = path.join(root, 'resources', 'fonts');
 const base = 'https://raw.githubusercontent.com/google/fonts/main/ofl/courierprime/';
 const files = ['CourierPrime-Regular.ttf', 'CourierPrime-Bold.ttf', 'CourierPrime-Italic.ttf', 'CourierPrime-BoldItalic.ttf', 'OFL.txt'];
